@@ -10,8 +10,6 @@ import {
   Minimize,
 } from 'lucide-react';
 import { PixelEngine, type TextureBuffer, type HistogramData } from '../engine/pixelEngine';
-import { TokenEngine, type CasingType } from '../engine/tokenizer';
-import { NodeSlider } from './node-system/NodeControls';
 
 export interface FloatingDetailsPanelProps {
   selectedNode: any | null;
@@ -27,13 +25,11 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   primaryAsset,
   onAssetChange,
   activeBuffer,
-  onUpdateNodeData,
+  onUpdateNodeData: _onUpdateNodeData,
   onExportTarget,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [isolatedChannel, setIsolatedChannel] = useState<'RGBA' | 'R' | 'G' | 'B' | 'A'>('RGBA');
-  const [pattern, setPattern] = useState(TokenEngine.DEFAULT_PATTERN);
-  const [casing, setCasing] = useState<CasingType>('UPPER_SNAKE');
   const [hoverPixel, setHoverPixel] = useState<{ x: number; y: number; r: number; g: number; b: number; a: number } | null>(null);
   const [isPixelExact, setIsPixelExact] = useState(false);
   const [activeTab, setActiveTab] = useState<'viewport' | 'histogram'>('viewport');
@@ -41,26 +37,19 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const histCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Evaluate output filename
+  // Evaluate output filename for inspected buffer export
   const evaluateFilename = () => {
     let slot = 'ORMH';
     if (selectedNode?.data?.detectedRole) {
       slot = selectedNode.data.detectedRole.toUpperCase();
     } else if (selectedNode?.data?.role) {
       slot = selectedNode.data.role.replace(/\s+/g, '_').toUpperCase();
+    } else if (selectedNode?.id) {
+      slot = selectedNode.id.toUpperCase();
     }
-
-    return TokenEngine.evaluate(
-      pattern,
-      {
-        prefix: 'T',
-        asset: primaryAsset || 'AnthraciteConcrete',
-        slot,
-        res: activeBuffer ? `${Math.round(activeBuffer.width / 1024)}K` : '4K',
-        ext: 'png',
-      },
-      casing
-    );
+    const asset = primaryAsset || 'AnthraciteConcrete';
+    const res = activeBuffer ? `${Math.round(activeBuffer.width / 1024)}K` : '4K';
+    return `T_${asset}_${slot}_${res}.png`;
   };
 
   // Render 2D Viewport buffer to canvas
@@ -467,7 +456,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
               ))}
             </div>
 
-            {/* Node-Specific Configurable Properties */}
+            {/* Read-Only Node & Buffer Telemetry (Parameters are edited directly on node card) */}
             <div
               style={{
                 display: 'flex',
@@ -481,313 +470,95 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.6 }}>
-                  NODE PARAMETERS
+                  BUFFER & NODE TELEMETRY
                 </span>
-                {nodeData.isBypassed && (
-                  <span style={{ fontSize: 8, color: '#ef4444', fontWeight: 700 }}>MUTED / BYPASS ACTIVE</span>
+                {nodeData.isBypassed ? (
+                  <span style={{ fontSize: 8, color: '#ef4444', fontWeight: 700 }}>MUTED / BYPASSED</span>
+                ) : (
+                  <span style={{ fontSize: 8, color: '#38bdf8', fontWeight: 700 }}>ACTIVE</span>
                 )}
               </div>
 
-              {/* 1. Levels Node Controls */}
-              {nodeType === 'levels' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <NodeSlider
-                    label="In Black"
-                    min={0}
-                    max={254}
-                    step={1}
-                    value={nodeData.blackPoint ?? 0}
-                    defaultValue={0}
-                    accentColor="#38bdf8"
-                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { blackPoint: val })}
-                  />
-                  <NodeSlider
-                    label="Gamma"
-                    min={0.1}
-                    max={3.0}
-                    step={0.05}
-                    value={nodeData.gamma ?? 1.0}
-                    defaultValue={1.0}
-                    accentColor="var(--pbr-rough)"
-                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { gamma: val })}
-                  />
-                  <NodeSlider
-                    label="In White"
-                    min={1}
-                    max={255}
-                    step={1}
-                    value={nodeData.whitePoint ?? 255}
-                    defaultValue={255}
-                    accentColor="#fbbf24"
-                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { whitePoint: val })}
-                  />
-                  <NodeSlider
-                    label="Out Black (Min)"
-                    min={0}
-                    max={255}
-                    step={1}
-                    value={nodeData.outBlack ?? 0}
-                    defaultValue={0}
-                    accentColor="#94a3b8"
-                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { outBlack: val })}
-                  />
-                  <NodeSlider
-                    label="Out White (Max)"
-                    min={0}
-                    max={255}
-                    step={1}
-                    value={nodeData.outWhite ?? 255}
-                    defaultValue={255}
-                    accentColor="#e2e8f0"
-                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { outWhite: val })}
-                  />
-                </div>
-              )}
-
-              {/* 2. Texture Input Node Controls */}
-              {nodeType === 'textureInput' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Detected Role</span>
-                    <span style={{ color: nodeData.roleColor || '#38bdf8', fontWeight: 600 }}>{nodeData.role || 'PBR Map'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Resolution</span>
-                    <span style={{ color: '#f8fafc', fontWeight: 500 }}>{nodeData.res || '4K (4096x4096)'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Color Space</span>
-                    <span style={{ color: '#f8fafc', fontWeight: 500 }}>{nodeData.colorSpace || 'Linear / Raw'}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* 3. Texture Blend Controls */}
-              {nodeType === 'blend' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Mode</span>
-                    <select
-                      value={nodeData.mode || 'lerp'}
-                      onChange={(e) => onUpdateNodeData?.(selectedNode.id, { mode: e.target.value })}
-                      style={{
-                        background: '#14171d',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        color: '#f8fafc',
-                        borderRadius: 3,
-                        fontSize: 9,
-                        padding: '1px 4px',
-                      }}
-                    >
-                      <option value="lerp">Normal (Lerp)</option>
-                      <option value="multiply">Multiply</option>
-                      <option value="screen">Screen</option>
-                      <option value="overlay">Overlay</option>
-                      <option value="add">Add</option>
-                      <option value="min">Darken (Min)</option>
-                      <option value="max">Lighten (Max)</option>
-                    </select>
-                  </div>
-                  <NodeSlider
-                    label="Opacity"
-                    min={0.0}
-                    max={1.0}
-                    step={0.01}
-                    value={nodeData.opacity ?? 1.0}
-                    defaultValue={1.0}
-                    accentColor="#f59e0b"
-                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { opacity: val })}
-                  />
-                </div>
-              )}
-
-              {/* 4. Normal Green Flip Controls */}
-              {nodeType === 'normalFlip' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Orientation</span>
-                    <span style={{ color: 'var(--pbr-normal)', fontWeight: 600 }}>
-                      {nodeData.mode === 'gl_to_dx' ? 'OpenGL → DirectX' : 'DirectX → OpenGL'}
-                    </span>
-                  </div>
-                  <NodeSlider
-                    label="Strength"
-                    min={0.0}
-                    max={2.0}
-                    step={0.05}
-                    value={nodeData.strength ?? 1.0}
-                    defaultValue={1.0}
-                    accentColor="var(--pbr-normal)"
-                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { strength: val })}
-                  />
-                </div>
-              )}
-
-              {/* 5. Normal Blend (RNM) Controls */}
-              {nodeType === 'normalBlend' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Algorithm</span>
-                    <span style={{ color: 'var(--pbr-normal)', fontWeight: 600 }}>UE5 Reoriented (RNM)</span>
-                  </div>
-                  <NodeSlider
-                    label="Detail Intensity"
-                    min={0.0}
-                    max={2.0}
-                    step={0.05}
-                    value={nodeData.detailStrength ?? 1.0}
-                    defaultValue={1.0}
-                    accentColor="var(--pbr-normal)"
-                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { detailStrength: val })}
-                  />
-                </div>
-              )}
-
-              {/* 6. Channel Swizzle Controls */}
-              {nodeType === 'channelSwizzle' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Routing Profile</span>
-                    <span style={{ color: '#818cf8', fontWeight: 600 }}>
-                      {`${nodeData.rSrc || 'r'}, ${nodeData.gSrc || 'g'}, ${nodeData.bSrc || 'b'}, ${nodeData.aSrc || 'a'}`.toUpperCase()}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 9, color: '#64748b' }}>
-                    Configure channel matrix mapping on the node card or use presets.
-                  </div>
-                </div>
-              )}
-
-              {/* 7. Channel Combiner (Pack) Controls */}
-              {nodeType === 'channelCombiner' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Packing Profile</span>
-                    <span style={{ color: 'var(--pbr-packed)', fontWeight: 600 }}>ORMH (Unreal / Unity)</span>
-                  </div>
-                  <div style={{ fontSize: 9, color: '#64748b' }}>
-                    R: Ambient Occlusion | G: Roughness | B: Metallic | A: Height
-                  </div>
-                </div>
-              )}
-
-              {/* 8. Channel Splitter (Unpack) Controls */}
-              {nodeType === 'channelSplitter' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#94a3b8' }}>Mode</span>
-                    <span style={{ color: 'var(--pbr-packed)', fontWeight: 600 }}>Multiplex Breakout</span>
-                  </div>
-                  <div style={{ fontSize: 9, color: '#64748b' }}>
-                    Splits RGBA buffer into 4 discrete channels for mix-and-match editing.
-                  </div>
-                </div>
-              )}
-
-              {/* 5. Texture Output Target Controls */}
-              {nodeType === 'textureOutput' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: '#38bdf8' }}>
-                    TOKEN-BASED EXPORT
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Node ID</span>
+                  <span style={{ color: '#f8fafc', fontFamily: "'Geist Mono', monospace", fontWeight: 600 }}>
+                    {selectedNode.id}
                   </span>
-
-                  {/* Token Chips */}
-                  <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                    {['{prefix}', '{asset}', '{slot}', '{res}', '{ext}'].map((tok) => (
-                      <button
-                        key={tok}
-                        onClick={() => setPattern((p) => p + tok)}
-                        style={{
-                          background: 'rgba(56, 189, 248, 0.1)',
-                          border: '1px dashed rgba(56, 189, 248, 0.4)',
-                          borderRadius: 3,
-                          color: '#38bdf8',
-                          fontSize: 9,
-                          fontWeight: 600,
-                          padding: '1px 5px',
-                          cursor: 'pointer',
-                        }}
-                      >
-                        {tok}
-                      </button>
-                    ))}
-                  </div>
-
-                  <input
-                    type="text"
-                    value={pattern}
-                    onChange={(e) => setPattern(e.target.value)}
-                    style={{
-                      height: 26,
-                      backgroundColor: '#14171d',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: 3,
-                      padding: '0 6px',
-                      color: '#f8fafc',
-                      fontSize: 10,
-                      fontFamily: 'monospace',
-                    }}
-                  />
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 10 }}>
-                    <span style={{ color: '#94a3b8' }}>Casing</span>
-                    <select
-                      value={casing}
-                      onChange={(e) => setCasing(e.target.value as CasingType)}
-                      style={{
-                        backgroundColor: '#14171d',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
-                        color: '#f8fafc',
-                        borderRadius: 3,
-                        padding: '2px 4px',
-                        fontSize: 10,
-                      }}
-                    >
-                      <option value="original">Original</option>
-                      <option value="UPPER_SNAKE">UPPER_SNAKE</option>
-                      <option value="snake_case">snake_case</option>
-                      <option value="PascalCase">PascalCase</option>
-                    </select>
-                  </div>
-
-                  <div
-                    style={{
-                      background: 'rgba(74, 222, 128, 0.08)',
-                      border: '1px solid rgba(74, 222, 128, 0.25)',
-                      borderRadius: 3,
-                      padding: '4px 6px',
-                      fontSize: 9,
-                      fontFamily: 'monospace',
-                      color: '#4ade80',
-                      wordBreak: 'break-all',
-                    }}
-                  >
-                    {evaluateFilename()}
-                  </div>
-
-                  <button
-                    onClick={handleDownload}
-                    style={{
-                      height: 32,
-                      backgroundColor: '#38bdf8',
-                      border: 'none',
-                      borderRadius: 4,
-                      color: '#0f172a',
-                      fontWeight: 700,
-                      fontSize: 11,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 6,
-                      cursor: 'pointer',
-                      marginTop: 4,
-                    }}
-                  >
-                    <Download size={13} />
-                    EXPORT TEXTURE
-                  </button>
                 </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Type</span>
+                  <span style={{ color: '#cbd5e1', fontWeight: 500, textTransform: 'capitalize' }}>
+                    {nodeType}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Buffer Resolution</span>
+                  <span style={{ color: activeBuffer ? '#38bdf8' : '#64748b', fontWeight: 600, fontFamily: "'Geist Mono', monospace" }}>
+                    {activeBuffer ? `${activeBuffer.width} × ${activeBuffer.height} px (${Math.round(activeBuffer.width / 1024)}K)` : 'No Buffer Available'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Color Depth</span>
+                  <span style={{ color: '#cbd5e1', fontWeight: 500 }}>
+                    {activeBuffer ? 'RGBA 32-bit (8bpc)' : '—'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#94a3b8' }}>Uncompressed Size</span>
+                  <span style={{ color: '#94a3b8', fontFamily: "'Geist Mono', monospace" }}>
+                    {activeBuffer ? `${((activeBuffer.width * activeBuffer.height * 4) / (1024 * 1024)).toFixed(1)} MB` : '0 MB'}
+                  </span>
+                </div>
+              </div>
+
+              {activeBuffer && (
+                <button
+                  onClick={handleDownload}
+                  title="Download raw PNG of the currently inspected buffer"
+                  style={{
+                    height: 26,
+                    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    borderRadius: 4,
+                    color: '#38bdf8',
+                    fontWeight: 600,
+                    fontSize: 9.5,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 5,
+                    cursor: 'pointer',
+                    marginTop: 4,
+                    transition: 'all 120ms ease',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.22)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.12)';
+                  }}
+                >
+                  <Download size={11} />
+                  <span>Download Inspected Buffer</span>
+                </button>
               )}
+
+              {/* Informative Guidance */}
+              <div
+                style={{
+                  marginTop: 2,
+                  padding: '6px 8px',
+                  backgroundColor: 'rgba(255, 255, 255, 0.02)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                  borderRadius: 4,
+                  fontSize: 8.5,
+                  color: '#64748b',
+                  lineHeight: 1.4,
+                }}
+              >
+                <span style={{ color: '#94a3b8', fontWeight: 600 }}>Node Editor:</span> Sliders and parameters are configured directly on the canvas node card.
+              </div>
             </div>
           </>
         ) : (
