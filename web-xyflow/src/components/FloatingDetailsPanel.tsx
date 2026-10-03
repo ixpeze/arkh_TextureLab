@@ -4,9 +4,6 @@ import {
   ChevronRight,
   Download,
   Settings,
-  FolderOpen,
-  Info,
-  Sparkles,
   BarChart2,
   Crosshair,
   Maximize,
@@ -22,10 +19,6 @@ export interface FloatingDetailsPanelProps {
   activeBuffer?: TextureBuffer | null;
   onUpdateNodeData?: (nodeId: string, patch: any) => void;
   onExportTarget?: (filename: string) => void;
-  onLoadBenchmark?: () => void;
-  onAutoWireORMH?: () => void;
-  nodeCount: number;
-  edgeCount: number;
 }
 
 export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
@@ -35,10 +28,6 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   activeBuffer,
   onUpdateNodeData,
   onExportTarget,
-  onLoadBenchmark,
-  onAutoWireORMH,
-  nodeCount,
-  edgeCount,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [isolatedChannel, setIsolatedChannel] = useState<'RGBA' | 'R' | 'G' | 'B' | 'A'>('RGBA');
@@ -695,111 +684,78 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
           </>
         ) : (
           /* ============================================================ */
-          /* NO NODE SELECTED: GLOBAL PROJECT PROPERTIES & PRESETS        */
+          /* NO NODE SELECTED: MINIMAL SLEEK EMPTY STATE                  */
           /* ============================================================ */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Info size={13} color="#94a3b8" />
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc' }}>
-                PROJECT OVERVIEW
-              </span>
-            </div>
-
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 12,
+              padding: '32px 16px',
+              textAlign: 'center',
+            }}
+          >
             <div
               style={{
-                backgroundColor: 'rgba(20, 24, 34, 0.6)',
-                border: '1px solid rgba(255, 255, 255, 0.06)',
-                borderRadius: 6,
-                padding: '12px',
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.2)',
                 display: 'flex',
-                flexDirection: 'column',
-                gap: 10,
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#38bdf8',
               }}
             >
-              {/* Asset Name Token */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 9, color: '#94a3b8', fontWeight: 600 }}>Primary Asset Name</span>
-                <input
-                  type="text"
-                  value={primaryAsset}
-                  onChange={(e) => onAssetChange(e.target.value)}
-                  style={{
-                    height: 26,
-                    backgroundColor: '#10131a',
-                    border: '1px solid rgba(56, 189, 248, 0.3)',
-                    borderRadius: 4,
-                    padding: '0 8px',
-                    color: '#38bdf8',
-                    fontSize: 10,
-                    fontWeight: 600,
-                  }}
-                />
-              </div>
-
-              {/* Graph Census */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 10 }}>
-                <div style={{ background: '#10131a', padding: '6px', borderRadius: 4, border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                  <span style={{ color: '#64748b', fontSize: 8, display: 'block' }}>TOTAL NODES</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>{nodeCount}</span>
-                </div>
-                <div style={{ background: '#10131a', padding: '6px', borderRadius: 4, border: '1px solid rgba(255, 255, 255, 0.04)' }}>
-                  <span style={{ color: '#64748b', fontSize: 8, display: 'block' }}>CONNECTIONS</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--pbr-packed)' }}>{edgeCount}</span>
-                </div>
-              </div>
+              <Crosshair size={18} />
             </div>
 
-            {/* Quick Actions */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', letterSpacing: 0.5 }}>
-                QUICK ACTIONS
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#f8fafc', letterSpacing: 0.3 }}>
+                No Node Selected
               </span>
-
-              <button
-                onClick={onLoadBenchmark}
-                style={{
-                  height: 30,
-                  backgroundColor: 'rgba(56, 189, 248, 0.12)',
-                  border: '1px solid rgba(56, 189, 248, 0.35)',
-                  borderRadius: 4,
-                  color: '#7dd3fc',
-                  fontWeight: 600,
-                  fontSize: 10,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                }}
-              >
-                <FolderOpen size={12} />
-                Load Anthracite Concrete (4K)
-              </button>
-
-              <button
-                onClick={onAutoWireORMH}
-                style={{
-                  height: 30,
-                  backgroundColor: 'rgba(167, 139, 250, 0.12)',
-                  border: '1px solid rgba(167, 139, 250, 0.35)',
-                  borderRadius: 4,
-                  color: '#c4b5fd',
-                  fontWeight: 600,
-                  fontSize: 10,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  cursor: 'pointer',
-                }}
-              >
-                <Sparkles size={12} />
-                Auto-Wire ORMH Pack (W)
-              </button>
+              <span style={{ fontSize: 9.5, color: '#64748b', lineHeight: 1.5, maxWidth: 220 }}>
+                Select any node on the canvas to inspect its 2D buffer, view the waveform histogram, or tune parameters.
+              </span>
             </div>
 
-            <div style={{ marginTop: 'auto', fontSize: 9, color: '#475569', textAlign: 'center' }}>
-              Select any node on the canvas to configure its parameters.
+            {/* Compact Asset Identifier */}
+            <div
+              style={{
+                width: '100%',
+                marginTop: 16,
+                padding: '10px',
+                backgroundColor: 'rgba(20, 24, 34, 0.5)',
+                border: '1px solid rgba(255, 255, 255, 0.05)',
+                borderRadius: 6,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+                textAlign: 'left',
+              }}
+            >
+              <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 600 }}>Primary Asset Name</span>
+              <input
+                type="text"
+                value={primaryAsset}
+                onChange={(e) => onAssetChange(e.target.value)}
+                placeholder="Asset_Name"
+                style={{
+                  height: 24,
+                  backgroundColor: '#0c0e14',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 4,
+                  padding: '0 8px',
+                  color: '#38bdf8',
+                  fontSize: 10,
+                  fontWeight: 600,
+                  outline: 'none',
+                }}
+              />
             </div>
           </div>
         )}

@@ -40,7 +40,6 @@ export const TextureOutputNode: React.FC<NodeProps<any>> = ({ data, selected }) 
         label="RGBA (Packed)"
         color="var(--pbr-packed)"
         shape="diamond"
-        secondaryText="STREAM"
       />
 
       <NodeDivider />

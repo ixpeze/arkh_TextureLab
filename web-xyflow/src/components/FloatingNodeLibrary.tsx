@@ -146,7 +146,7 @@ interface FloatingNodeLibraryProps {
 }
 
 export const FloatingNodeLibrary: React.FC<FloatingNodeLibraryProps> = ({ onSpawnNode }) => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
   const isDraggingRef = React.useRef(false);
@@ -214,20 +214,6 @@ export const FloatingNodeLibrary: React.FC<FloatingNodeLibraryProps> = ({ onSpaw
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontSize: 10, fontWeight: 700, color: '#f8fafc', letterSpacing: 0.8 }}>
               NODE LIBRARY
-            </span>
-            <span
-              style={{
-                fontSize: 8,
-                fontWeight: 700,
-                color: '#a855f7',
-                background: 'rgba(168, 85, 247, 0.12)',
-                border: '1px solid rgba(168, 85, 247, 0.25)',
-                padding: '2px 6px',
-                borderRadius: 4,
-                letterSpacing: 0.5,
-              }}
-            >
-              DRAG & DROP
             </span>
           </div>
 

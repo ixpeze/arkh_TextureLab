@@ -3,7 +3,6 @@ import {
   ReactFlow,
   Background,
   Controls,
-  MiniMap,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -966,14 +965,6 @@ function Workbench() {
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="rgba(255, 255, 255, 0.08)" />
           <Controls position="bottom-left" showInteractive={false} />
-          <MiniMap
-            position="bottom-right"
-            maskColor="rgba(9, 10, 15, 0.85)"
-            nodeColor={() => '#38bdf8'}
-            nodeStrokeColor="#0284c7"
-            zoomable
-            pannable
-          />
         </ReactFlow>
 
         {/* Floating Left Panel: Categorized Node Library */}
@@ -987,10 +978,6 @@ function Workbench() {
           activeBuffer={activeBuffer}
           onUpdateNodeData={handleUpdateNodeData}
           onExportTarget={handleExport}
-          onLoadBenchmark={loadBenchmarkTextures}
-          onAutoWireORMH={autoWireORMH}
-          nodeCount={nodes.length}
-          edgeCount={edges.length}
         />
 
         {/* Searchable Spawn Palette on Tab or Right-Click */}

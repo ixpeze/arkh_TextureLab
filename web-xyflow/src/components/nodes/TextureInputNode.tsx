@@ -70,8 +70,8 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
           <span
             style={{
-              fontSize: 9,
-              color: '#cbd5e1',
+              fontSize: 9.5,
+              color: '#f8fafc',
               fontWeight: 600,
               overflow: 'hidden',
               textOverflow: 'ellipsis',
@@ -80,10 +80,6 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
           >
             {d.role || 'Custom Map'}
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            <NodeBadge color="#38bdf8">{d.res || '4K'}</NodeBadge>
-            <NodeBadge color="#94a3b8">SRGB</NodeBadge>
-          </div>
         </div>
       </div>
 
@@ -97,7 +93,6 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
           label="RGBA"
           color="var(--pbr-packed)"
           shape="diamond"
-          secondaryText="COMP"
         />
         <NodeSocket
           id="r"

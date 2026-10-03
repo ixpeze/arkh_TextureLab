@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { RotateCcw } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
@@ -8,18 +8,11 @@ import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 export interface InvertNodeData {
   title?: string;
   isBypassed?: boolean;
-  onToggleBypass?: () => void;
 }
 
 export const InvertNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
   const d = (data as InvertNodeData) || {};
-  const [isBypassed, setIsBypassed] = useState(d.isBypassed ?? false);
-
-  const handleToggleBypass = () => {
-    const next = !isBypassed;
-    setIsBypassed(next);
-    d.onToggleBypass?.();
-  };
+  const isBypassed = !!d.isBypassed;
 
   return (
     <NodeCard
@@ -29,7 +22,6 @@ export const InvertNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
       accentColor="var(--pbr-ao)"
       headerAction={<NodeBadge color="var(--pbr-ao)">MATH</NodeBadge>}
       isBypassed={isBypassed}
-      onToggleBypass={handleToggleBypass}
       width={168}
     >
       <NodeDualSocket

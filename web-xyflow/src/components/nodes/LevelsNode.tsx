@@ -20,7 +20,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
   const [black, setBlack] = useState(d.blackPoint ?? 0);
   const [gamma, setGamma] = useState(d.gamma ?? 1.0);
   const [white, setWhite] = useState(d.whitePoint ?? 255);
-  const [isBypassed, setIsBypassed] = useState(d.isBypassed ?? false);
+  const isBypassed = !!d.isBypassed;
 
   const handleBlack = (val: number) => {
     setBlack(val);
@@ -35,12 +35,6 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
   const handleWhite = (val: number) => {
     setWhite(val);
     d.onChange?.({ blackPoint: black, gamma: val, whitePoint: val });
-  };
-
-  const handleToggleBypass = () => {
-    const next = !isBypassed;
-    setIsBypassed(next);
-    d.onToggleBypass?.();
   };
 
   // Generate SVG points for dynamic transfer curve preview (width 156 x height 32)
@@ -70,7 +64,6 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
       accentColor="var(--pbr-rough)"
       headerAction={<NodeBadge color="var(--pbr-rough)">REMAP</NodeBadge>}
       isBypassed={isBypassed}
-      onToggleBypass={handleToggleBypass}
       width={172}
     >
       {/* Sockets Row with Dual Horizontal Hit-Zones */}

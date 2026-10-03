@@ -9,7 +9,6 @@ export interface NodeCardProps {
   width?: number | string;
   minWidth?: number;
   isBypassed?: boolean;
-  onToggleBypass?: () => void;
   className?: string;
   style?: React.CSSProperties;
   children: React.ReactNode;
@@ -24,7 +23,6 @@ export const NodeCard: React.FC<NodeCardProps> = ({
   width = 172,
   minWidth = 150,
   isBypassed = false,
-  onToggleBypass,
   style = {},
   children,
 }) => {
@@ -123,30 +121,6 @@ export const NodeCard: React.FC<NodeCardProps> = ({
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          {onToggleBypass && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleBypass();
-              }}
-              title={isBypassed ? 'Unmute Node (D)' : 'Bypass/Mute Node (D)'}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: isBypassed ? '#ef4444' : '#64748b',
-                cursor: 'pointer',
-                fontSize: 8,
-                fontWeight: 700,
-                padding: '2px 4px',
-                borderRadius: 3,
-                display: 'flex',
-                alignItems: 'center',
-                lineHeight: 1,
-              }}
-            >
-              {isBypassed ? 'OFF' : 'ON'}
-            </button>
-          )}
           {headerAction && <div>{headerAction}</div>}
         </div>
       </div>
