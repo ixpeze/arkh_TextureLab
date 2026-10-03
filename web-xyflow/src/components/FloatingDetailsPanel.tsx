@@ -8,10 +8,13 @@ import {
   Crosshair,
   Maximize,
   Minimize,
+  Layers,
 } from 'lucide-react';
 import type { Edge } from '@xyflow/react';
 import { PixelEngine, type TextureBuffer, type HistogramData } from '../engine/pixelEngine';
 import { GraphEvaluator } from '../engine/graphEvaluator';
+import { ExportEngine } from '../engine/exportEngine';
+import { NodeSelect, NodeCheckbox, NodeBadge } from './node-system/NodeControls';
 
 export interface FloatingDetailsPanelProps {
   selectedNode: any | null;
@@ -29,7 +32,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   onAssetChange,
   activeBuffer,
   edges,
-  onUpdateNodeData: _onUpdateNodeData,
+  onUpdateNodeData,
   onExportTarget,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
@@ -43,6 +46,21 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
   // Evaluate output filename for inspected buffer export
   const evaluateFilename = () => {
+    const asset = primaryAsset || 'AnthraciteConcrete';
+    const res = activeBuffer ? `${Math.round(activeBuffer.width / 1024)}K` : '4K';
+
+    if (selectedNode?.type === 'textureOutput') {
+      const format = (selectedNode.data?.formatOverride && selectedNode.data.formatOverride !== 'inherit')
+        ? selectedNode.data.formatOverride
+        : (selectedNode.data?.format || 'PNG');
+      const ext = format.toLowerCase();
+      if (selectedNode.data?.outputFilename) {
+        return selectedNode.data.outputFilename;
+      }
+      const slot = selectedNode.data?.slot || 'ORM';
+      return `T_${asset}_${slot}_${res}.${ext}`;
+    }
+
     let slot = 'ORMH';
     if (selectedNode?.data?.detectedRole) {
       slot = selectedNode.data.detectedRole.toUpperCase();
@@ -51,8 +69,6 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
     } else if (selectedNode?.id) {
       slot = selectedNode.id.toUpperCase();
     }
-    const asset = primaryAsset || 'AnthraciteConcrete';
-    const res = activeBuffer ? `${Math.round(activeBuffer.width / 1024)}K` : '4K';
     return `T_${asset}_${slot}_${res}.png`;
   };
 
@@ -186,9 +202,16 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
     });
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     const filename = evaluateFilename();
-    if (activeBuffer) {
+    if (!activeBuffer) return;
+    const format = (selectedNode?.data?.formatOverride && selectedNode.data.formatOverride !== 'inherit')
+      ? selectedNode.data.formatOverride
+      : (selectedNode?.data?.format || 'PNG');
+    try {
+      const blob = await ExportEngine.encodeImageBlob(activeBuffer, format as any);
+      ExportEngine.triggerDownload(blob, filename);
+    } catch {
       PixelEngine.downloadBuffer(activeBuffer, filename);
     }
     onExportTarget?.(filename);
@@ -585,6 +608,185 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                       </span>
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Specialized Substance-Style Output Target Controls */}
+              {nodeType === 'textureOutput' && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 8,
+                    backgroundColor: 'rgba(74, 222, 128, 0.04)',
+                    border: '1px solid rgba(74, 222, 128, 0.2)',
+                    borderRadius: 6,
+                    padding: '10px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <Layers size={11} color="#4ade80" />
+                      <span style={{ fontSize: 9, fontWeight: 700, color: '#4ade80', letterSpacing: 0.6 }}>
+                        OUTPUT TARGET CONFIGURATION
+                      </span>
+                    </div>
+                    <NodeBadge color="#4ade80">{nodeData.slot || 'ORM'}</NodeBadge>
+                  </div>
+
+                  {/* Slot Preset Quick Buttons */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>
+                      Quick Slot Selection
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {['BaseColor', 'ORM', 'Normal', 'Roughness', 'Metallic', 'Height', 'AO', 'Emissive'].map((slotPreset) => {
+                        const isCurrent = (nodeData.slot || 'ORM') === slotPreset;
+                        return (
+                          <button
+                            key={slotPreset}
+                            type="button"
+                            onClick={() => onUpdateNodeData?.(selectedNode.id, { slot: slotPreset })}
+                            style={{
+                              padding: '2px 6px',
+                              borderRadius: 3,
+                              fontSize: 8.5,
+                              fontWeight: isCurrent ? 700 : 500,
+                              fontFamily: "'Geist Mono', monospace",
+                              backgroundColor: isCurrent ? 'rgba(74, 222, 128, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                              border: `1px solid ${isCurrent ? '#4ade80' : 'rgba(255, 255, 255, 0.08)'}`,
+                              color: isCurrent ? '#4ade80' : '#cbd5e1',
+                              cursor: 'pointer',
+                              transition: 'all 120ms ease',
+                            }}
+                          >
+                            {slotPreset}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Custom Slot Name Input */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>Slot Role Identifier</span>
+                    <input
+                      type="text"
+                      value={nodeData.slot || 'ORM'}
+                      onChange={(e) => onUpdateNodeData?.(selectedNode.id, { slot: e.target.value })}
+                      placeholder="e.g. ORM, Normal, BaseColor"
+                      style={{
+                        height: 24,
+                        backgroundColor: '#0c0e14',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: 4,
+                        padding: '0 8px',
+                        color: '#4ade80',
+                        fontFamily: "'Geist Mono', monospace",
+                        fontSize: 9.5,
+                        fontWeight: 600,
+                        outline: 'none',
+                      }}
+                    />
+                  </div>
+
+                  {/* Format & Bit Depth Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                    <NodeSelect
+                      label="Format Override"
+                      value={nodeData.formatOverride || 'inherit'}
+                      options={[
+                        { label: 'Inherit Global', value: 'inherit' },
+                        { label: 'PNG (Lossless)', value: 'PNG' },
+                        { label: 'TGA (Uncompressed)', value: 'TGA' },
+                        { label: 'JPG (Compressed)', value: 'JPG' },
+                        { label: 'WebP (Modern)', value: 'WEBP' },
+                      ]}
+                      onChange={(val) => onUpdateNodeData?.(selectedNode.id, { formatOverride: val })}
+                    />
+                    <NodeSelect
+                      label="Bit Depth"
+                      value={nodeData.bitDepthOverride || 'inherit'}
+                      options={[
+                        { label: 'Inherit Global', value: 'inherit' },
+                        { label: '8-bit Standard', value: '8b' },
+                        { label: '16-bit Precision', value: '16b' },
+                      ]}
+                      onChange={(val) => onUpdateNodeData?.(selectedNode.id, { bitDepthOverride: val })}
+                    />
+                  </div>
+
+                  {/* Color Space Selection */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>Color Space / Gamma</span>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                      <button
+                        type="button"
+                        onClick={() => onUpdateNodeData?.(selectedNode.id, { colorSpace: 'linear' })}
+                        style={{
+                          height: 22,
+                          borderRadius: 3,
+                          fontSize: 8.5,
+                          fontWeight: (nodeData.colorSpace || 'linear') === 'linear' ? 700 : 500,
+                          backgroundColor:
+                            (nodeData.colorSpace || 'linear') === 'linear'
+                              ? 'rgba(56, 189, 248, 0.2)'
+                              : 'rgba(255, 255, 255, 0.04)',
+                          border: `1px solid ${
+                            (nodeData.colorSpace || 'linear') === 'linear' ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'
+                          }`,
+                          color: (nodeData.colorSpace || 'linear') === 'linear' ? '#38bdf8' : '#94a3b8',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Linear (Data/ORM)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onUpdateNodeData?.(selectedNode.id, { colorSpace: 'sRGB' })}
+                        style={{
+                          height: 22,
+                          borderRadius: 3,
+                          fontSize: 8.5,
+                          fontWeight: nodeData.colorSpace === 'sRGB' ? 700 : 500,
+                          backgroundColor:
+                            nodeData.colorSpace === 'sRGB'
+                              ? 'rgba(250, 204, 21, 0.2)'
+                              : 'rgba(255, 255, 255, 0.04)',
+                          border: `1px solid ${
+                            nodeData.colorSpace === 'sRGB' ? '#facc15' : 'rgba(255, 255, 255, 0.08)'
+                          }`,
+                          color: nodeData.colorSpace === 'sRGB' ? '#facc15' : '#94a3b8',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        sRGB (Albedo/Color)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Resolution Override */}
+                  <NodeSelect
+                    label="Resolution Override"
+                    value={nodeData.resolutionOverride || 'inherit'}
+                    options={[
+                      { label: 'Inherit Master Global', value: 'inherit' },
+                      { label: '512 × 512 (Proxy)', value: '512' },
+                      { label: '1024 × 1024 (1K)', value: '1024' },
+                      { label: '2048 × 2048 (2K)', value: '2048' },
+                      { label: '4096 × 4096 (4K)', value: '4096' },
+                      { label: '8192 × 8192 (8K Cinematic)', value: '8192' },
+                    ]}
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { resolutionOverride: val })}
+                  />
+
+                  {/* Batch Export Inclusion Checkbox */}
+                  <NodeCheckbox
+                    label="Include in Global Batch Export"
+                    checked={nodeData.enabled !== false}
+                    activeColor="#4ade80"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { enabled: val })}
+                  />
                 </div>
               )}
 

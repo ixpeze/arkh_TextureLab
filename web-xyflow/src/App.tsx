@@ -21,6 +21,7 @@ import {
   Undo2,
   Redo2,
   MessageSquare,
+  Download,
 } from 'lucide-react';
 
 import { TextureInputNode } from './components/nodes/TextureInputNode';
@@ -42,6 +43,7 @@ import { FloatingNodeLibrary } from './components/FloatingNodeLibrary';
 import { FloatingDetailsPanel } from './components/FloatingDetailsPanel';
 import { SpawnPalette } from './components/SpawnPalette';
 import { ShortcutsModal } from './components/ShortcutsModal';
+import { ExportModal } from './components/ExportModal';
 
 import { PixelEngine, type TextureBuffer } from './engine/pixelEngine';
 import { LexicalNormalizer } from './engine/normalizer';
@@ -137,9 +139,12 @@ const initialNodes: Node[] = [
     position: { x: 360, y: 230 },
     data: {
       title: 'Texture Output Target',
-      outputFilename: 'T_Anthracite_Concrete_ORMH.png',
+      slot: 'ORM',
+      outputFilename: 'T_Anthracite_Concrete_ORM.png',
       format: 'PNG',
       bitDepth: '8b',
+      colorSpace: 'linear',
+      enabled: true,
       res: '4K',
     },
   },
@@ -159,6 +164,7 @@ function Workbench() {
   const [activeNodeId, setActiveNodeId] = useState<string | null>('output_ormh');
   const [palettePos, setPalettePos] = useState<{ x: number; y: number } | null>(null);
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   // Mouse cursor tracking on canvas
   const canvasMousePosRef = useRef<{ x: number; y: number } | null>(null);
@@ -555,9 +561,12 @@ function Workbench() {
           position: pos,
           data: {
             title: 'Texture Output Target',
-            outputFilename: `T_${primaryAsset}_ORMH.png`,
+            slot: 'ORM',
+            outputFilename: `T_${primaryAsset}_ORM.png`,
             format: 'PNG',
             bitDepth: '8b',
+            colorSpace: 'linear',
+            enabled: true,
             res: '4K',
           },
         };
@@ -720,6 +729,13 @@ function Workbench() {
       if (e.key === '?' || (e.shiftKey && e.key === '/')) {
         e.preventDefault();
         setIsShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      // Ctrl + E: Toggle Export Textures Hub Modal
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
+        e.preventDefault();
+        setIsExportModalOpen((prev) => !prev);
         return;
       }
 
@@ -900,11 +916,15 @@ function Workbench() {
     setNodes((nds) =>
       nds.map((n) => {
         if (n.type === 'textureOutput') {
+          const slot = (n.data as any)?.slot || 'ORM';
+          const format = ((n.data as any)?.formatOverride && (n.data as any)?.formatOverride !== 'inherit')
+            ? (n.data as any)?.formatOverride.toLowerCase()
+            : ((n.data as any)?.format || 'png').toLowerCase();
           return {
             ...n,
             data: {
               ...n.data,
-              outputFilename: `T_${newAsset}_ORMH.png`,
+              outputFilename: `T_${newAsset}_${slot}.${format}`,
             },
           };
         }
@@ -1018,6 +1038,44 @@ function Workbench() {
                 <span className="tactical-tooltip-badge">C</span>
               </div>
               <span className="tactical-tooltip-desc">Enclose selected nodes in comment frame</span>
+            </div>
+          </div>
+
+          {/* Global Export Button */}
+          <div className="tactical-btn-wrapper">
+            <button
+              onClick={() => setIsExportModalOpen(true)}
+              className="tactical-tool-btn"
+              title="Export Textures Hub (Ctrl+E)"
+              style={{
+                backgroundColor: 'rgba(34, 197, 94, 0.15)',
+                border: '1px solid rgba(34, 197, 94, 0.35)',
+                color: '#4ade80',
+                width: 'auto',
+                padding: '0 8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontWeight: 700,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 197, 94, 0.28)';
+                e.currentTarget.style.borderColor = '#4ade80';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
+                e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.35)';
+              }}
+            >
+              <Download size={12} strokeWidth={2.5} />
+              <span style={{ fontSize: 9.5 }}>Export</span>
+            </button>
+            <div className="tactical-tooltip">
+              <div className="tactical-tooltip-header">
+                <span className="tactical-tooltip-title">Export Hub</span>
+                <span className="tactical-tooltip-badge">Ctrl+E</span>
+              </div>
+              <span className="tactical-tooltip-desc">Batch export graph textures with token naming</span>
             </div>
           </div>
 
@@ -1227,6 +1285,19 @@ function Workbench() {
           <ShortcutsModal
             isOpen={isShortcutsOpen}
             onClose={() => setIsShortcutsOpen(false)}
+          />
+
+          {/* Global Substance-Style Export Hub Modal */}
+          <ExportModal
+            isOpen={isExportModalOpen}
+            onClose={() => setIsExportModalOpen(false)}
+            nodes={nodes}
+            edges={edges}
+            evaluatedBuffers={evaluatedBuffers}
+            primaryAsset={primaryAsset}
+            onAssetChange={handleAssetChange}
+            onUpdateNodeData={handleUpdateNodeData}
+            onExportComplete={(msg) => setStatusMessage(msg)}
           />
         </div>
       </NodeBufferContext.Provider>

@@ -31,6 +31,7 @@ const SHORTCUTS: ShortcutItem[] = [
   // Graph Productivity
   { keys: ['Ctrl', 'Z'], description: 'Undo last graph action', category: 'graph' },
   { keys: ['Ctrl', 'Y'], description: 'Redo last graph action (or Ctrl+Shift+Z)', category: 'graph' },
+  { keys: ['Ctrl', 'E'], description: 'Open Texture Export Hub Modal', category: 'graph', tag: 'Export', tagColor: '#4ade80' },
   { keys: ['D'], description: 'Bypass / Mute selected node', category: 'graph', tag: 'Mute', tagColor: '#ef4444' },
   { keys: ['Del', 'Bksp'], description: 'Delete selected node(s) and connected wires', category: 'graph' },
   { keys: ['Ctrl', 'D'], description: 'Duplicate selected node(s)', category: 'graph' },
