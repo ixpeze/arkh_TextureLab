@@ -1,0 +1,175 @@
+@import '@xyflow/react/dist/style.css';
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Geist';
+  src: url('/fonts/Geist-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+:root {
+  --bg-canvas: #0c0e14;
+  --bg-card: #151822;
+  --bg-header: #1c2130;
+  --bg-inset: #0f1118;
+  --panel-bg: rgba(18, 21, 30, 0.92);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-active: #a855f7;
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  
+  /* NanoFlow Neon-Pastel Color Tokens */
+  --pbr-ao: #fb7185;       /* NanoFlow Pink/Rose */
+  --pbr-rough: #22c55e;    /* NanoFlow Conditioning Green */
+  --pbr-metal: #38bdf8;    /* NanoFlow Sky Cyan */
+  --pbr-height: #facc15;   /* NanoFlow Amber/Yellow */
+  --pbr-normal: #06b6d4;   /* NanoFlow Turquoise */
+  --pbr-packed: #a855f7;   /* NanoFlow Model Purple */
+  --pbr-albedo: #f43f5e;   /* NanoFlow Rose */
+  --pbr-scalar: #e2e8f0;   /* NanoFlow White/Silver */
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+}
+
+body, html, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background-color: var(--bg-canvas);
+  color: var(--text-main);
+  font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- React Flow Overrides --- */
+.react-flow__background {
+  background-color: var(--bg-canvas) !important;
+}
+
+.react-flow__edge-path {
+  stroke-width: 2px;
+  stroke: #94a3b8;
+  transition: stroke 0.15s ease;
+}
+
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: var(--border-active) !important;
+  stroke-width: 3px !important;
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.5));
+}
+
+.react-flow__handle {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid #0c0e14;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+  z-index: 15;
+}
+
+.react-flow__handle:hover {
+  transform: scale(1.35) !important;
+  border-color: #ffffff !important;
+}
+
+/* Custom Semantic Sockets */
+.handle-circle {
+  border-radius: 50% !important;
+}
+
+.handle-square {
+  border-radius: 2px !important;
+}
+
+.handle-diamond {
+  border-radius: 2px !important;
+  transform: rotate(45deg);
+}
+
+.handle-diamond:hover {
+  transform: rotate(45deg) scale(1.3);
+}
+
+/* Selection Marquee Box */
+.react-flow__selection {
+  background: rgba(168, 85, 247, 0.08) !important;
+  border: 1px solid rgba(168, 85, 247, 0.4) !important;
+  border-radius: 4px;
+}
+
+/* Wire Animations: Marching Ants & Directional Channel Flow */
+@keyframes marchingAnts {
+  from {
+    stroke-dashoffset: 22;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes channelFlow {
+  from {
+    stroke-dashoffset: 20;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.marching-ants-path {
+  stroke-dasharray: 6 5;
+  animation: marchingAnts 1.2s linear infinite;
+}
+
+.channel-flow-path {
+  animation: channelFlow 1s linear infinite;
+}
+
+.react-flow__edge-custom.selected path.marching-ants-path,
+.react-flow__edge-custom.selected path.channel-flow-path {
+  stroke-width: 2.6px;
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: #242938;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #333a4f;
+}
