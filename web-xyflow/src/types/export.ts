@@ -1,6 +1,6 @@
 /**
  * Canonical Types for TextureLab Export Pipeline
- * Supports Substance Painter-style token naming, industry engine presets, and dual-tier settings.
+ * Supports Substance Painter-style token naming, customizable presets, and dual-tier settings.
  */
 
 export type NamingTokenId =
@@ -13,19 +13,18 @@ export type NamingTokenId =
   | '$udim';
 
 export interface TokenItem {
-  id: string; // Unique identifier for drag-and-drop
+  id: string;
   type: 'token' | 'delimiter' | 'literal';
-  value: string; // Token key (e.g. '$asset') or literal character (e.g. '_')
-  label?: string; // Human readable badge label
+  value: string;
+  label?: string;
 }
 
-export type ExportPresetId = 'ue5' | 'unity' | 'substance' | 'blender' | 'custom';
-
 export interface ExportPreset {
-  id: ExportPresetId;
+  id: string;
   name: string;
-  description: string;
-  tokens: TokenItem[];
+  pattern: string; // e.g. "T_{asset}_{slot}"
+  description?: string;
+  isBuiltIn?: boolean;
 }
 
 export type TextureExportFormat = 'PNG' | 'TGA' | 'JPG' | 'WEBP';
@@ -36,8 +35,8 @@ export type ExportResolutionSetting = 'inherit' | '512' | '1024' | '2048' | '409
 export interface GlobalExportSettings {
   projectName: string;
   assetName: string;
-  presetId: ExportPresetId;
-  tokens: TokenItem[];
+  presetId: string;
+  pattern: string; // Dynamic output template
   masterResolution: ExportResolutionSetting;
   defaultFormat: TextureExportFormat;
   defaultBitDepth: TextureBitDepth;
@@ -46,11 +45,15 @@ export interface GlobalExportSettings {
 
 export interface LocalOutputData {
   title?: string;
-  slot: string; // e.g. 'ORM', 'BaseColor', 'Normal', 'Roughness'
+  slot?: string; // Effective slot
+  isSlotOverridden?: boolean; // True if manually edited
+  autoDetectedSlot?: string; // Detected from upstream graph
   outputFilename?: string; // Resolved live filename
   formatOverride?: 'inherit' | TextureExportFormat;
   bitDepthOverride?: 'inherit' | TextureBitDepth;
   colorSpace?: TextureColorSpace;
+  isColorSpaceOverridden?: boolean;
+  autoDetectedColorSpace?: TextureColorSpace;
   resolutionOverride?: 'inherit' | ExportResolutionSetting;
   enabled?: boolean; // Batch export inclusion
   res?: string;
@@ -62,6 +65,8 @@ export interface PreflightOutputItem {
   nodeId: string;
   title: string;
   slot: string;
+  isSlotOverridden?: boolean;
+  autoDetectedLabel?: string;
   isConnected: boolean;
   previewUrl?: string;
   format: TextureExportFormat;

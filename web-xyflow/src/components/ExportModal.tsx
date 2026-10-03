@@ -6,30 +6,30 @@ import {
   Check,
   Folder,
   FolderCheck,
-  RefreshCw,
   AlertCircle,
   Layers,
   Sparkles,
-  Plus,
   HardDrive,
   FileArchive,
+  Save,
+  Plus,
+  Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import type { TextureBuffer } from '../engine/pixelEngine';
 import {
   ExportEngine,
-  EXPORT_PRESETS,
-  AVAILABLE_TOKENS,
+  DEFAULT_PRESETS,
   DEFAULT_GLOBAL_SETTINGS,
 } from '../engine/exportEngine';
 import type {
-  ExportPresetId,
+  ExportPreset,
   GlobalExportSettings,
   PreflightOutputItem,
   TextureExportFormat,
   TextureBitDepth,
   TextureColorSpace,
   ExportResolutionSetting,
-  TokenItem,
 } from '../types/export';
 
 export interface ExportModalProps {
@@ -55,6 +55,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   onUpdateNodeData,
   onExportComplete,
 }) => {
+  // Presets state persisted in localStorage
+  const [presets, setPresets] = useState<ExportPreset[]>(() => ExportEngine.loadPresets());
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('ue5');
+  const [pattern, setPattern] = useState<string>('T_{asset}_{slot}');
+
+  // Preset management dialog state
+  const [showNewPresetInput, setShowNewPresetInput] = useState(false);
+  const [newPresetName, setNewPresetName] = useState('');
+  const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
   // Global settings state
   const [settings, setSettings] = useState<GlobalExportSettings>(() => ({
     ...DEFAULT_GLOBAL_SETTINGS,
@@ -65,9 +75,17 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [directoryHandle, setDirectoryHandle] = useState<any | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
-  const [draggedTokenIdx, setDraggedTokenIdx] = useState<number | null>(null);
 
-  const tokenIdRef = useRef(1);
+  const patternInputRef = useRef<HTMLInputElement | null>(null);
+  const nextPresetCounter = useRef(1);
+
+  // Show transient feedback notifications
+  const showFeedback = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+    setFeedback({ message, type });
+    setTimeout(() => {
+      setFeedback(null);
+    }, 3200);
+  };
 
   // Handle ESC key to close
   useEffect(() => {
@@ -80,16 +98,22 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isExporting, onClose]);
 
+
   // Detect all textureOutput nodes in graph
   const outputNodes = useMemo(() => {
     return nodes.filter((n) => n.type === 'textureOutput');
   }, [nodes]);
 
+  // Live pattern validation
+  const validation = useMemo(() => {
+    return ExportEngine.validatePattern(pattern);
+  }, [pattern]);
+
   // Build preflight items from output nodes
   const preflightItems = useMemo<PreflightOutputItem[]>(() => {
     return outputNodes.map((n) => {
       const d = (n.data as any) || {};
-      const slot = d.slot || 'ORM';
+      const slot = d.isSlotOverridden && d.slot ? d.slot : (d.autoDetectedSlot || d.slot || 'ORM');
       const isConnected = edges.some((e) => e.target === n.id);
       const buf = evaluatedBuffers[n.id];
       const previewUrl = buf?.dataUrl;
@@ -104,7 +128,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           ? d.bitDepthOverride
           : settings.defaultBitDepth;
 
-      const colorSpace: TextureColorSpace = d.colorSpace || 'linear';
+      const colorSpace: TextureColorSpace =
+        d.isColorSpaceOverridden && d.colorSpace
+          ? d.colorSpace
+          : (d.autoDetectedColorSpace || d.colorSpace || 'linear');
 
       let resLabel = '4K';
       if (d.resolutionOverride && d.resolutionOverride !== 'inherit') {
@@ -115,7 +142,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         resLabel = `${Math.round(buf.width / 1024)}K`;
       }
 
-      const resolvedFilename = ExportEngine.resolveFilename(settings.tokens, {
+      const resolvedFilename = ExportEngine.resolveFilename(pattern, {
         project: settings.projectName,
         asset: settings.assetName,
         slot,
@@ -128,6 +155,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         nodeId: n.id,
         title: d.title || 'Texture Output',
         slot,
+        isSlotOverridden: !!d.isSlotOverridden,
         isConnected,
         previewUrl,
         format,
@@ -138,11 +166,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         enabled: d.enabled !== false,
       };
     });
-  }, [outputNodes, edges, evaluatedBuffers, settings]);
+  }, [outputNodes, edges, evaluatedBuffers, settings, pattern]);
 
   // Live sample preview filename
   const samplePreviewFilename = useMemo(() => {
-    return ExportEngine.resolveFilename(settings.tokens, {
+    return ExportEngine.resolveFilename(pattern, {
       project: settings.projectName,
       asset: settings.assetName,
       slot: 'ORM',
@@ -150,26 +178,95 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       format: settings.defaultFormat,
       colorSpace: 'Linear',
     });
-  }, [settings]);
+  }, [pattern, settings]);
 
-  // Apply Preset
-  const handleSelectPreset = (presetId: ExportPresetId) => {
-    const preset = EXPORT_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setSettings((prev) => ({
-      ...prev,
-      presetId,
-      tokens: [...preset.tokens],
-    }));
+  // Handle Preset Selection from dropdown
+  const handleSelectPreset = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const presetId = e.target.value;
+    setSelectedPresetId(presetId);
+    const preset = presets.find((p) => p.id === presetId);
+    if (preset) {
+      setPattern(preset.pattern);
+    }
   };
 
-  // Reset tokens to current preset default
-  const handleResetTokens = () => {
-    const preset = EXPORT_PRESETS.find((p) => p.id === settings.presetId) || EXPORT_PRESETS[0];
-    setSettings((prev) => ({
-      ...prev,
-      tokens: [...preset.tokens],
-    }));
+  // Create new preset from current pattern
+  const handleCreatePreset = () => {
+    const trimmed = newPresetName.trim();
+    if (!trimmed) return;
+    const newId = `custom_${Date.now()}_${nextPresetCounter.current++}`;
+    const newPreset: ExportPreset = {
+      id: newId,
+      name: trimmed,
+      pattern: pattern,
+      isBuiltIn: false,
+    };
+    const updated = [...presets, newPreset];
+    setPresets(updated);
+    ExportEngine.savePresets(updated);
+    setSelectedPresetId(newId);
+    setNewPresetName('');
+    setShowNewPresetInput(false);
+    showFeedback(`Created preset "${trimmed}"`, 'success');
+  };
+
+  // Save changes to currently selected preset
+  const handleSaveCurrentPreset = () => {
+    const current = presets.find((p) => p.id === selectedPresetId);
+    if (!current) return;
+    if (current.isBuiltIn) {
+      // Prompt user to save as a custom copy
+      setNewPresetName(`${current.name.split(' (')[0]} (Custom)`);
+      setShowNewPresetInput(true);
+      return;
+    }
+    const updated = presets.map((p) => (p.id === current.id ? { ...p, pattern } : p));
+    setPresets(updated);
+    ExportEngine.savePresets(updated);
+    showFeedback(`Saved changes to "${current.name}"`, 'success');
+  };
+
+  // Delete currently selected custom preset
+  const handleDeletePreset = () => {
+    const current = presets.find((p) => p.id === selectedPresetId);
+    if (!current || current.isBuiltIn) return;
+    const updated = presets.filter((p) => p.id !== current.id);
+    setPresets(updated);
+    ExportEngine.savePresets(updated);
+    setSelectedPresetId('ue5');
+    const defaultPreset = updated.find((p) => p.id === 'ue5') || updated[0];
+    if (defaultPreset) setPattern(defaultPreset.pattern);
+    showFeedback(`Deleted preset "${current.name}"`, 'info');
+  };
+
+  // Reset presets to built-in defaults
+  const handleResetPresets = () => {
+    const defaults = [...DEFAULT_PRESETS];
+    setPresets(defaults);
+    ExportEngine.savePresets(defaults);
+    setSelectedPresetId('ue5');
+    setPattern(defaults[0].pattern);
+    showFeedback('Restored default industry presets', 'info');
+  };
+
+  // Insert token at current text cursor position
+  const handleInsertToken = (tokenString: string) => {
+    const input = patternInputRef.current;
+    if (input) {
+      const start = input.selectionStart ?? pattern.length;
+      const end = input.selectionEnd ?? pattern.length;
+      const before = pattern.substring(0, start);
+      const after = pattern.substring(end);
+      const newPattern = `${before}${tokenString}${after}`;
+      setPattern(newPattern);
+      requestAnimationFrame(() => {
+        input.focus();
+        const nextPos = start + tokenString.length;
+        input.setSelectionRange(nextPos, nextPos);
+      });
+    } else {
+      setPattern((prev) => `${prev}${tokenString}`);
+    }
   };
 
   // Directory picker handler
@@ -181,48 +278,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // Add token chip
-  const handleAddToken = (tokenValue: string, label?: string) => {
-    const isDelimiter = ['_', '-', '.'].includes(tokenValue);
-    const newToken: TokenItem = {
-      id: `tok_${tokenIdRef.current++}_${tokenValue}`,
-      type: isDelimiter ? 'delimiter' : 'token',
-      value: tokenValue,
-      label: label || tokenValue,
-    };
-    setSettings((prev) => ({
-      ...prev,
-      tokens: [...prev.tokens, newToken],
-      presetId: 'custom',
-    }));
-  };
-
-  // Remove token chip
-  const handleRemoveToken = (idx: number) => {
-    setSettings((prev) => {
-      const next = [...prev.tokens];
-      next.splice(idx, 1);
-      return { ...prev, tokens: next, presetId: 'custom' };
-    });
-  };
-
-  // Drag-and-drop reorder
-  const handleDragStart = (idx: number) => {
-    setDraggedTokenIdx(idx);
-  };
-
-  const handleDragOver = (e: React.DragEvent, targetIdx: number) => {
-    e.preventDefault();
-    if (draggedTokenIdx === null || draggedTokenIdx === targetIdx) return;
-    setSettings((prev) => {
-      const next = [...prev.tokens];
-      const [item] = next.splice(draggedTokenIdx, 1);
-      next.splice(targetIdx, 0, item);
-      return { ...prev, tokens: next, presetId: 'custom' };
-    });
-    setDraggedTokenIdx(targetIdx);
-  };
-
   // Select all / Deselect all
   const handleToggleAll = (enabled: boolean) => {
     preflightItems.forEach((item) => {
@@ -232,6 +287,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   // Execute Batch Export
   const handleExecuteExport = async () => {
+    if (!validation.isValid) return;
     const activeItems = preflightItems.filter((item) => item.enabled && item.isConnected);
     if (activeItems.length === 0) return;
 
@@ -266,7 +322,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           blob,
         });
 
-        // Yield to browser main thread so progress bar and UI stay completely smooth
+        // Yield to browser main thread so progress bar and UI stay smooth
         await new Promise((resolve) => setTimeout(resolve, 30));
       }
 
@@ -295,6 +351,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   if (!isOpen) return null;
 
   const readyCount = preflightItems.filter((i) => i.enabled && i.isConnected).length;
+  const currentPreset = presets.find((p) => p.id === selectedPresetId);
+  const isCustomPreset = currentPreset && !currentPreset.isBuiltIn;
 
   return (
     <div
@@ -302,12 +360,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         position: 'fixed',
         inset: 0,
         zIndex: 100,
-        backgroundColor: 'rgba(5, 7, 11, 0.78)',
+        backgroundColor: 'rgba(5, 7, 11, 0.82)',
         backdropFilter: 'blur(16px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 20,
+        padding: 24,
         userSelect: 'none',
       }}
       onClick={(e) => {
@@ -316,9 +374,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     >
       <div
         style={{
-          width: '100%',
-          maxWidth: 860,
-          maxHeight: '92vh',
+          width: '95%',
+          maxWidth: 1040,
+          maxHeight: '94vh',
           backgroundColor: '#0c0e15',
           border: '1px solid rgba(255, 255, 255, 0.1)',
           borderRadius: 10,
@@ -329,66 +387,32 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         }}
       >
         {/* ============================================================ */}
-        {/* MODAL HEADER                                                 */}
+        {/* MODAL HEADER: Minimalist single "Export" header             */}
         {/* ============================================================ */}
         <div
           style={{
-            padding: '14px 18px',
+            padding: '14px 22px',
             borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
-            backgroundColor: 'rgba(20, 24, 34, 0.5)',
+            backgroundColor: 'rgba(20, 24, 34, 0.65)',
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                backgroundColor: 'rgba(74, 222, 128, 0.12)',
-                border: '1px solid rgba(74, 222, 128, 0.3)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#4ade80',
-              }}
-            >
-              <Download size={15} />
-            </div>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', letterSpacing: '0.02em' }}>
-                  Export Textures Hub
-                </span>
-                <span
-                  style={{
-                    fontSize: 8,
-                    fontFamily: "'Geist Mono', monospace",
-                    fontWeight: 700,
-                    color: '#4ade80',
-                    backgroundColor: 'rgba(74, 222, 128, 0.12)',
-                    padding: '1px 5px',
-                    borderRadius: 3,
-                    border: '1px solid rgba(74, 222, 128, 0.25)',
-                  }}
-                >
-                  SUBSTANCE DCC PIPELINE
-                </span>
-              </div>
-              <span style={{ fontSize: 9.5, color: '#94a3b8' }}>
-                Batch configure tokens, formats, bit depth, and disk destination for all graph outputs.
-              </span>
-            </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Download size={16} color="#4ade80" />
+            <span style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc', letterSpacing: '0.02em' }}>
+              Export
+            </span>
           </div>
 
           <button
             onClick={onClose}
             disabled={isExporting}
+            title="Close Export window (Esc)"
             style={{
-              width: 24,
-              height: 24,
+              width: 26,
+              height: 26,
               borderRadius: 4,
               backgroundColor: 'rgba(255, 255, 255, 0.05)',
               border: '1px solid rgba(255, 255, 255, 0.08)',
@@ -397,71 +421,291 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
+              transition: 'all 120ms ease',
             }}
           >
             <X size={13} />
           </button>
         </div>
 
+        {/* Transient Feedback Banner */}
+        {feedback && (
+          <div
+            style={{
+              padding: '6px 20px',
+              backgroundColor:
+                feedback.type === 'success'
+                  ? 'rgba(34, 197, 94, 0.15)'
+                  : feedback.type === 'error'
+                  ? 'rgba(239, 68, 68, 0.15)'
+                  : 'rgba(56, 189, 248, 0.15)',
+              borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+              color:
+                feedback.type === 'success'
+                  ? '#4ade80'
+                  : feedback.type === 'error'
+                  ? '#f87171'
+                  : '#38bdf8',
+              fontSize: 9,
+              fontWeight: 600,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}
+          >
+            <span>{feedback.message}</span>
+            <button
+              onClick={() => setFeedback(null)}
+              style={{ background: 'transparent', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0 }}
+            >
+              <X size={11} />
+            </button>
+          </div>
+        )}
+
         {/* ============================================================ */}
         {/* MODAL BODY (SCROLLABLE)                                      */}
         {/* ============================================================ */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {/* SECTION 1: PRESET SELECTION & GLOBAL SETTINGS */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '18px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          
+          {/* SECTION 1: PRESETS DROPDOWN & GLOBAL PIPELINE SETTINGS */}
           <div
             style={{
-              backgroundColor: 'rgba(20, 24, 34, 0.4)',
-              border: '1px solid rgba(255, 255, 255, 0.06)',
+              backgroundColor: 'rgba(20, 24, 34, 0.45)',
+              border: '1px solid rgba(255, 255, 255, 0.07)',
               borderRadius: 8,
-              padding: '12px 14px',
+              padding: '14px 16px',
               display: 'flex',
               flexDirection: 'column',
               gap: 12,
             }}
           >
-            {/* Engine Presets Row */}
+            {/* Presets Row: Dropdown + Actions */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
-                  INDUSTRY EXPORT PRESETS
+                <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
+                  Presets
                 </span>
-                <span style={{ fontSize: 8.5, color: '#64748b' }}>Select standard convention or customize</span>
+                <span style={{ fontSize: 8.5, color: '#64748b' }}>
+                  Select, save, or customize export presets
+                </span>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-                {EXPORT_PRESETS.map((preset) => {
-                  const isSelected = settings.presetId === preset.id;
-                  return (
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {/* Presets Dropdown */}
+                <select
+                  value={selectedPresetId}
+                  onChange={handleSelectPreset}
+                  style={{
+                    flex: '1 1 240px',
+                    height: 28,
+                    backgroundColor: '#0c0e14',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    borderRadius: 4,
+                    padding: '0 8px',
+                    color: '#f8fafc',
+                    fontSize: 9.5,
+                    fontWeight: 600,
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <optgroup label="Industry Standard Presets">
+                    {presets
+                      .filter((p) => p.isBuiltIn)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                  </optgroup>
+                  {presets.some((p) => !p.isBuiltIn) && (
+                    <optgroup label="Custom User Presets">
+                      {presets
+                        .filter((p) => !p.isBuiltIn)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.pattern})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                </select>
+
+                {/* Preset Action Buttons */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewPresetName('');
+                      setShowNewPresetInput((prev) => !prev);
+                    }}
+                    title="Create a new preset from the current pattern"
+                    style={{
+                      height: 28,
+                      padding: '0 9px',
+                      backgroundColor: showNewPresetInput ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                      border: `1px solid ${showNewPresetInput ? '#38bdf8' : 'rgba(255, 255, 255, 0.12)'}`,
+                      borderRadius: 4,
+                      color: showNewPresetInput ? '#38bdf8' : '#cbd5e1',
+                      fontSize: 8.5,
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Plus size={11} />
+                    <span>New</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSaveCurrentPreset}
+                    title={isCustomPreset ? `Save changes to ${currentPreset?.name}` : 'Save current pattern as new custom preset'}
+                    style={{
+                      height: 28,
+                      padding: '0 9px',
+                      backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                      border: '1px solid rgba(74, 222, 128, 0.3)',
+                      borderRadius: 4,
+                      color: '#4ade80',
+                      fontSize: 8.5,
+                      fontWeight: 600,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Save size={11} />
+                    <span>Save</span>
+                  </button>
+
+                  {isCustomPreset && (
                     <button
-                      key={preset.id}
                       type="button"
-                      onClick={() => handleSelectPreset(preset.id)}
+                      onClick={handleDeletePreset}
+                      title={`Delete custom preset "${currentPreset?.name}"`}
                       style={{
-                        padding: '6px 8px',
-                        borderRadius: 5,
-                        backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-                        border: `1px solid ${isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.07)'}`,
-                        color: isSelected ? '#38bdf8' : '#cbd5e1',
-                        fontSize: 9,
-                        fontWeight: isSelected ? 700 : 500,
+                        height: 28,
+                        padding: '0 8px',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: 4,
+                        color: '#f87171',
+                        fontSize: 8.5,
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 3,
                         cursor: 'pointer',
-                        textAlign: 'left',
-                        transition: 'all 120ms ease',
-                        boxShadow: isSelected ? '0 0 10px rgba(56, 189, 248, 0.2)' : 'none',
                       }}
                     >
-                      <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {preset.name.split(' (')[0]}
-                      </div>
-                      <div style={{ fontSize: 7.5, color: '#94a3b8', marginTop: 2, fontFamily: "'Geist Mono', monospace" }}>
-                        {preset.id === 'ue5' ? 'T_{asset}_{slot}' : preset.id === 'substance' ? '{asset}_{slot}_{res}' : '{asset}_{slot}'}
-                      </div>
+                      <Trash2 size={11} />
+                      <span>Delete</span>
                     </button>
-                  );
-                })}
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleResetPresets}
+                    title="Restore default built-in presets"
+                    style={{
+                      height: 28,
+                      padding: '0 8px',
+                      backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                      borderRadius: 4,
+                      color: '#94a3b8',
+                      fontSize: 8.5,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 3,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <RotateCcw size={10} />
+                    <span>Reset Defaults</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Inline Create New Preset Input Bar */}
+              {showNewPresetInput && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    padding: '8px 10px',
+                    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    borderRadius: 5,
+                    marginTop: 4,
+                  }}
+                >
+                  <span style={{ fontSize: 8.5, color: '#38bdf8', fontWeight: 600 }}>Preset Name:</span>
+                  <input
+                    type="text"
+                    value={newPresetName}
+                    onChange={(e) => setNewPresetName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCreatePreset();
+                      if (e.key === 'Escape') setShowNewPresetInput(false);
+                    }}
+                    placeholder="e.g. My Studio Pipeline"
+                    autoFocus
+                    style={{
+                      flex: 1,
+                      height: 24,
+                      backgroundColor: '#0c0e14',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: 3,
+                      padding: '0 8px',
+                      color: '#f8fafc',
+                      fontSize: 9,
+                      outline: 'none',
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCreatePreset}
+                    disabled={!newPresetName.trim()}
+                    style={{
+                      height: 24,
+                      padding: '0 10px',
+                      backgroundColor: '#38bdf8',
+                      border: 'none',
+                      borderRadius: 3,
+                      color: '#080d14',
+                      fontSize: 8.5,
+                      fontWeight: 700,
+                      cursor: newPresetName.trim() ? 'pointer' : 'not-allowed',
+                    }}
+                  >
+                    Create
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPresetInput(false)}
+                    style={{
+                      height: 24,
+                      padding: '0 6px',
+                      backgroundColor: 'transparent',
+                      border: 'none',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Global Properties: Asset Name, Master Resolution, Folder Picker */}
+            {/* Global Properties: Asset Name, Master Resolution, Format, Folder Picker */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.4fr', gap: 10, paddingTop: 4 }}>
               {/* Asset Name */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -476,7 +720,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   }}
                   placeholder="Asset_Identifier"
                   style={{
-                    height: 26,
+                    height: 28,
                     backgroundColor: '#0c0e14',
                     border: '1px solid rgba(255, 255, 255, 0.12)',
                     borderRadius: 4,
@@ -497,7 +741,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   value={settings.masterResolution}
                   onChange={(e) => setSettings((prev) => ({ ...prev, masterResolution: e.target.value as ExportResolutionSetting }))}
                   style={{
-                    height: 26,
+                    height: 28,
                     backgroundColor: '#0c0e14',
                     border: '1px solid rgba(255, 255, 255, 0.12)',
                     borderRadius: 4,
@@ -509,6 +753,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   }}
                 >
                   <option value="inherit">Inherit Graph (Original)</option>
+                  <option value="512">512 × 512 (Proxy)</option>
                   <option value="1024">1024 × 1024 (1K)</option>
                   <option value="2048">2048 × 2048 (2K)</option>
                   <option value="4096">4096 × 4096 (4K)</option>
@@ -523,7 +768,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   value={settings.defaultFormat}
                   onChange={(e) => setSettings((prev) => ({ ...prev, defaultFormat: e.target.value as TextureExportFormat }))}
                   style={{
-                    height: 26,
+                    height: 28,
                     backgroundColor: '#0c0e14',
                     border: '1px solid rgba(255, 255, 255, 0.12)',
                     borderRadius: 4,
@@ -550,7 +795,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onClick={handlePickDirectory}
                   title="Pick a directory on disk to write exported textures directly without browser popups"
                   style={{
-                    height: 26,
+                    height: 28,
                     padding: '0 10px',
                     backgroundColor: directoryHandle ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.05)',
                     border: `1px solid ${directoryHandle ? '#22c55e' : 'rgba(255, 255, 255, 0.12)'}`,
@@ -582,13 +827,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           </div>
 
-          {/* SECTION 2: INTERACTIVE TOKEN NAMING BUILDER */}
+          {/* SECTION 2: OUTPUT NAME (CUSTOM INPUT + CURSOR TOKEN INSERTION + VALIDATION) */}
           <div
             style={{
-              backgroundColor: 'rgba(20, 24, 34, 0.4)',
-              border: '1px solid rgba(255, 255, 255, 0.06)',
+              backgroundColor: 'rgba(20, 24, 34, 0.45)',
+              border: '1px solid rgba(255, 255, 255, 0.07)',
               borderRadius: 8,
-              padding: '12px 14px',
+              padding: '14px 16px',
               display: 'flex',
               flexDirection: 'column',
               gap: 10,
@@ -597,14 +842,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Sparkles size={11} color="#a855f7" />
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
-                  DYNAMIC TOKEN NAMING BUILDER
+                <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
+                  Output Name
                 </span>
-                <span style={{ fontSize: 7.5, color: '#64748b' }}>(Drag chips to rearrange order)</span>
+                <span style={{ fontSize: 8, color: '#64748b' }}>
+                  (Click any token pill to insert at text cursor position)
+                </span>
               </div>
               <button
                 type="button"
-                onClick={handleResetTokens}
+                onClick={() => {
+                  const defaultPat = currentPreset?.pattern || 'T_{asset}_{slot}';
+                  setPattern(defaultPat);
+                }}
                 style={{
                   background: 'transparent',
                   border: 'none',
@@ -616,102 +866,120 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   cursor: 'pointer',
                 }}
               >
-                <RefreshCw size={9} />
-                <span>Reset to Default</span>
+                <RotateCcw size={9} />
+                <span>Reset to Preset</span>
               </button>
             </div>
 
-            {/* Draggable Active Token Sequence */}
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-                gap: 5,
-                padding: '8px 10px',
-                backgroundColor: '#0a0c12',
-                border: '1px solid rgba(255, 255, 255, 0.09)',
-                borderRadius: 5,
-                minHeight: 38,
-              }}
-            >
-              {settings.tokens.map((token, idx) => {
-                const isDelim = token.type === 'delimiter' || token.type === 'literal';
-                return (
-                  <div
-                    key={token.id}
-                    draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={(e) => handleDragOver(e, idx)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      padding: isDelim ? '2px 5px' : '3px 7px',
-                      borderRadius: 4,
-                      backgroundColor: isDelim ? 'rgba(255, 255, 255, 0.06)' : 'rgba(56, 189, 248, 0.16)',
-                      border: `1px solid ${isDelim ? 'rgba(255, 255, 255, 0.15)' : '#38bdf8'}`,
-                      color: isDelim ? '#cbd5e1' : '#38bdf8',
-                      fontSize: 9,
-                      fontWeight: 700,
-                      fontFamily: "'Geist Mono', monospace",
-                      cursor: 'grab',
-                      userSelect: 'none',
-                      boxShadow: isDelim ? 'none' : '0 1px 4px rgba(56, 189, 248, 0.15)',
-                    }}
-                  >
-                    <span>{token.label || token.value}</span>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveToken(idx)}
-                      title="Remove token"
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'inherit',
-                        cursor: 'pointer',
-                        padding: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        opacity: 0.6,
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-                      onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.6')}
-                    >
-                      <X size={9} />
-                    </button>
-                  </div>
-                );
-              })}
+            {/* Custom Pattern Input with Text Cursor Insertion */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <input
+                ref={patternInputRef}
+                type="text"
+                value={pattern}
+                onChange={(e) => setPattern(e.target.value)}
+                placeholder="e.g. T_{asset}_{slot} or {project}_{asset}_{slot}_{res}"
+                style={{
+                  height: 32,
+                  backgroundColor: '#0a0c12',
+                  border: `1px solid ${
+                    !validation.isValid
+                      ? '#ef4444'
+                      : validation.warning
+                      ? '#f59e0b'
+                      : 'rgba(56, 189, 248, 0.35)'
+                  }`,
+                  borderRadius: 5,
+                  padding: '0 10px',
+                  color: '#f8fafc',
+                  fontFamily: "'Geist Mono', monospace",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  outline: 'none',
+                  boxShadow: !validation.isValid
+                    ? '0 0 8px rgba(239, 68, 68, 0.25)'
+                    : '0 0 8px rgba(56, 189, 248, 0.15)',
+                }}
+              />
             </div>
 
-            {/* Available Tokens Palette to Insert */}
+            {/* Edge Case Validation Alert Box */}
+            {!validation.isValid && validation.error && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 10px',
+                  backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                  border: '1px solid rgba(239, 68, 68, 0.35)',
+                  borderRadius: 4,
+                  color: '#f87171',
+                  fontSize: 8.5,
+                  fontWeight: 600,
+                }}
+              >
+                <AlertCircle size={12} style={{ flexShrink: 0 }} />
+                <span>{validation.error}</span>
+              </div>
+            )}
+
+            {validation.isValid && validation.warning && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '6px 10px',
+                  backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  borderRadius: 4,
+                  color: '#f59e0b',
+                  fontSize: 8.5,
+                  fontWeight: 600,
+                }}
+              >
+                <AlertCircle size={12} style={{ flexShrink: 0 }} />
+                <span>{validation.warning}</span>
+              </div>
+            )}
+
+            {/* Dynamic Token Palette to Insert at Cursor */}
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 5, fontSize: 8.5 }}>
-              <span style={{ color: '#64748b', fontWeight: 600 }}>Insert Token:</span>
-              {AVAILABLE_TOKENS.map((t) => (
+              <span style={{ color: '#64748b', fontWeight: 600 }}>Insert Token at Cursor:</span>
+              {[
+                { token: '{project}', label: '{project}' },
+                { token: '{asset}', label: '{asset}' },
+                { token: '{slot}', label: '{slot}' },
+                { token: '{res}', label: '{res}' },
+                { token: '{colorspace}', label: '{colorspace}' },
+                { token: '{format}', label: '{format}' },
+                { token: '{udim}', label: '{udim}' },
+              ].map((t) => (
                 <button
-                  key={t.id}
+                  key={t.token}
                   type="button"
-                  onClick={() => handleAddToken(t.id, t.label)}
+                  onClick={() => handleInsertToken(t.token)}
                   style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    borderRadius: 3,
-                    padding: '2px 6px',
-                    color: '#94a3b8',
-                    fontSize: 8,
+                    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    borderRadius: 4,
+                    padding: '3px 7px',
+                    color: '#38bdf8',
+                    fontFamily: "'Geist Mono', monospace",
+                    fontSize: 8.5,
+                    fontWeight: 700,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 3,
+                    transition: 'all 100ms ease',
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.1)';
-                    e.currentTarget.style.color = '#38bdf8';
+                    e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.2)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.04)';
-                    e.currentTarget.style.color = '#94a3b8';
+                    e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.08)';
                   }}
                 >
                   <Plus size={8} />
@@ -726,15 +994,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <button
                   key={sep}
                   type="button"
-                  onClick={() => handleAddToken(sep, sep)}
+                  onClick={() => handleInsertToken(sep)}
                   style={{
-                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                    border: '1px solid rgba(255, 255, 255, 0.08)',
-                    borderRadius: 3,
-                    padding: '2px 5px',
-                    color: '#94a3b8',
-                    fontSize: 8,
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: 4,
+                    padding: '3px 7px',
+                    color: '#cbd5e1',
+                    fontSize: 8.5,
                     fontFamily: "'Geist Mono', monospace",
+                    fontWeight: 700,
                     cursor: 'pointer',
                   }}
                 >
@@ -743,16 +1012,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               ))}
             </div>
 
-            {/* Real-Time Sample Preview Filename */}
+            {/* Real-Time Sample Preview Filename Banner */}
             <div
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                padding: '6px 10px',
+                padding: '7px 12px',
                 backgroundColor: 'rgba(74, 222, 128, 0.06)',
                 border: '1px solid rgba(74, 222, 128, 0.2)',
-                borderRadius: 4,
+                borderRadius: 5,
                 fontSize: 9,
               }}
             >
@@ -763,13 +1032,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           </div>
 
-          {/* SECTION 3: LIVE PRE-FLIGHT OUTPUT NODES TABLE */}
+          {/* SECTION 3: GRAPH OUTPUT MAPS PRE-FLIGHT TABLE */}
           <div
             style={{
-              backgroundColor: 'rgba(20, 24, 34, 0.4)',
-              border: '1px solid rgba(255, 255, 255, 0.06)',
+              backgroundColor: 'rgba(20, 24, 34, 0.45)',
+              border: '1px solid rgba(255, 255, 255, 0.07)',
               borderRadius: 8,
-              padding: '12px 14px',
+              padding: '14px 16px',
               display: 'flex',
               flexDirection: 'column',
               gap: 10,
@@ -778,8 +1047,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <Layers size={11} color="#38bdf8" />
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
-                  GRAPH OUTPUT MAPS ({outputNodes.length} DETECTED)
+                <span style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
+                  Graph Output Maps ({outputNodes.length} Detected)
                 </span>
               </div>
               <div style={{ display: 'flex', gap: 8, fontSize: 8.5 }}>
@@ -803,11 +1072,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
             {/* Preflight Table */}
             {preflightItems.length > 0 ? (
-              <div style={{ border: '1px solid rgba(255, 255, 255, 0.07)', borderRadius: 5, overflow: 'hidden' }}>
+              <div style={{ border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: 5, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 9 }}>
                   <thead>
-                    <tr style={{ backgroundColor: 'rgba(12, 14, 20, 0.9)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', color: '#94a3b8' }}>
-                      <th style={{ padding: '6px 8px', width: 28, textAlign: 'center' }}>
+                    <tr style={{ backgroundColor: 'rgba(12, 14, 20, 0.95)', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', color: '#94a3b8' }}>
+                      <th style={{ padding: '7px 10px', width: 30, textAlign: 'center' }}>
                         <input
                           type="checkbox"
                           checked={readyCount === preflightItems.length && preflightItems.length > 0}
@@ -815,12 +1084,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                           style={{ cursor: 'pointer' }}
                         />
                       </th>
-                      <th style={{ padding: '6px 8px' }}>Target Map</th>
-                      <th style={{ padding: '6px 8px' }}>Status</th>
-                      <th style={{ padding: '6px 8px' }}>Format</th>
-                      <th style={{ padding: '6px 8px' }}>Color Space</th>
-                      <th style={{ padding: '6px 8px' }}>Resolution</th>
-                      <th style={{ padding: '6px 8px' }}>Resolved Filename</th>
+                      <th style={{ padding: '7px 10px' }}>Target Map Slot</th>
+                      <th style={{ padding: '7px 10px' }}>Connection</th>
+                      <th style={{ padding: '7px 10px' }}>Format</th>
+                      <th style={{ padding: '7px 10px' }}>Color Space</th>
+                      <th style={{ padding: '7px 10px' }}>Resolution</th>
+                      <th style={{ padding: '7px 10px' }}>Resolved Filename</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -834,7 +1103,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         }}
                       >
                         {/* Checkbox */}
-                        <td style={{ padding: '6px 8px', textAlign: 'center' }}>
+                        <td style={{ padding: '7px 10px', textAlign: 'center' }}>
                           <input
                             type="checkbox"
                             checked={item.enabled}
@@ -844,41 +1113,71 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         </td>
 
                         {/* Slot Name & Quick Edit */}
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '7px 10px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             {item.previewUrl ? (
                               <img
                                 src={item.previewUrl}
                                 alt={item.slot}
-                                style={{ width: 20, height: 20, borderRadius: 2, border: '1px solid rgba(255, 255, 255, 0.1)', objectFit: 'cover' }}
+                                style={{ width: 22, height: 22, borderRadius: 3, border: '1px solid rgba(255, 255, 255, 0.1)', objectFit: 'cover' }}
                               />
                             ) : (
-                              <div style={{ width: 20, height: 20, borderRadius: 2, backgroundColor: '#0c0e14', border: '1px solid rgba(255, 255, 255, 0.1)' }} />
+                              <div style={{ width: 22, height: 22, borderRadius: 3, backgroundColor: '#0c0e14', border: '1px solid rgba(255, 255, 255, 0.1)' }} />
                             )}
-                            <input
-                              type="text"
-                              value={item.slot}
-                              onChange={(e) => onUpdateNodeData?.(item.nodeId, { slot: e.target.value })}
-                              style={{
-                                width: 90,
-                                height: 20,
-                                backgroundColor: 'transparent',
-                                border: '1px solid transparent',
-                                borderRadius: 3,
-                                color: '#f8fafc',
-                                fontWeight: 700,
-                                fontFamily: "'Geist Mono', monospace",
-                                fontSize: 9,
-                                padding: '0 4px',
-                              }}
-                              onFocus={(e) => (e.target.style.border = '1px solid #38bdf8')}
-                              onBlur={(e) => (e.target.style.border = '1px solid transparent')}
-                            />
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              <input
+                                type="text"
+                                value={item.slot}
+                                onChange={(e) =>
+                                  onUpdateNodeData?.(item.nodeId, {
+                                    slot: e.target.value,
+                                    isSlotOverridden: true,
+                                  })
+                                }
+                                style={{
+                                  width: 90,
+                                  height: 22,
+                                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                                  border: `1px solid ${item.isSlotOverridden ? '#f59e0b' : 'rgba(255, 255, 255, 0.1)'}`,
+                                  borderRadius: 3,
+                                  color: item.isSlotOverridden ? '#f59e0b' : '#f8fafc',
+                                  fontWeight: 700,
+                                  fontFamily: "'Geist Mono', monospace",
+                                  fontSize: 9,
+                                  padding: '0 6px',
+                                }}
+                              />
+                              {item.isSlotOverridden ? (
+                                <span
+                                  style={{
+                                    fontSize: 7.5,
+                                    color: '#f59e0b',
+                                    fontWeight: 700,
+                                    fontFamily: "'Geist Mono', monospace",
+                                  }}
+                                  title="Overridden manually"
+                                >
+                                  OVR
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    fontSize: 7.5,
+                                    color: '#4ade80',
+                                    fontWeight: 700,
+                                    fontFamily: "'Geist Mono', monospace",
+                                  }}
+                                  title="Auto-detected from input"
+                                >
+                                  AUTO
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </td>
 
                         {/* Wire Connection Status */}
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '7px 10px' }}>
                           {item.isConnected ? (
                             <span style={{ color: '#4ade80', fontSize: 8, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
                               <Check size={10} strokeWidth={3} />
@@ -893,7 +1192,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         </td>
 
                         {/* Format Override Dropdown */}
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '7px 10px' }}>
                           <select
                             value={(outputNodes.find((n) => n.id === item.nodeId)?.data as any)?.formatOverride || 'inherit'}
                             onChange={(e) => onUpdateNodeData?.(item.nodeId, { formatOverride: e.target.value })}
@@ -917,12 +1216,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         </td>
 
                         {/* Color Space Pill */}
-                        <td style={{ padding: '6px 8px' }}>
+                        <td style={{ padding: '7px 10px' }}>
                           <button
                             type="button"
                             onClick={() =>
                               onUpdateNodeData?.(item.nodeId, {
                                 colorSpace: item.colorSpace === 'linear' ? 'sRGB' : 'linear',
+                                isColorSpaceOverridden: true,
                               })
                             }
                             style={{
@@ -942,12 +1242,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                         </td>
 
                         {/* Resolution */}
-                        <td style={{ padding: '6px 8px', fontFamily: "'Geist Mono', monospace", color: '#94a3b8' }}>
+                        <td style={{ padding: '7px 10px', fontFamily: "'Geist Mono', monospace", color: '#94a3b8' }}>
                           {item.resolution}
                         </td>
 
                         {/* Filename Preview */}
-                        <td style={{ padding: '6px 8px', fontFamily: "'Geist Mono', monospace", color: '#f8fafc', fontWeight: 600 }}>
+                        <td style={{ padding: '7px 10px', fontFamily: "'Geist Mono', monospace", color: '#f8fafc', fontWeight: 600 }}>
                           {item.resolvedFilename}
                         </td>
                       </tr>
@@ -958,7 +1258,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             ) : (
               <div
                 style={{
-                  padding: '24px 16px',
+                  padding: '28px 16px',
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
@@ -967,9 +1267,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   fontSize: 9.5,
                 }}
               >
-                <AlertCircle size={20} color="#f87171" />
+                <AlertCircle size={22} color="#f87171" />
                 <span>No Texture Output nodes found in the current canvas graph.</span>
-                <span style={{ fontSize: 8.5 }}>Spawn a "Texture Output Target" node to connect and export maps.</span>
+                <span style={{ fontSize: 8.5 }}>Add a "Texture Output" node to the canvas to connect and export maps.</span>
               </div>
             )}
           </div>
@@ -980,9 +1280,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         {/* ============================================================ */}
         <div
           style={{
-            padding: '12px 18px',
+            padding: '14px 22px',
             borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-            backgroundColor: 'rgba(20, 24, 34, 0.65)',
+            backgroundColor: 'rgba(20, 24, 34, 0.7)',
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
@@ -1014,7 +1314,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#94a3b8' }}>
-                {directoryHandle ? <HardDrive size={12} color="#22c55e" /> : <FileArchive size={12} color="#38bdf8" />}
+                {directoryHandle ? <HardDrive size={13} color="#22c55e" /> : <FileArchive size={13} color="#38bdf8" />}
                 <span>
                   Target:{' '}
                   <strong style={{ color: directoryHandle ? '#22c55e' : '#38bdf8' }}>
@@ -1034,8 +1334,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 onClick={onClose}
                 disabled={isExporting}
                 style={{
-                  height: 30,
-                  padding: '0 14px',
+                  height: 32,
+                  padding: '0 16px',
                   backgroundColor: 'rgba(255, 255, 255, 0.05)',
                   border: '1px solid rgba(255, 255, 255, 0.1)',
                   borderRadius: 5,
@@ -1051,38 +1351,38 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <button
                 type="button"
                 onClick={handleExecuteExport}
-                disabled={isExporting || readyCount === 0}
+                disabled={isExporting || readyCount === 0 || !validation.isValid}
                 style={{
-                  height: 30,
-                  padding: '0 18px',
-                  backgroundColor: readyCount > 0 ? '#22c55e' : 'rgba(255, 255, 255, 0.05)',
+                  height: 32,
+                  padding: '0 20px',
+                  backgroundColor: readyCount > 0 && validation.isValid ? '#22c55e' : 'rgba(255, 255, 255, 0.05)',
                   border: 'none',
                   borderRadius: 5,
-                  color: readyCount > 0 ? '#0a0d14' : '#64748b',
-                  fontSize: 10,
+                  color: readyCount > 0 && validation.isValid ? '#0a0d14' : '#64748b',
+                  fontSize: 10.5,
                   fontWeight: 800,
                   letterSpacing: '0.03em',
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
-                  cursor: readyCount > 0 && !isExporting ? 'pointer' : 'not-allowed',
+                  cursor: readyCount > 0 && validation.isValid && !isExporting ? 'pointer' : 'not-allowed',
                   transition: 'all 140ms ease',
-                  boxShadow: readyCount > 0 ? '0 2px 14px rgba(34, 197, 94, 0.35)' : 'none',
+                  boxShadow: readyCount > 0 && validation.isValid ? '0 2px 14px rgba(34, 197, 94, 0.35)' : 'none',
                 }}
                 onMouseEnter={(e) => {
-                  if (readyCount > 0 && !isExporting) {
+                  if (readyCount > 0 && validation.isValid && !isExporting) {
                     e.currentTarget.style.backgroundColor = '#4ade80';
                     e.currentTarget.style.transform = 'translateY(-1px)';
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (readyCount > 0 && !isExporting) {
+                  if (readyCount > 0 && validation.isValid && !isExporting) {
                     e.currentTarget.style.backgroundColor = '#22c55e';
                     e.currentTarget.style.transform = 'translateY(0)';
                   }
                 }}
               >
-                <Download size={13} strokeWidth={2.5} />
+                <Download size={14} strokeWidth={2.5} />
                 <span>
                   {isExporting ? 'Exporting Maps...' : `Export ${readyCount} Texture${readyCount === 1 ? '' : 's'}`}
                 </span>

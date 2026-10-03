@@ -1,10 +1,11 @@
-import React from 'react';
-import { type NodeProps, useNodeConnections } from '@xyflow/react';
+import React, { useMemo } from 'react';
+import { type NodeProps, useNodeConnections, useNodes, useEdges } from '@xyflow/react';
 import { Download, AlertCircle, Layers } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 import { useNodeBuffers } from '../../context/NodeBufferContext';
+import { GraphEvaluator } from '../../engine/graphEvaluator';
 import type { LocalOutputData } from '../../types/export';
 
 export const TextureOutputNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
@@ -17,16 +18,27 @@ export const TextureOutputNode: React.FC<NodeProps<any>> = ({ id, data, selected
   const conns = useNodeConnections({ handleType: 'target', handleId: 'rgba' });
   const isConnected = conns.length > 0;
 
-  const currentSlot = d.slot || 'ORM';
+  const nodes = useNodes();
+  const edges = useEdges();
+
+  const autoDetect = useMemo(() => {
+    return GraphEvaluator.autoDetectOutputRole(id, nodes, edges);
+  }, [id, nodes, edges]);
+
+  const currentSlot = d.isSlotOverridden && d.slot ? d.slot : (autoDetect.slot || d.slot || 'ORM');
   const currentFormat =
     d.formatOverride && d.formatOverride !== 'inherit' ? d.formatOverride : 'PNG';
   const currentBitDepth =
     d.bitDepthOverride && d.bitDepthOverride !== 'inherit' ? d.bitDepthOverride : '8b';
-  const currentColorSpace = d.colorSpace ? d.colorSpace.toUpperCase() : 'LINEAR';
+  const currentColorSpace = (
+    d.isColorSpaceOverridden && d.colorSpace
+      ? d.colorSpace
+      : (autoDetect.colorSpace || d.colorSpace || 'linear')
+  ).toUpperCase();
 
   const headerBadges = (
     <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
-      <NodeBadge color="#4ade80" variant="solid">
+      <NodeBadge color={d.isSlotOverridden ? '#f59e0b' : '#4ade80'} variant="solid">
         {currentSlot}
       </NodeBadge>
       <NodeBadge color="#38bdf8">{currentFormat}</NodeBadge>
@@ -90,8 +102,15 @@ export const TextureOutputNode: React.FC<NodeProps<any>> = ({ id, data, selected
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 1.5, minWidth: 0, flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 8, color: '#4ade80', fontWeight: 700, letterSpacing: '0.04em' }}>
-                  READY TO EXPORT
+                <span
+                  style={{
+                    fontSize: 8,
+                    color: d.isSlotOverridden ? '#f59e0b' : '#4ade80',
+                    fontWeight: 700,
+                    letterSpacing: '0.04em',
+                  }}
+                >
+                  {d.isSlotOverridden ? 'OVERRIDE' : (autoDetect.sourceLabel ? `AUTO: ${currentSlot}` : 'READY')}
                 </span>
                 <span
                   style={{

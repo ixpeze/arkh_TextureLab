@@ -26,78 +26,51 @@ export const AVAILABLE_TOKENS: { id: NamingTokenId; label: string; example: stri
   { id: '$udim', label: 'UDIM Tile', example: '1001' },
 ];
 
-export const EXPORT_PRESETS: ExportPreset[] = [
+export const DEFAULT_PRESETS: ExportPreset[] = [
   {
     id: 'ue5',
-    name: 'Unreal Engine 5 (T_Asset_Slot)',
-    description: 'Epic Games PBR convention: T_ prefix, asset name, and packed slot.',
-    tokens: [
-      { id: 't_prefix', type: 'literal', value: 'T' },
-      { id: 'd1', type: 'delimiter', value: '_' },
-      { id: 't_asset', type: 'token', value: '$asset', label: 'Asset' },
-      { id: 'd2', type: 'delimiter', value: '_' },
-      { id: 't_slot', type: 'token', value: '$slot', label: 'Map Slot' },
-      { id: 'd3', type: 'delimiter', value: '.' },
-      { id: 't_fmt', type: 'token', value: '$format', label: 'Format' },
-    ],
+    name: 'Unreal Engine 5 (T_{asset}_{slot})',
+    pattern: 'T_{asset}_{slot}',
+    description: 'Epic Games PBR standard: T_ prefix, asset name, and packed slot.',
+    isBuiltIn: true,
   },
   {
     id: 'unity',
-    name: 'Unity URP / HDRP (Asset_Slot)',
+    name: 'Unity URP / HDRP ({asset}_{slot})',
+    pattern: '{asset}_{slot}',
     description: 'Unity Standard & MaskMap standard: Asset name followed by map type.',
-    tokens: [
-      { id: 't_asset', type: 'token', value: '$asset', label: 'Asset' },
-      { id: 'd1', type: 'delimiter', value: '_' },
-      { id: 't_slot', type: 'token', value: '$slot', label: 'Map Slot' },
-      { id: 'd2', type: 'delimiter', value: '.' },
-      { id: 't_fmt', type: 'token', value: '$format', label: 'Format' },
-    ],
+    isBuiltIn: true,
   },
   {
     id: 'substance',
-    name: 'Substance Painter (Asset_Slot_Res)',
+    name: 'Substance Painter ({asset}_{slot}_{res})',
+    pattern: '{asset}_{slot}_{res}',
     description: 'Substance 3D Painter classic export: Asset, Slot name, and Resolution.',
-    tokens: [
-      { id: 't_asset', type: 'token', value: '$asset', label: 'Asset' },
-      { id: 'd1', type: 'delimiter', value: '_' },
-      { id: 't_slot', type: 'token', value: '$slot', label: 'Map Slot' },
-      { id: 'd2', type: 'delimiter', value: '_' },
-      { id: 't_res', type: 'token', value: '$res', label: 'Resolution' },
-      { id: 'd3', type: 'delimiter', value: '.' },
-      { id: 't_fmt', type: 'token', value: '$format', label: 'Format' },
-    ],
+    isBuiltIn: true,
   },
   {
     id: 'blender',
-    name: 'Blender Principled (Asset_Slot)',
+    name: 'Blender Principled ({asset}_{slot})',
+    pattern: '{asset}_{slot}',
     description: 'Clean Blender & glTF 2.0 PBR naming.',
-    tokens: [
-      { id: 't_asset', type: 'token', value: '$asset', label: 'Asset' },
-      { id: 'd1', type: 'delimiter', value: '_' },
-      { id: 't_slot', type: 'token', value: '$slot', label: 'Map Slot' },
-      { id: 'd2', type: 'delimiter', value: '.' },
-      { id: 't_fmt', type: 'token', value: '$format', label: 'Format' },
-    ],
+    isBuiltIn: true,
   },
   {
-    id: 'custom',
-    name: 'Custom User Template',
-    description: 'Freely configured token sequence and delimiters.',
-    tokens: [
-      { id: 't_asset', type: 'token', value: '$asset', label: 'Asset' },
-      { id: 'd1', type: 'delimiter', value: '_' },
-      { id: 't_slot', type: 'token', value: '$slot', label: 'Map Slot' },
-      { id: 'd2', type: 'delimiter', value: '.' },
-      { id: 't_fmt', type: 'token', value: '$format', label: 'Format' },
-    ],
+    id: 'cryengine',
+    name: 'CryEngine (T_{asset}_{slot})',
+    pattern: 'T_{asset}_{slot}',
+    description: 'CryEngine PBR texture standard.',
+    isBuiltIn: true,
   },
 ];
+
+export const EXPORT_PRESETS = DEFAULT_PRESETS;
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalExportSettings = {
   projectName: 'TextureLab',
   assetName: 'AnthraciteConcrete',
   presetId: 'ue5',
-  tokens: [...EXPORT_PRESETS[0].tokens],
+  pattern: 'T_{asset}_{slot}',
   masterResolution: 'inherit',
   defaultFormat: 'PNG',
   defaultBitDepth: '8b',
@@ -119,43 +92,112 @@ export interface TokenResolveContext {
 
 export class ExportEngine {
   /**
-   * Resolve an array of tokens into a sanitized, safe filename.
+   * Load presets from localStorage merged with built-in presets.
    */
-  public static resolveFilename(tokens: TokenItem[], ctx: TokenResolveContext): string {
-    const rawParts = tokens.map((t) => {
-      switch (t.value) {
-        case '$project':
-          return ctx.project || 'Project';
-        case '$asset':
-          return ctx.asset || 'Asset';
-        case '$slot':
-          return ctx.slot || 'ORM';
-        case '$res':
-          return ctx.res || '4K';
-        case '$format':
-          return ctx.format.toLowerCase() || 'png';
-        case '$colorspace':
-          return ctx.colorSpace || 'Linear';
-        case '$udim':
-          return ctx.udim || '1001';
-        default:
-          return t.value;
+  public static loadPresets(): ExportPreset[] {
+    try {
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('texturelab_export_presets');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const custom = parsed.filter((p: ExportPreset) => !DEFAULT_PRESETS.some((dp) => dp.id === p.id));
+            return [...DEFAULT_PRESETS, ...custom];
+          }
+        }
       }
-    });
+    } catch (e) {
+      console.warn('Failed to load presets from localStorage', e);
+    }
+    return [...DEFAULT_PRESETS];
+  }
 
-    let result = rawParts.join('');
+  /**
+   * Persist presets to localStorage.
+   */
+  public static savePresets(presets: ExportPreset[]): void {
+    try {
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('texturelab_export_presets', JSON.stringify(presets));
+      }
+    } catch (e) {
+      console.warn('Failed to save presets to localStorage', e);
+    }
+  }
+
+  /**
+   * Validate a naming template for edge cases (empty, missing slot, illegal characters).
+   */
+  public static validatePattern(pattern: string): { isValid: boolean; warning?: string; error?: string } {
+    if (!pattern || pattern.trim().length === 0) {
+      return { isValid: false, error: 'Output template cannot be empty' };
+    }
+    if (/[\\:*?"<>|]/.test(pattern)) {
+      return { isValid: false, error: 'Illegal filesystem characters (\\ : * ? " < > |) detected' };
+    }
+    const hasSlot = /\{slot\}|\$slot/i.test(pattern);
+    if (!hasSlot) {
+      return { isValid: true, warning: 'Warning: Missing {slot} token. Output filenames may overwrite each other.' };
+    }
+    return { isValid: true };
+  }
+
+  /**
+   * Resolve an output template string (or legacy TokenItem array) into a sanitized filename.
+   */
+  public static resolveFilename(
+    patternOrTokens: string | TokenItem[],
+    ctx: TokenResolveContext
+  ): string {
+    let raw = '';
+    if (typeof patternOrTokens === 'string') {
+      raw = patternOrTokens;
+      const replaceMap: Record<string, string> = {
+        project: ctx.project || 'Project',
+        asset: ctx.asset || 'Asset',
+        slot: ctx.slot || 'ORM',
+        res: ctx.res || '4K',
+        format: ctx.format.toLowerCase() || 'png',
+        colorspace: ctx.colorSpace || 'Linear',
+        udim: ctx.udim || '1001',
+      };
+      for (const [key, val] of Object.entries(replaceMap)) {
+        raw = raw.replace(new RegExp(`\\{${key}\\}`, 'gi'), val);
+        raw = raw.replace(new RegExp(`\\$${key}\\b`, 'gi'), val);
+      }
+    } else {
+      raw = patternOrTokens.map((t) => {
+        switch (t.value) {
+          case '$project':
+            return ctx.project || 'Project';
+          case '$asset':
+            return ctx.asset || 'Asset';
+          case '$slot':
+            return ctx.slot || 'ORM';
+          case '$res':
+            return ctx.res || '4K';
+          case '$format':
+            return ctx.format.toLowerCase() || 'png';
+          case '$colorspace':
+            return ctx.colorSpace || 'Linear';
+          case '$udim':
+            return ctx.udim || '1001';
+          default:
+            return t.value;
+        }
+      }).join('');
+    }
 
     // Ensure there's a valid extension delimiter before format if missing
     const ext = ctx.format.toLowerCase();
-    if (!result.toLowerCase().endsWith(`.${ext}`)) {
-      // Strip any trailing dots or delimiters before appending
-      result = result.replace(/[._-]+$/, '') + `.${ext}`;
+    if (!raw.toLowerCase().endsWith(`.${ext}`)) {
+      raw = raw.replace(/[._-]+$/, '') + `.${ext}`;
     }
 
     // Clean up illegal filesystem characters
-    result = result.replace(/[\\/:*?"<>|]/g, '_');
+    raw = raw.replace(/[\\/:*?"<>|]/g, '_');
 
-    return result;
+    return raw;
   }
 
   /* ========================================================================= */

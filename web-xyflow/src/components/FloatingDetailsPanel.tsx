@@ -9,8 +9,9 @@ import {
   Maximize,
   Minimize,
   Layers,
+  RotateCcw,
 } from 'lucide-react';
-import type { Edge } from '@xyflow/react';
+import type { Edge, Node } from '@xyflow/react';
 import { PixelEngine, type TextureBuffer, type HistogramData } from '../engine/pixelEngine';
 import { GraphEvaluator } from '../engine/graphEvaluator';
 import { ExportEngine } from '../engine/exportEngine';
@@ -18,6 +19,7 @@ import { NodeSelect, NodeCheckbox, NodeBadge } from './node-system/NodeControls'
 
 export interface FloatingDetailsPanelProps {
   selectedNode: any | null;
+  nodes?: Node[];
   primaryAsset: string;
   onAssetChange: (asset: string) => void;
   activeBuffer?: TextureBuffer | null;
@@ -28,6 +30,7 @@ export interface FloatingDetailsPanelProps {
 
 export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   selectedNode,
+  nodes,
   primaryAsset,
   onAssetChange,
   activeBuffer,
@@ -44,6 +47,19 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const histCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
+  const autoDetectInfo = useMemo(() => {
+    if (selectedNode?.type !== 'textureOutput' || !selectedNode || !nodes || !edges) return null;
+    return GraphEvaluator.autoDetectOutputRole(selectedNode.id, nodes, edges);
+  }, [selectedNode, nodes, edges]);
+
+  const effectiveSlot = (selectedNode?.data?.isSlotOverridden && selectedNode.data.slot)
+    ? selectedNode.data.slot
+    : (autoDetectInfo?.slot || selectedNode?.data?.slot || 'ORM');
+
+  const effectiveColorSpace = (selectedNode?.data?.isColorSpaceOverridden && selectedNode.data.colorSpace)
+    ? selectedNode.data.colorSpace
+    : (autoDetectInfo?.colorSpace || selectedNode?.data?.colorSpace || 'linear');
+
   // Evaluate output filename for inspected buffer export
   const evaluateFilename = () => {
     const asset = primaryAsset || 'AnthraciteConcrete';
@@ -57,7 +73,9 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
       if (selectedNode.data?.outputFilename) {
         return selectedNode.data.outputFilename;
       }
-      const slot = selectedNode.data?.slot || 'ORM';
+      const slot = (selectedNode.data?.isSlotOverridden && selectedNode.data?.slot)
+        ? selectedNode.data.slot
+        : (autoDetectInfo?.slot || selectedNode.data?.slot || 'ORM');
       return `T_${asset}_${slot}_${res}.${ext}`;
     }
 
@@ -555,7 +573,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
               </div>
 
               {/* Dynamic Port & Socket Connection Telemetry */}
-              {portTelemetry.length > 0 && (
+              {portTelemetry.length > 0 && nodeType !== 'textureOutput' && (
                 <div
                   style={{
                     display: 'flex',
@@ -631,31 +649,75 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                         OUTPUT TARGET CONFIGURATION
                       </span>
                     </div>
-                    <NodeBadge color="#4ade80">{nodeData.slot || 'ORM'}</NodeBadge>
+                    {nodeData.isSlotOverridden ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <NodeBadge color="#f59e0b">MANUAL OVERRIDE</NodeBadge>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onUpdateNodeData?.(selectedNode.id, {
+                              isSlotOverridden: false,
+                              slot: autoDetectInfo?.slot || 'ORM',
+                              colorSpace: autoDetectInfo?.colorSpace || 'linear',
+                              isColorSpaceOverridden: false,
+                            })
+                          }
+                          title={`Reset to auto-detected target: ${autoDetectInfo?.slot || 'ORM'}`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            height: 18,
+                            padding: '0 5px',
+                            borderRadius: 3,
+                            backgroundColor: 'rgba(245, 158, 11, 0.15)',
+                            border: '1px solid rgba(245, 158, 11, 0.35)',
+                            color: '#f59e0b',
+                            fontSize: 7.5,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <RotateCcw size={8} />
+                          <span>Reset</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <NodeBadge color="#4ade80">
+                        {autoDetectInfo?.sourceLabel ? `AUTO (${autoDetectInfo.sourceLabel})` : 'AUTO-DETECTED'}
+                      </NodeBadge>
+                    )}
                   </div>
 
                   {/* Slot Preset Quick Buttons */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>
-                      Quick Slot Selection
-                    </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>
+                        Target Slot Preset
+                      </span>
+                      <span style={{ fontSize: 7.5, color: nodeData.isSlotOverridden ? '#f59e0b' : '#4ade80', fontFamily: "'Geist Mono', monospace" }}>
+                        Effective: {effectiveSlot}
+                      </span>
+                    </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                       {['BaseColor', 'ORM', 'Normal', 'Roughness', 'Metallic', 'Height', 'AO', 'Emissive'].map((slotPreset) => {
-                        const isCurrent = (nodeData.slot || 'ORM') === slotPreset;
+                        const isCurrent = effectiveSlot === slotPreset;
+                        const isOverridden = nodeData.isSlotOverridden && nodeData.slot === slotPreset;
+                        const activeColor = isOverridden ? '#f59e0b' : '#4ade80';
                         return (
                           <button
                             key={slotPreset}
                             type="button"
-                            onClick={() => onUpdateNodeData?.(selectedNode.id, { slot: slotPreset })}
+                            onClick={() => onUpdateNodeData?.(selectedNode.id, { slot: slotPreset, isSlotOverridden: true })}
                             style={{
                               padding: '2px 6px',
                               borderRadius: 3,
                               fontSize: 8.5,
                               fontWeight: isCurrent ? 700 : 500,
                               fontFamily: "'Geist Mono', monospace",
-                              backgroundColor: isCurrent ? 'rgba(74, 222, 128, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-                              border: `1px solid ${isCurrent ? '#4ade80' : 'rgba(255, 255, 255, 0.08)'}`,
-                              color: isCurrent ? '#4ade80' : '#cbd5e1',
+                              backgroundColor: isCurrent ? `${activeColor}26` : 'rgba(255, 255, 255, 0.05)',
+                              border: `1px solid ${isCurrent ? activeColor : 'rgba(255, 255, 255, 0.08)'}`,
+                              color: isCurrent ? activeColor : '#cbd5e1',
                               cursor: 'pointer',
                               transition: 'all 120ms ease',
                             }}
@@ -669,19 +731,19 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
                   {/* Custom Slot Name Input */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>Slot Role Identifier</span>
+                    <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>Custom Slot Identifier</span>
                     <input
                       type="text"
-                      value={nodeData.slot || 'ORM'}
-                      onChange={(e) => onUpdateNodeData?.(selectedNode.id, { slot: e.target.value })}
-                      placeholder="e.g. ORM, Normal, BaseColor"
+                      value={nodeData.isSlotOverridden ? (nodeData.slot || '') : effectiveSlot}
+                      onChange={(e) => onUpdateNodeData?.(selectedNode.id, { slot: e.target.value, isSlotOverridden: true })}
+                      placeholder={autoDetectInfo?.slot || 'e.g. ORM, Normal, BaseColor'}
                       style={{
                         height: 24,
                         backgroundColor: '#0c0e14',
-                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        border: `1px solid ${nodeData.isSlotOverridden ? 'rgba(245, 158, 11, 0.4)' : 'rgba(74, 222, 128, 0.3)'}`,
                         borderRadius: 4,
                         padding: '0 8px',
-                        color: '#4ade80',
+                        color: nodeData.isSlotOverridden ? '#f59e0b' : '#4ade80',
                         fontFamily: "'Geist Mono', monospace",
                         fontSize: 9.5,
                         fontWeight: 600,
@@ -718,24 +780,29 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
                   {/* Color Space Selection */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>Color Space / Gamma</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 500 }}>Color Space / Gamma</span>
+                      <span style={{ fontSize: 7.5, color: nodeData.isColorSpaceOverridden ? '#f59e0b' : '#38bdf8', fontFamily: "'Geist Mono', monospace" }}>
+                        {nodeData.isColorSpaceOverridden ? 'Manual' : `Auto: ${effectiveColorSpace.toUpperCase()}`}
+                      </span>
+                    </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
                       <button
                         type="button"
-                        onClick={() => onUpdateNodeData?.(selectedNode.id, { colorSpace: 'linear' })}
+                        onClick={() => onUpdateNodeData?.(selectedNode.id, { colorSpace: 'linear', isColorSpaceOverridden: true })}
                         style={{
                           height: 22,
                           borderRadius: 3,
                           fontSize: 8.5,
-                          fontWeight: (nodeData.colorSpace || 'linear') === 'linear' ? 700 : 500,
+                          fontWeight: effectiveColorSpace === 'linear' ? 700 : 500,
                           backgroundColor:
-                            (nodeData.colorSpace || 'linear') === 'linear'
+                            effectiveColorSpace === 'linear'
                               ? 'rgba(56, 189, 248, 0.2)'
                               : 'rgba(255, 255, 255, 0.04)',
                           border: `1px solid ${
-                            (nodeData.colorSpace || 'linear') === 'linear' ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'
+                            effectiveColorSpace === 'linear' ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'
                           }`,
-                          color: (nodeData.colorSpace || 'linear') === 'linear' ? '#38bdf8' : '#94a3b8',
+                          color: effectiveColorSpace === 'linear' ? '#38bdf8' : '#94a3b8',
                           cursor: 'pointer',
                         }}
                       >
@@ -743,20 +810,20 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => onUpdateNodeData?.(selectedNode.id, { colorSpace: 'sRGB' })}
+                        onClick={() => onUpdateNodeData?.(selectedNode.id, { colorSpace: 'sRGB', isColorSpaceOverridden: true })}
                         style={{
                           height: 22,
                           borderRadius: 3,
                           fontSize: 8.5,
-                          fontWeight: nodeData.colorSpace === 'sRGB' ? 700 : 500,
+                          fontWeight: effectiveColorSpace === 'sRGB' ? 700 : 500,
                           backgroundColor:
-                            nodeData.colorSpace === 'sRGB'
+                            effectiveColorSpace === 'sRGB'
                               ? 'rgba(250, 204, 21, 0.2)'
                               : 'rgba(255, 255, 255, 0.04)',
                           border: `1px solid ${
-                            nodeData.colorSpace === 'sRGB' ? '#facc15' : 'rgba(255, 255, 255, 0.08)'
+                            effectiveColorSpace === 'sRGB' ? '#facc15' : 'rgba(255, 255, 255, 0.08)'
                           }`,
-                          color: nodeData.colorSpace === 'sRGB' ? '#facc15' : '#94a3b8',
+                          color: effectiveColorSpace === 'sRGB' ? '#facc15' : '#94a3b8',
                           cursor: 'pointer',
                         }}
                       >
@@ -821,22 +888,6 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                   <span>Download Inspected Buffer</span>
                 </button>
               )}
-
-              {/* Informative Guidance */}
-              <div
-                style={{
-                  marginTop: 2,
-                  padding: '6px 8px',
-                  backgroundColor: 'rgba(255, 255, 255, 0.02)',
-                  border: '1px solid rgba(255, 255, 255, 0.06)',
-                  borderRadius: 4,
-                  fontSize: 8.5,
-                  color: '#64748b',
-                  lineHeight: 1.4,
-                }}
-              >
-                <span style={{ color: '#94a3b8', fontWeight: 600 }}>Node Editor:</span> Sliders and parameters are configured directly on the canvas node card.
-              </div>
             </div>
           </>
         ) : (

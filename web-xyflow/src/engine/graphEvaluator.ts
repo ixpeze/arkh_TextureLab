@@ -337,6 +337,103 @@ export class GraphEvaluator {
     return [];
   }
 
+  /**
+   * Auto-detect the semantic slot and color space for a TextureOutputNode by tracing upstream wires.
+   */
+  public static autoDetectOutputRole(
+    outputNodeId: string,
+    nodes: Node[],
+    edges: Edge[]
+  ): { slot: string; colorSpace: 'linear' | 'sRGB'; sourceLabel?: string } {
+    const nodeMap = new Map<string, Node>(nodes.map((n) => [n.id, n]));
+    const inEdge = edges.find((e) => e.target === outputNodeId && (e.targetHandle === 'rgba' || !e.targetHandle));
+    if (!inEdge) {
+      return { slot: 'ORM', colorSpace: 'linear', sourceLabel: 'Unwired' };
+    }
+
+    const visited = new Set<string>();
+
+    const traceNode = (nodeId: string): { slot: string; colorSpace: 'linear' | 'sRGB'; sourceLabel?: string } => {
+      if (visited.has(nodeId)) return { slot: 'ORM', colorSpace: 'linear' };
+      visited.add(nodeId);
+
+      const node = nodeMap.get(nodeId);
+      if (!node) return { slot: 'ORM', colorSpace: 'linear' };
+
+      const type = node.type || '';
+      const data = (node.data as any) || {};
+
+      if (type === 'channelCombiner') {
+        const edgeR = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
+        const edgeG = edges.find((e) => e.target === nodeId && e.targetHandle === 'g');
+        const edgeB = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
+        const edgeA = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
+
+        const roleR = edgeR ? (nodeMap.get(edgeR.source)?.data as any)?.role?.toLowerCase() || '' : '';
+        const roleG = edgeG ? (nodeMap.get(edgeG.source)?.data as any)?.role?.toLowerCase() || '' : '';
+        const roleB = edgeB ? (nodeMap.get(edgeB.source)?.data as any)?.role?.toLowerCase() || '' : '';
+        const roleA = edgeA ? (nodeMap.get(edgeA.source)?.data as any)?.role?.toLowerCase() || '' : '';
+
+        const isR_AO = roleR.includes('ambient') || roleR.includes('ao');
+        const isG_Rough = roleG.includes('rough');
+        const isB_Metal = roleB.includes('metal');
+        const isA_Height = roleA.includes('height') || roleA.includes('disp');
+
+        if (isR_AO && isG_Rough && isB_Metal) {
+          return { slot: isA_Height ? 'ORMH' : 'ORM', colorSpace: 'linear', sourceLabel: 'Combiner (ORM)' };
+        }
+        if (roleR.includes('rough') && roleG.includes('metal') && (roleB.includes('ambient') || roleB.includes('ao'))) {
+          return { slot: 'RMA', colorSpace: 'linear', sourceLabel: 'Combiner (RMA)' };
+        }
+        return { slot: 'Packed_RGBA', colorSpace: 'linear', sourceLabel: 'Combiner' };
+      }
+
+      if (type === 'normalBlend' || type === 'normalFlip') {
+        return { slot: 'Normal', colorSpace: 'linear', sourceLabel: 'Normal Stream' };
+      }
+
+      if (type === 'textureInput') {
+        const role = (data.role as string) || '';
+        const lower = role.toLowerCase();
+        if (lower.includes('base') || lower.includes('albedo') || lower.includes('diffuse') || lower.includes('color')) {
+          return { slot: 'BaseColor', colorSpace: 'sRGB', sourceLabel: role };
+        }
+        if (lower.includes('normal')) {
+          return { slot: 'Normal', colorSpace: 'linear', sourceLabel: 'Normal' };
+        }
+        if (lower.includes('rough')) {
+          return { slot: 'Roughness', colorSpace: 'linear', sourceLabel: 'Roughness' };
+        }
+        if (lower.includes('metal')) {
+          return { slot: 'Metallic', colorSpace: 'linear', sourceLabel: 'Metallic' };
+        }
+        if (lower.includes('ambient') || lower.includes('ao')) {
+          return { slot: 'AO', colorSpace: 'linear', sourceLabel: 'Ambient Occlusion' };
+        }
+        if (lower.includes('height') || lower.includes('disp')) {
+          return { slot: 'Height', colorSpace: 'linear', sourceLabel: 'Height' };
+        }
+        if (lower.includes('emiss')) {
+          return { slot: 'Emissive', colorSpace: 'sRGB', sourceLabel: 'Emissive' };
+        }
+        if (lower.includes('opacity') || lower.includes('mask') || lower.includes('alpha')) {
+          return { slot: 'Mask', colorSpace: 'linear', sourceLabel: 'Mask' };
+        }
+        const cleanSlot = role.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '');
+        return { slot: cleanSlot || 'Custom', colorSpace: 'linear', sourceLabel: role };
+      }
+
+      const upstreamEdge = edges.find((e) => e.target === nodeId);
+      if (upstreamEdge) {
+        return traceNode(upstreamEdge.source);
+      }
+
+      return { slot: 'ORM', colorSpace: 'linear', sourceLabel: 'Custom Stream' };
+    };
+
+    return traceNode(inEdge.source);
+  }
+
   private static hexToRgb(hex: string): { r: number; g: number; b: number } {
     let clean = hex.replace('#', '');
     if (clean.length === 3) {

@@ -1260,6 +1260,7 @@ function Workbench() {
           {/* Floating Right Panel: Node Details & Viewport */}
           <FloatingDetailsPanel
             selectedNode={selectedNode}
+            nodes={nodes}
             primaryAsset={primaryAsset}
             onAssetChange={handleAssetChange}
             activeBuffer={activeBuffer}
