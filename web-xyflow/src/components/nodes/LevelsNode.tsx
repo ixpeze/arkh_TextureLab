@@ -198,6 +198,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
           max={254}
           step={1}
           value={black}
+          defaultValue={0}
           accentColor="#38bdf8"
           onChange={handleBlack}
         />
@@ -207,6 +208,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
           max={3.0}
           step={0.05}
           value={gamma}
+          defaultValue={1.0}
           accentColor="var(--pbr-rough)"
           onChange={handleGamma}
         />
@@ -216,6 +218,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
           max={255}
           step={1}
           value={white}
+          defaultValue={255}
           accentColor="#facc15"
           onChange={handleWhite}
         />
@@ -231,6 +234,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
           max={255}
           step={1}
           value={outBlack}
+          defaultValue={0}
           accentColor="#94a3b8"
           onChange={handleOutBlack}
         />
@@ -240,6 +244,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
           max={255}
           step={1}
           value={outWhite}
+          defaultValue={255}
           accentColor="#e2e8f0"
           onChange={handleOutWhite}
         />

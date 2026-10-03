@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, Keyboard, Command, Sparkles } from 'lucide-react';
+import { X, Keyboard, Command, Sparkles, Sliders } from 'lucide-react';
 
 interface ShortcutsModalProps {
   isOpen: boolean;
@@ -9,7 +9,7 @@ interface ShortcutsModalProps {
 interface ShortcutItem {
   keys: string[];
   description: string;
-  category: 'spawn' | 'graph' | 'viewport';
+  category: 'spawn' | 'graph' | 'viewport' | 'slider';
   tag?: string;
   tagColor?: string;
 }
@@ -38,6 +38,14 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['W'], description: 'Auto-wire PBR maps into ORMH Combiner', category: 'graph', tag: 'Smart', tagColor: '#a855f7' },
   { keys: ['F'], description: 'Focus extents (Fit all nodes in view)', category: 'graph' },
 
+  // Slider & Value Controls (DCC Style)
+  { keys: ['Middle Click'], description: 'Reset slider to default value (Blender / UE5)', category: 'slider', tag: 'DCC Reset', tagColor: '#38bdf8' },
+  { keys: ['Shift', 'Drag'], description: 'Fine-precision micro scrub (5x sensitivity)', category: 'slider', tag: 'Precision', tagColor: '#a855f7' },
+  { keys: ['Ctrl', 'Drag'], description: 'Snap to interval increments (10%, 25%, 0.1)', category: 'slider', tag: 'Snap', tagColor: '#f59e0b' },
+  { keys: ['Mouse Wheel'], description: 'Nudge value up or down over slider track', category: 'slider' },
+  { keys: ['Del', 'Bksp'], description: 'Reset focused slider value to default', category: 'slider' },
+  { keys: ['Click Value'], description: 'Direct numeric keyboard typing input', category: 'slider', tag: 'Direct', tagColor: '#4ade80' },
+
   // Viewport & Navigation
   { keys: ['Tab'], description: 'Toggle Quick Search & Spawn Palette at cursor', category: 'viewport' },
   { keys: ['Alt', 'Click'], description: 'Cut / disconnect wire wireline (UE5 style)', category: 'viewport' },
@@ -63,6 +71,7 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose 
 
   const spawnShortcuts = SHORTCUTS.filter((s) => s.category === 'spawn');
   const graphShortcuts = SHORTCUTS.filter((s) => s.category === 'graph');
+  const sliderShortcuts = SHORTCUTS.filter((s) => s.category === 'slider');
   const viewportShortcuts = SHORTCUTS.filter((s) => s.category === 'viewport');
 
   const renderSection = (title: string, icon: React.ReactNode, items: ShortcutItem[]) => (
@@ -246,6 +255,7 @@ export const ShortcutsModal: React.FC<ShortcutsModalProps> = ({ isOpen, onClose 
         >
           {renderSection('Quick Node Spawning', <Sparkles size={12} color="#a855f7" />, spawnShortcuts)}
           {renderSection('Graph & Selection Productivity', <Command size={12} color="#38bdf8" />, graphShortcuts)}
+          {renderSection('DCC Slider & Parameter Controls', <Sliders size={12} color="#f59e0b" />, sliderShortcuts)}
           {renderSection('Viewport & Canvas Navigation', <Keyboard size={12} color="#22c55e" />, viewportShortcuts)}
         </div>
 

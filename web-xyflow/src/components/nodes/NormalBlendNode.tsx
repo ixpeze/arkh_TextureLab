@@ -60,6 +60,7 @@ export const NormalBlendNode: React.FC<NodeProps<any>> = ({ data, selected }) =>
         max={2.0}
         step={0.05}
         value={strength}
+        defaultValue={1.0}
         accentColor="var(--pbr-normal)"
         onChange={handleStrengthChange}
       />

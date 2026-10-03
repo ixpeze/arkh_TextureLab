@@ -92,6 +92,7 @@ export const BlendNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
         max={1.0}
         step={0.01}
         value={opacity}
+        defaultValue={1.0}
         accentColor="#f59e0b"
         onChange={handleOpacityChange}
       />

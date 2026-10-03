@@ -497,6 +497,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     max={254}
                     step={1}
                     value={nodeData.blackPoint ?? 0}
+                    defaultValue={0}
                     accentColor="#38bdf8"
                     onChange={(val) => onUpdateNodeData?.(selectedNode.id, { blackPoint: val })}
                   />
@@ -506,6 +507,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     max={3.0}
                     step={0.05}
                     value={nodeData.gamma ?? 1.0}
+                    defaultValue={1.0}
                     accentColor="var(--pbr-rough)"
                     onChange={(val) => onUpdateNodeData?.(selectedNode.id, { gamma: val })}
                   />
@@ -515,6 +517,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     max={255}
                     step={1}
                     value={nodeData.whitePoint ?? 255}
+                    defaultValue={255}
                     accentColor="#fbbf24"
                     onChange={(val) => onUpdateNodeData?.(selectedNode.id, { whitePoint: val })}
                   />
@@ -524,6 +527,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     max={255}
                     step={1}
                     value={nodeData.outBlack ?? 0}
+                    defaultValue={0}
                     accentColor="#94a3b8"
                     onChange={(val) => onUpdateNodeData?.(selectedNode.id, { outBlack: val })}
                   />
@@ -533,6 +537,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     max={255}
                     step={1}
                     value={nodeData.outWhite ?? 255}
+                    defaultValue={255}
                     accentColor="#e2e8f0"
                     onChange={(val) => onUpdateNodeData?.(selectedNode.id, { outWhite: val })}
                   />
@@ -589,6 +594,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     max={1.0}
                     step={0.01}
                     value={nodeData.opacity ?? 1.0}
+                    defaultValue={1.0}
                     accentColor="#f59e0b"
                     onChange={(val) => onUpdateNodeData?.(selectedNode.id, { opacity: val })}
                   />
@@ -610,6 +616,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     max={2.0}
                     step={0.05}
                     value={nodeData.strength ?? 1.0}
+                    defaultValue={1.0}
                     accentColor="var(--pbr-normal)"
                     onChange={(val) => onUpdateNodeData?.(selectedNode.id, { strength: val })}
                   />
@@ -629,6 +636,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     max={2.0}
                     step={0.05}
                     value={nodeData.detailStrength ?? 1.0}
+                    defaultValue={1.0}
                     accentColor="var(--pbr-normal)"
                     onChange={(val) => onUpdateNodeData?.(selectedNode.id, { detailStrength: val })}
                   />

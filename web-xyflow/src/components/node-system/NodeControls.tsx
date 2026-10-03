@@ -7,6 +7,7 @@ import { ChevronDown, Check } from 'lucide-react';
 export interface NodeSliderProps {
   label: string;
   value: number;
+  defaultValue?: number;
   min?: number;
   max?: number;
   step?: number;
@@ -18,6 +19,7 @@ export interface NodeSliderProps {
 export const NodeSlider: React.FC<NodeSliderProps> = ({
   label,
   value,
+  defaultValue,
   min = 0,
   max = 1,
   step = 0.01,
@@ -28,6 +30,7 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(String(value));
   const [isDragging, setIsDragging] = useState(false);
+  const [isResetFlashing, setIsResetFlashing] = useState(false);
   const trackRef = useRef<HTMLDivElement | null>(null);
 
   // Decimal precision derived from step
@@ -49,6 +52,25 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
     [min, max, step, decimals]
   );
 
+  // Smart resolved default value
+  const resolvedDefault = useMemo(() => {
+    if (defaultValue !== undefined) return defaultValue;
+    const l = label.toLowerCase();
+    if (l.includes('gamma') || l.includes('strength') || l.includes('opacity') || l.includes('intensity')) {
+      return 1.0;
+    }
+    if (l.includes('white') || l.includes('max')) {
+      return max;
+    }
+    if (l.includes('black') || l.includes('min')) {
+      return min;
+    }
+    if (min <= 0 && max >= 1) {
+      return min === 0 && max === 1 ? 1.0 : 0;
+    }
+    return min;
+  }, [defaultValue, label, min, max]);
+
   // Format value for display
   const displayValue = useMemo(() => {
     if (typeof value !== 'number' || isNaN(value)) return '0';
@@ -59,9 +81,27 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
   const safeRange = Math.max(0.0001, max - min);
   const pct = Math.max(0, Math.min(100, ((value - min) / safeRange) * 100));
 
-  // Pointer scrub handler
+  // Reset to default value with visual feedback
+  const handleReset = useCallback(() => {
+    onChange(roundToStep(resolvedDefault));
+    setIsResetFlashing(true);
+    setTimeout(() => setIsResetFlashing(false), 200);
+  }, [onChange, resolvedDefault, roundToStep]);
+
+  // Pointer scrub handler supporting Middle-Click reset, Shift fine-scrub, and Ctrl snap
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (isEditing) return;
+
+    // Middle Mouse Button (Wheel Click): Reset to Default
+    if (e.button === 1) {
+      e.stopPropagation();
+      e.preventDefault();
+      handleReset();
+      return;
+    }
+
+    // Only process Left Click for dragging
+    if (e.button !== 0) return;
 
     // CRITICAL: Stop propagation so React Flow never moves the node!
     e.stopPropagation();
@@ -70,20 +110,40 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
     const track = trackRef.current;
     if (!track) return;
 
-    const updateFromPointer = (clientX: number) => {
+    const startX = e.clientX;
+    const startVal = value;
+
+    const updateFromPointer = (clientX: number, isShift: boolean, isCtrl: boolean) => {
       const rect = track.getBoundingClientRect();
-      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      const rawVal = min + ratio * safeRange;
-      onChange(roundToStep(rawVal));
+      let nextVal: number;
+
+      if (isShift) {
+        // Shift: Fine-tuning mode (5x micro-precision relative to start position)
+        const deltaX = clientX - startX;
+        const fineRatio = (deltaX / rect.width) * 0.2;
+        nextVal = startVal + fineRatio * safeRange;
+      } else {
+        // Normal Scrub: Absolute position on slider track
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+        nextVal = min + ratio * safeRange;
+      }
+
+      // Ctrl: Snap to rounded intervals (e.g. 10%, 25%, or 10 units)
+      if (isCtrl) {
+        const snapInterval = safeRange >= 10 ? 10 : safeRange >= 1 ? 0.25 : 0.05;
+        nextVal = Math.round(nextVal / snapInterval) * snapInterval;
+      }
+
+      onChange(roundToStep(nextVal));
     };
 
-    updateFromPointer(e.clientX);
+    updateFromPointer(e.clientX, e.shiftKey, e.ctrlKey);
     setIsDragging(true);
 
     const onPointerMove = (moveEvt: PointerEvent) => {
       moveEvt.stopPropagation();
       moveEvt.preventDefault();
-      updateFromPointer(moveEvt.clientX);
+      updateFromPointer(moveEvt.clientX, moveEvt.shiftKey, moveEvt.ctrlKey);
     };
 
     const onPointerUp = (upEvt: PointerEvent) => {
@@ -96,6 +156,16 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
 
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+  };
+
+  // Wheel scrub over slider (nudge value up/down)
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const direction = e.deltaY < 0 ? 1 : -1;
+    const multiplier = e.shiftKey ? 0.1 : e.ctrlKey ? 5 : 1;
+    const delta = (step || 0.01) * multiplier * direction;
+    onChange(roundToStep(value + delta));
   };
 
   const handleStartEdit = (e: React.MouseEvent) => {
@@ -122,11 +192,54 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
     }
   };
 
+  // Track keydown for slider shortcuts when focused
+  const handleTrackKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (isEditing) return;
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      e.stopPropagation();
+      e.preventDefault();
+      handleReset();
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      e.stopPropagation();
+      e.preventDefault();
+      const mult = e.shiftKey ? 0.1 : e.ctrlKey ? 5 : 1;
+      onChange(roundToStep(value + step * mult));
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      e.stopPropagation();
+      e.preventDefault();
+      const mult = e.shiftKey ? 0.1 : e.ctrlKey ? 5 : 1;
+      onChange(roundToStep(value - step * mult));
+    } else if (e.key === 'Enter') {
+      e.stopPropagation();
+      e.preventDefault();
+      handleStartEdit(e as any);
+    }
+  };
+
   return (
     <div
       className="nodrag nopan"
-      onPointerDown={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleReset();
+        }
+      }}
+      onMouseDown={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleReset();
+        }
+      }}
+      onAuxClick={(e) => {
+        if (e.button === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleReset();
+        }
+      }}
       style={{
         position: 'relative',
         width: '100%',
@@ -136,19 +249,38 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
       {/* Slider Track with Filled Progress Bar & Overlaid Text */}
       <div
         ref={trackRef}
+        tabIndex={0}
         onPointerDown={handlePointerDown}
         onDoubleClick={handleStartEdit}
-        title="Click & drag to scrub. Double-click to type exact value."
+        onWheel={handleWheel}
+        onKeyDown={handleTrackKeyDown}
+        onAuxClick={(e) => {
+          if (e.button === 1) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleReset();
+          }
+        }}
+        title="Middle-click: Reset to default • Drag: Scrub • Shift+Drag: Fine-tune (5x) • Ctrl+Drag: Snap • Wheel: Nudge • Del/Bksp: Reset • Click: Type"
         style={{
           position: 'relative',
           height: 20,
-          backgroundColor: '#0c0e15',
-          border: isDragging ? `1px solid ${accentColor}` : '1px solid rgba(255, 255, 255, 0.09)',
+          backgroundColor: isResetFlashing ? `${accentColor}30` : '#0c0e15',
+          border: isDragging
+            ? `1px solid ${accentColor}`
+            : isResetFlashing
+            ? `1px solid ${accentColor}`
+            : '1px solid rgba(255, 255, 255, 0.09)',
           borderRadius: 3,
           overflow: 'hidden',
           cursor: isEditing ? 'default' : 'ew-resize',
-          boxShadow: isDragging ? `0 0 8px ${accentColor}40` : 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
-          transition: 'border-color 100ms ease, box-shadow 100ms ease',
+          boxShadow: isDragging
+            ? `0 0 8px ${accentColor}40`
+            : isResetFlashing
+            ? `0 0 10px ${accentColor}60`
+            : 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
+          transition: 'border-color 100ms ease, box-shadow 100ms ease, background-color 150ms ease',
+          outline: 'none',
         }}
       >
         {/* Filled bar spanning 0 to pct% */}
@@ -247,7 +379,28 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
             {/* Value on Right */}
             <span
               onClick={handleStartEdit}
-              title="Click or double-click to type"
+              onPointerDown={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleReset();
+                }
+              }}
+              onMouseDown={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleReset();
+                }
+              }}
+              onAuxClick={(e) => {
+                if (e.button === 1) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleReset();
+                }
+              }}
+              title="Click to type • Middle-click: Reset to default"
               style={{
                 fontSize: 8.5,
                 fontFamily: "'Geist Mono', monospace",

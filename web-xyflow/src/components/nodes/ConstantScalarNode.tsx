@@ -23,6 +23,7 @@ export const ConstantScalarNode: React.FC<NodeProps<any>> = ({ data, selected })
         max={1}
         step={0.01}
         value={val}
+        defaultValue={1.0}
         accentColor="var(--pbr-scalar)"
         onChange={setVal}
       />
