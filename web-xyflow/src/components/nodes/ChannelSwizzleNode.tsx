@@ -261,15 +261,20 @@ export const ChannelSwizzleNode: React.FC<NodeProps<any>> = ({ data, selected })
 
       <NodeDivider />
 
-      {/* Output Sockets */}
+      {/* Output Sockets with Dedicated Horizontal Section on RGBA */}
+      <NodeSocket
+        isSection
+        id="rgba"
+        type="source"
+        label="Swizzled RGBA"
+        color="#818cf8"
+        shape="diamond"
+        sectionTag="STREAM"
+      />
+
+      <NodeDivider />
+
       <NodeSocketGroup>
-        <NodeSocket
-          id="rgba"
-          type="source"
-          label="Swizzled RGBA"
-          color="#818cf8"
-          shape="diamond"
-        />
         <NodeSocket
           id="r"
           type="source"

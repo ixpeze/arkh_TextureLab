@@ -163,15 +163,20 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
 
       <NodeDivider />
 
-      {/* Output Sockets with Full-Width Horizontal Section Connections */}
+      {/* Output Sockets with Dedicated Horizontal Section on RGBA */}
+      <NodeSocket
+        isSection
+        id="rgba"
+        type="source"
+        label="RGBA Stream"
+        color="var(--pbr-packed)"
+        shape="diamond"
+        sectionTag="STREAM"
+      />
+
+      <NodeDivider />
+
       <NodeSocketGroup>
-        <NodeSocket
-          id="rgba"
-          type="source"
-          label="RGBA"
-          color="var(--pbr-packed)"
-          shape="diamond"
-        />
         <NodeSocket
           id="r"
           type="source"

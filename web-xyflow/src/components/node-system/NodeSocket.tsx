@@ -11,6 +11,8 @@ export interface NodeSocketProps {
   shape?: SocketShape;
   secondaryText?: string;
   fullWidth?: boolean;
+  isSection?: boolean;
+  sectionTag?: string;
   style?: React.CSSProperties;
 }
 
@@ -27,6 +29,8 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
   shape = 'circle',
   secondaryText,
   fullWidth = true,
+  isSection = false,
+  sectionTag,
   style = {},
 }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -65,24 +69,57 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
 
   return (
     <div
-      className="node-socket-row"
+      className={`node-socket-row ${isSection ? 'is-section-row' : ''}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onPointerDown={handlePointerDown}
       style={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: isInput ? 'flex-start' : 'flex-end',
-        height: 19,
+        justifyContent: isSection ? 'space-between' : isInput ? 'flex-start' : 'flex-end',
+        flexDirection: isInput ? 'row' : 'row-reverse',
+        height: isSection ? 22 : 19,
         position: 'relative',
-        margin: fullWidth ? '0 -7px' : '0',
-        paddingLeft: isInput ? 10 : 6,
-        paddingRight: isInput ? 6 : 10,
-        backgroundColor: isHovered ? `${color}18` : 'transparent',
-        borderLeft: isInput && isHovered ? `2px solid ${color}` : '2px solid transparent',
-        borderRight: !isInput && isHovered ? `2px solid ${color}` : '2px solid transparent',
-        borderRadius: 3,
-        transition: 'background-color 120ms ease, border-color 120ms ease',
+        margin: fullWidth ? (isSection ? '3px -7px' : '0 -7px') : '0',
+        paddingLeft: isInput ? 10 : 8,
+        paddingRight: isInput ? 8 : 10,
+        backgroundColor: isSection
+          ? isHovered
+            ? `${color}25`
+            : `${color}0e`
+          : isHovered
+          ? `${color}18`
+          : 'transparent',
+        border: isSection
+          ? isHovered
+            ? `1px solid ${color}`
+            : `1px solid ${color}35`
+          : 'none',
+        borderLeft: isInput
+          ? isSection
+            ? `3px solid ${color}`
+            : isHovered
+            ? `2px solid ${color}`
+            : '2px solid transparent'
+          : isSection
+          ? isHovered
+            ? `1px solid ${color}`
+            : `1px solid ${color}35`
+          : 'none',
+        borderRight: !isInput
+          ? isSection
+            ? `3px solid ${color}`
+            : isHovered
+            ? `2px solid ${color}`
+            : '2px solid transparent'
+          : isSection
+          ? isHovered
+            ? `1px solid ${color}`
+            : `1px solid ${color}35`
+          : 'none',
+        borderRadius: isSection ? 4 : 3,
+        boxShadow: isSection && isHovered ? `0 0 12px ${color}35` : 'none',
+        transition: 'background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease',
         cursor: 'crosshair',
         ...style,
       }}
@@ -100,13 +137,13 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
             left: -5,
             top: '50%',
             transform: shape === 'diamond' ? 'translateY(-50%) rotate(45deg)' : 'translateY(-50%)',
-            width: 10,
-            height: 10,
+            width: isSection ? 11 : 10,
+            height: isSection ? 11 : 10,
             backgroundColor: color,
             borderColor: '#0c0e14',
             borderWidth: 1.5,
             borderStyle: 'solid',
-            boxShadow: isHovered ? `0 0 10px ${color}` : `0 0 5px ${color}60`,
+            boxShadow: isHovered ? `0 0 12px ${color}` : `0 0 5px ${color}60`,
             cursor: 'crosshair',
             zIndex: 15,
             transition: 'transform 120ms ease, box-shadow 120ms ease',
@@ -129,8 +166,8 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
         {isInput && (
           <div
             style={{
-              width: 4,
-              height: 4,
+              width: isSection ? 5 : 4,
+              height: isSection ? 5 : 4,
               borderRadius: shape === 'circle' ? '50%' : 1,
               backgroundColor: isHovered ? '#ffffff' : color,
               flexShrink: 0,
@@ -141,9 +178,9 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
 
         <span
           style={{
-            fontSize: 9,
-            fontWeight: isHovered ? 600 : 500,
-            color: isHovered ? '#ffffff' : '#cbd5e1',
+            fontSize: isSection ? 9.5 : 9,
+            fontWeight: isSection ? 700 : isHovered ? 600 : 500,
+            color: isHovered ? '#ffffff' : isSection ? '#f8fafc' : '#cbd5e1',
             letterSpacing: '0.01em',
             whiteSpace: 'nowrap',
             transition: 'color 120ms ease',
@@ -171,8 +208,8 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
         {!isInput && (
           <div
             style={{
-              width: 4,
-              height: 4,
+              width: isSection ? 5 : 4,
+              height: isSection ? 5 : 4,
               borderRadius: shape === 'circle' ? '50%' : 1,
               backgroundColor: isHovered ? '#ffffff' : color,
               flexShrink: 0,
@@ -181,6 +218,30 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
           />
         )}
       </div>
+
+      {/* Optional Section Tag Badge for Composite Horizontal Sections */}
+      {sectionTag && (
+        <span
+          style={{
+            fontSize: 7,
+            fontWeight: 700,
+            fontFamily: "'Geist Mono', monospace",
+            color: isHovered ? '#ffffff' : color,
+            backgroundColor: isHovered ? color : `${color}20`,
+            border: `1px solid ${color}40`,
+            padding: '1px 4px',
+            borderRadius: 2,
+            letterSpacing: '0.04em',
+            lineHeight: 1,
+            flexShrink: 0,
+            transition: 'all 120ms ease',
+            pointerEvents: 'none',
+            zIndex: 2,
+          }}
+        >
+          {sectionTag}
+        </span>
+      )}
 
       {/* Source (Output) Handle: Physically anchored on the RIGHT border of the node card */}
       {!isInput && (
@@ -195,13 +256,13 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
             right: -5,
             top: '50%',
             transform: shape === 'diamond' ? 'translateY(-50%) rotate(45deg)' : 'translateY(-50%)',
-            width: 10,
-            height: 10,
+            width: isSection ? 11 : 10,
+            height: isSection ? 11 : 10,
             backgroundColor: color,
             borderColor: '#0c0e14',
             borderWidth: 1.5,
             borderStyle: 'solid',
-            boxShadow: isHovered ? `0 0 10px ${color}` : `0 0 5px ${color}60`,
+            boxShadow: isHovered ? `0 0 12px ${color}` : `0 0 5px ${color}60`,
             cursor: 'crosshair',
             zIndex: 15,
             transition: 'transform 120ms ease, box-shadow 120ms ease',

@@ -63,13 +63,15 @@ export const TextureOutputNode: React.FC<NodeProps<any>> = ({ data, selected }) 
       headerAction={headerBadges}
       width={176}
     >
-      {/* Target Input Socket with Full-Width Horizontal Section */}
+      {/* Target Input Socket with Dedicated Horizontal Section on RGBA */}
       <NodeSocket
+        isSection
         id="rgba"
         type="target"
-        label="RGBA (Packed)"
+        label="Packed RGBA Target"
         color="var(--pbr-packed)"
         shape="diamond"
+        sectionTag="PACKED"
       />
 
       <NodeDivider />

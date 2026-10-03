@@ -31,13 +31,15 @@ export const ChannelSplitterNode: React.FC<NodeProps<any>> = ({ data, selected }
       }
       width={172}
     >
-      {/* Composite Input on Left (Full-Width Section) */}
+      {/* Composite Input on Left with Dedicated Horizontal Section */}
       <NodeSocket
+        isSection
         id="rgba"
         type="target"
-        label="RGBA Input"
+        label="RGBA Input Stream"
         color="var(--pbr-packed)"
         shape="diamond"
+        sectionTag="STREAM"
       />
 
       <NodeDivider />

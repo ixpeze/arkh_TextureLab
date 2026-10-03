@@ -2,7 +2,6 @@ import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react'
 import {
   ReactFlow,
   Background,
-  Controls,
   useNodesState,
   useEdgesState,
   addEdge,
@@ -10,6 +9,7 @@ import {
   PanOnScrollMode,
   ReactFlowProvider,
   useReactFlow,
+  useViewport,
 } from '@xyflow/react';
 import type { Connection, Edge, Node, NodeTypes, EdgeTypes } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -156,7 +156,7 @@ function Workbench() {
 
   // Live in-memory buffers
   const [buffers, setBuffers] = useState<Record<string, TextureBuffer>>({});
-  const [, setStatusMessage] = useState('Ready | Tactical DCC Workstation online');
+  const [statusMessage, setStatusMessage] = useState('Ready | Tactical DCC Workstation online');
 
   // History stack for Undo/Redo
   const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
@@ -165,6 +165,7 @@ function Workbench() {
   const [canRedo, setCanRedo] = useState(false);
 
   const { screenToFlowPosition, fitView } = useReactFlow();
+  const { zoom } = useViewport();
 
   const nodeTypes: NodeTypes = useMemo(
     () => ({
@@ -741,24 +742,6 @@ function Workbench() {
     [screenToFlowPosition, setNodes, spawnNode]
   );
 
-  // Update node data (sliders, inputs, renames) from Details Panel
-  const handleUpdateNodeData = useCallback((nodeId: string, patch: any) => {
-    setNodes((nds) =>
-      nds.map((n) => {
-        if (n.id === nodeId) {
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              ...patch,
-            },
-          };
-        }
-        return n;
-      })
-    );
-  }, [setNodes]);
-
   // Asset name change
   const handleAssetChange = useCallback((newAsset: string) => {
     setPrimaryAsset(newAsset);
@@ -981,8 +964,87 @@ function Workbench() {
           proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="rgba(255, 255, 255, 0.08)" />
-          <Controls position="bottom-left" showInteractive={false} />
         </ReactFlow>
+
+        {/* Minimalist Tactical Canvas Status Pill (DCC Workstation Telemetry) */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 14,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 15,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            padding: '4px 10px',
+            backgroundColor: 'rgba(13, 16, 23, 0.88)',
+            backdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: 20,
+            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
+            fontSize: 9.5,
+            fontFamily: "'Geist Mono', monospace",
+            color: '#94a3b8',
+            userSelect: 'none',
+            pointerEvents: 'auto',
+          }}
+        >
+          {/* Zoom Level & Fit Button */}
+          <button
+            type="button"
+            onClick={() => fitView({ duration: 250 })}
+            title="Click to Reset View (Fit Extents / F)"
+            style={{
+              background: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              color: '#38bdf8',
+              borderRadius: 10,
+              padding: '1px 6px',
+              fontSize: 8.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 120ms ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.1)';
+            }}
+          >
+            <Maximize2 size={9} />
+            <span>{Math.round(zoom * 100)}%</span>
+          </button>
+
+          <span style={{ color: 'rgba(255, 255, 255, 0.15)' }}>|</span>
+
+          {/* Node & Wire Telemetry */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9 }}>
+            <span style={{ color: '#f8fafc', fontWeight: 600 }}>{nodes.length} Nodes</span>
+            <span style={{ color: '#475569' }}>•</span>
+            <span style={{ color: '#cbd5e1' }}>{edges.length} Wires</span>
+          </div>
+
+          <span style={{ color: 'rgba(255, 255, 255, 0.15)' }}>|</span>
+
+          {/* Tactical Engine Status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5 }}>
+            <div
+              style={{
+                width: 5,
+                height: 5,
+                borderRadius: '50%',
+                backgroundColor: '#22c55e',
+                boxShadow: '0 0 6px #22c55e',
+              }}
+            />
+            <span style={{ color: '#94a3b8', letterSpacing: '0.02em' }}>{statusMessage}</span>
+          </div>
+        </div>
 
         {/* Floating Left Panel: Categorized Node Library */}
         <FloatingNodeLibrary onSpawnNode={(typeKey) => spawnNode(typeKey)} />
@@ -993,7 +1055,6 @@ function Workbench() {
           primaryAsset={primaryAsset}
           onAssetChange={handleAssetChange}
           activeBuffer={activeBuffer}
-          onUpdateNodeData={handleUpdateNodeData}
           onExportTarget={handleExport}
         />
 

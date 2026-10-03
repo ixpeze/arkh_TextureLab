@@ -231,13 +231,15 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
 
       <NodeDivider />
 
-      {/* Output on Right */}
+      {/* Output on Right with Dedicated Horizontal Section on RGBA */}
       <NodeSocket
+        isSection
         id="rgba"
         type="source"
-        label="Packed Buffer"
+        label="Packed RGBA Buffer"
         color="var(--pbr-packed)"
         shape="diamond"
+        sectionTag="PACKED"
       />
     </NodeCard>
   );

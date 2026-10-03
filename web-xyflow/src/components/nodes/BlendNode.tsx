@@ -99,13 +99,15 @@ export const BlendNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
 
       <NodeDivider />
 
-      {/* Output Result Socket */}
+      {/* Output Result Socket with Dedicated Horizontal Section */}
       <NodeSocket
+        isSection
         id="output"
         type="source"
-        label="Blended Result"
+        label="Blended RGBA"
         color="var(--pbr-packed)"
         shape="diamond"
+        sectionTag="RESULT"
       />
     </NodeCard>
   );
