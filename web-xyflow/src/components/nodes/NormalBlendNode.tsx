@@ -5,6 +5,8 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeSlider, NodeBadge, NodeDivider } from '../node-system/NodeControls';
 
+import { useNodeBuffers } from '../../context/NodeBufferContext';
+
 export interface NormalBlendNodeData {
   title?: string;
   detailStrength?: number;
@@ -13,14 +15,16 @@ export interface NormalBlendNodeData {
   onChange?: (params: { detailStrength: number }) => void;
 }
 
-export const NormalBlendNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+export const NormalBlendNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = (data as NormalBlendNodeData) || {};
+  const { onUpdateNodeData } = useNodeBuffers();
   const [strength, setStrength] = useState<number>(d.detailStrength ?? 1.0);
   const isBypassed = !!d.isBypassed;
 
   const handleStrengthChange = (val: number) => {
     setStrength(val);
     d.onChange?.({ detailStrength: val });
+    onUpdateNodeData(id, { detailStrength: val });
   };
 
   return (

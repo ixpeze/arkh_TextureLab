@@ -5,8 +5,16 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket } from '../node-system/NodeSocket';
 import { NodeSlider, NodeBadge, NodeDivider } from '../node-system/NodeControls';
 
-export const ConstantScalarNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+import { useNodeBuffers } from '../../context/NodeBufferContext';
+
+export const ConstantScalarNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
+  const { onUpdateNodeData } = useNodeBuffers();
   const [val, setVal] = useState<number>(data?.value ?? 1.0);
+
+  const handleChange = (newVal: number) => {
+    setVal(newVal);
+    onUpdateNodeData(id, { value: newVal });
+  };
 
   return (
     <NodeCard
@@ -25,7 +33,7 @@ export const ConstantScalarNode: React.FC<NodeProps<any>> = ({ data, selected })
         value={val}
         defaultValue={1.0}
         accentColor="var(--pbr-scalar)"
-        onChange={setVal}
+        onChange={handleChange}
       />
 
       <NodeDivider />

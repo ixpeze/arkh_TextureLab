@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import type { NodeProps } from '@xyflow/react';
-import { FoldHorizontal, Settings2 } from 'lucide-react';
+import { type NodeProps, useNodeConnections } from '@xyflow/react';
+import { FoldHorizontal, Settings2, Sparkles } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
+import { useNodeBuffers } from '../../context/NodeBufferContext';
 
 export interface ChannelCombinerData {
   title?: string;
@@ -17,10 +18,25 @@ export interface ChannelCombinerData {
   onChange?: (data: { fallbacks: { r: number; g: number; b: number; a: number } }) => void;
 }
 
-export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = (data as ChannelCombinerData) || {};
   const isBypassed = !!d.isBypassed;
   const [showFallbacks, setShowFallbacks] = useState(false);
+  const { evaluatedBuffers, onUpdateNodeData } = useNodeBuffers();
+
+  const myBuffer = evaluatedBuffers[id];
+  const previewUrl = myBuffer?.dataUrl;
+
+  // Track live connections for each channel socket
+  const rConns = useNodeConnections({ handleType: 'target', handleId: 'r' });
+  const gConns = useNodeConnections({ handleType: 'target', handleId: 'g' });
+  const bConns = useNodeConnections({ handleType: 'target', handleId: 'b' });
+  const aConns = useNodeConnections({ handleType: 'target', handleId: 'a' });
+
+  const isRConnected = rConns.length > 0;
+  const isGConnected = gConns.length > 0;
+  const isBConnected = bConns.length > 0;
+  const isAConnected = aConns.length > 0;
 
   const [fallbacks, setFallbacks] = useState({
     r: d.fallbacks?.r ?? 255,
@@ -33,6 +49,7 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
     const updated = { ...fallbacks, [ch]: val };
     setFallbacks(updated);
     d.onChange?.({ fallbacks: updated });
+    onUpdateNodeData(id, { fallbacks: updated });
   };
 
   return (
@@ -75,30 +92,30 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
       isBypassed={isBypassed}
       width={176}
     >
-      {/* 4 Inputs on Left */}
+      {/* 4 Inputs on Left with Live Dynamic Connection Badging */}
       <NodeSocketGroup>
         <NodeSocket
           id="r"
           type="target"
-          label={showFallbacks ? `R: AO (${fallbacks.r})` : 'R: AO'}
+          label={isRConnected ? 'R: AO (Active)' : `R: AO [${fallbacks.r}]`}
           color="var(--pbr-ao)"
         />
         <NodeSocket
           id="g"
           type="target"
-          label={showFallbacks ? `G: Rough (${fallbacks.g})` : 'G: Rough'}
+          label={isGConnected ? 'G: Rough (Active)' : `G: Rough [${fallbacks.g}]`}
           color="var(--pbr-rough)"
         />
         <NodeSocket
           id="b"
           type="target"
-          label={showFallbacks ? `B: Metal (${fallbacks.b})` : 'B: Metal'}
+          label={isBConnected ? 'B: Metal (Active)' : `B: Metal [${fallbacks.b}]`}
           color="var(--pbr-metal)"
         />
         <NodeSocket
           id="a"
           type="target"
-          label={showFallbacks ? `A: Height (${fallbacks.a})` : 'A: Height'}
+          label={isAConnected ? 'A: Height (Active)' : `A: Height [${fallbacks.a}]`}
           color="var(--pbr-height)"
         />
       </NodeSocketGroup>
@@ -224,6 +241,57 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
                   }}
                 />
               </label>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Live Packed ORMH Mini Preview Thumbnail */}
+      {previewUrl && (
+        <>
+          <NodeDivider />
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 6px',
+              backgroundColor: 'rgba(10, 12, 18, 0.75)',
+              borderRadius: 4,
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+            }}
+          >
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 3,
+                border: '1px solid rgba(168, 85, 247, 0.35)',
+                overflow: 'hidden',
+                backgroundColor: '#0a0c12',
+                flexShrink: 0,
+                boxShadow: 'inset 0 0 6px rgba(0, 0, 0, 0.6)',
+              }}
+            >
+              <img
+                src={previewUrl}
+                alt="Packed Preview"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <Sparkles size={8} color="var(--pbr-packed)" />
+                <span style={{ fontSize: 8, color: '#f8fafc', fontWeight: 700, letterSpacing: '0.04em' }}>
+                  LIVE PACKED ORMH
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 3, fontSize: 7, fontFamily: "'Geist Mono', monospace" }}>
+                <span style={{ color: isRConnected ? 'var(--pbr-ao)' : '#64748b' }}>R</span>
+                <span style={{ color: isGConnected ? 'var(--pbr-rough)' : '#64748b' }}>G</span>
+                <span style={{ color: isBConnected ? 'var(--pbr-metal)' : '#64748b' }}>B</span>
+                <span style={{ color: isAConnected ? 'var(--pbr-height)' : '#64748b' }}>A</span>
+              </div>
             </div>
           </div>
         </>

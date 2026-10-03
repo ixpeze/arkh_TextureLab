@@ -5,8 +5,16 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 
-export const ConstantColorNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+import { useNodeBuffers } from '../../context/NodeBufferContext';
+
+export const ConstantColorNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
+  const { onUpdateNodeData } = useNodeBuffers();
   const [color, setColor] = useState<string>(data?.color ?? '#f43f5e');
+
+  const handleColorChange = (newColor: string) => {
+    setColor(newColor);
+    onUpdateNodeData(id, { color: newColor });
+  };
 
   return (
     <NodeCard
@@ -42,7 +50,7 @@ export const ConstantColorNode: React.FC<NodeProps<any>> = ({ data, selected }) 
           <input
             type="color"
             value={color}
-            onChange={(e) => setColor(e.target.value)}
+            onChange={(e) => handleColorChange(e.target.value)}
             style={{
               opacity: 0,
               width: '100%',
@@ -55,7 +63,7 @@ export const ConstantColorNode: React.FC<NodeProps<any>> = ({ data, selected }) 
         <input
           type="text"
           value={color.toUpperCase()}
-          onChange={(e) => setColor(e.target.value)}
+          onChange={(e) => handleColorChange(e.target.value)}
           style={{
             flex: 1,
             background: 'rgba(12, 14, 20, 0.8)',

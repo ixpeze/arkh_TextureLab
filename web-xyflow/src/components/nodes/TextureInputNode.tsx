@@ -5,6 +5,7 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 import { PixelEngine } from '../../engine/pixelEngine';
+import { useNodeBuffers } from '../../context/NodeBufferContext';
 
 export interface TextureInputData {
   title: string;
@@ -25,8 +26,9 @@ export interface TextureInputData {
   };
 }
 
-export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = data as TextureInputData;
+  const { setSourceBuffer, onUpdateNodeData } = useNodeBuffers();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [colorSpace, setColorSpace] = useState<'sRGB' | 'Linear'>(d.colorSpace || 'Linear');
   const [preview, setPreview] = useState(d.previewUrl);
@@ -36,6 +38,7 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
     const nextCs = colorSpace === 'Linear' ? 'sRGB' : 'Linear';
     setColorSpace(nextCs);
     d.onChangeColorSpace?.(nextCs);
+    onUpdateNodeData(id, { colorSpace: nextCs });
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -46,6 +49,8 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
       const buffer = await PixelEngine.loadFromFile(file);
       setPreview(buffer.dataUrl || '');
       d.onLoadBuffer?.(buffer);
+      setSourceBuffer(id, buffer);
+      onUpdateNodeData(id, { previewUrl: buffer.dataUrl || '' });
     } catch (err) {
       console.error('Failed to load local file into TextureInputNode:', err);
     }

@@ -5,6 +5,7 @@ import {
   useNodesState,
   useEdgesState,
   addEdge,
+  reconnectEdge,
   BackgroundVariant,
   PanOnScrollMode,
   ReactFlowProvider,
@@ -44,9 +45,12 @@ import { ShortcutsModal } from './components/ShortcutsModal';
 
 import { PixelEngine, type TextureBuffer } from './engine/pixelEngine';
 import { LexicalNormalizer } from './engine/normalizer';
+import { NodeBufferContext } from './context/NodeBufferContext';
+import { GraphEvaluator } from './engine/graphEvaluator';
 
 const BENCHMARK_MAPS = [
   {
+    nodeId: 'input_ao',
     role: 'Ambient Occlusion',
     roleKey: 'ao',
     url: '/sample_textures/anthracite smooth cast concrete ambientocclusion 4k.png',
@@ -54,6 +58,7 @@ const BENCHMARK_MAPS = [
     color: 'var(--pbr-ao)',
   },
   {
+    nodeId: 'input_rough',
     role: 'Roughness',
     roleKey: 'rough',
     url: '/sample_textures/anthracite smooth cast concrete roughness 4k.png',
@@ -61,6 +66,7 @@ const BENCHMARK_MAPS = [
     color: 'var(--pbr-rough)',
   },
   {
+    nodeId: 'input_metal',
     role: 'Metallic',
     roleKey: 'metal',
     url: '/sample_textures/anthracite smooth cast concrete metallic 4k.png',
@@ -68,6 +74,7 @@ const BENCHMARK_MAPS = [
     color: 'var(--pbr-metal)',
   },
   {
+    nodeId: 'input_height',
     role: 'Height',
     roleKey: 'height',
     url: '/sample_textures/anthracite smooth cast concrete height 4k.png',
@@ -120,7 +127,9 @@ const initialNodes: Node[] = [
     id: 'combiner_ormh',
     type: 'channelCombiner',
     position: { x: 30, y: 230 },
-    data: {},
+    data: {
+      fallbacks: { r: 255, g: 128, b: 0, a: 255 },
+    },
   },
   {
     id: 'output_ormh',
@@ -154,8 +163,8 @@ function Workbench() {
   // Mouse cursor tracking on canvas
   const canvasMousePosRef = useRef<{ x: number; y: number } | null>(null);
 
-  // Live in-memory buffers
-  const [buffers, setBuffers] = useState<Record<string, TextureBuffer>>({});
+  // Live in-memory source buffers (uploaded or benchmark maps)
+  const [sourceBuffers, setSourceBuffers] = useState<Record<string, TextureBuffer>>({});
   const [statusMessage, setStatusMessage] = useState('Ready | Tactical DCC Workstation online');
 
   // History stack for Undo/Redo
@@ -166,6 +175,34 @@ function Workbench() {
 
   const { screenToFlowPosition, fitView } = useReactFlow();
   const { zoom } = useViewport();
+
+  // Bi-directional node data updater for node card controls
+  const handleUpdateNodeData = useCallback((nodeId: string, patch: any) => {
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.id === nodeId) {
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              ...patch,
+            },
+          };
+        }
+        return n;
+      })
+    );
+  }, [setNodes]);
+
+  // Source buffer updater for texture uploads
+  const setSourceBuffer = useCallback((nodeId: string, buffer: TextureBuffer) => {
+    setSourceBuffers((prev) => ({ ...prev, [nodeId]: buffer }));
+  }, []);
+
+  // Topologically evaluate the entire graph live in real-time
+  const evaluatedBuffers = useMemo(() => {
+    return GraphEvaluator.evaluate(nodes, edges, sourceBuffers);
+  }, [nodes, edges, sourceBuffers]);
 
   const nodeTypes: NodeTypes = useMemo(
     () => ({
@@ -265,19 +302,13 @@ function Workbench() {
     return nodes.find((n) => n.id === activeNodeId) || null;
   }, [nodes, activeNodeId]);
 
-  // Derive active buffer directly via useMemo (zero React 19 setState cascading renders!)
+  // Derive active buffer directly from evaluated graph or source buffer (strictly dynamic!)
   const activeBuffer = useMemo<TextureBuffer | null>(() => {
     if (!selectedNode) return null;
-    if (buffers[selectedNode.id]) {
-      return buffers[selectedNode.id];
-    }
-    if (buffers['packed_ormh'] && (selectedNode.type === 'channelCombiner' || selectedNode.type === 'textureOutput')) {
-      return buffers['packed_ormh'];
-    }
-    return null;
-  }, [selectedNode, buffers]);
+    return evaluatedBuffers[selectedNode.id] || sourceBuffers[selectedNode.id] || null;
+  }, [selectedNode, evaluatedBuffers, sourceBuffers]);
 
-  // Load benchmark textures and compute initial merged buffer
+  // Load benchmark textures and initialize live graph
   const loadBenchmarkTextures = useCallback(async () => {
     setStatusMessage('Loading Anthracite Concrete 4K maps...');
     try {
@@ -285,24 +316,14 @@ function Workbench() {
       for (const m of BENCHMARK_MAPS) {
         try {
           const buf = await PixelEngine.loadFromUrl(m.url);
-          loaded[m.roleKey] = buf;
+          loaded[m.nodeId] = buf;
         } catch {
-          loaded[m.roleKey] = PixelEngine.createSolid(512, 512, m.socket === 'r' ? 255 : 128, 128, 0, 255);
+          loaded[m.nodeId] = PixelEngine.createSolid(512, 512, m.socket === 'r' ? 255 : 128, 128, 0, 255);
         }
       }
 
-      // Merge into ORMH buffer
-      const packed = PixelEngine.combineChannels(
-        loaded['ao'],
-        loaded['rough'],
-        loaded['metal'],
-        loaded['height'],
-        1024
-      );
-
-      loaded['packed_ormh'] = packed;
-      setBuffers(loaded);
-      setStatusMessage('Loaded 4K benchmark maps & computed ORMH buffer');
+      setSourceBuffers(loaded);
+      setStatusMessage('Loaded 4K benchmark maps & initialized live graph');
     } catch (err) {
       console.error(err);
       setStatusMessage('Benchmark ready');
@@ -335,8 +356,39 @@ function Workbench() {
           eds
         )
       );
+      setStatusMessage(`Connected wire from ${params.source} to ${params.target}`);
     },
     [getEdgeConfig, pushSnapshot, setEdges]
+  );
+
+  // Wire Reconnection & Drag-to-Disconnect handlers
+  const edgeReconnectSuccessful = useRef(true);
+
+  const onReconnectStart = useCallback(() => {
+    edgeReconnectSuccessful.current = false;
+  }, []);
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      edgeReconnectSuccessful.current = true;
+      pushSnapshot();
+      const cfg = getEdgeConfig(newConnection.sourceHandle, newConnection.targetHandle);
+      setEdges((els) => reconnectEdge(oldEdge, { ...newConnection, ...cfg }, els));
+      setStatusMessage('Reconnected wire');
+    },
+    [getEdgeConfig, pushSnapshot, setEdges]
+  );
+
+  const onReconnectEnd = useCallback(
+    (_: MouseEvent | TouchEvent, edge: Edge) => {
+      if (!edgeReconnectSuccessful.current) {
+        pushSnapshot();
+        setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+        setStatusMessage(`Disconnected wire from ${edge.target}`);
+      }
+      edgeReconnectSuccessful.current = true;
+    },
+    [pushSnapshot, setEdges]
   );
 
   // UE5 Alt + Click wire cutting
@@ -345,6 +397,7 @@ function Workbench() {
       if (e.altKey) {
         pushSnapshot();
         setEdges((eds) => eds.filter((ed) => ed.id !== edge.id));
+        setStatusMessage(`Cut wire ${edge.id} (Alt+Click)`);
       }
     },
     [pushSnapshot, setEdges]
@@ -732,7 +785,7 @@ function Workbench() {
 
         setNodes((nds) => [...nds, newNode]);
         if (buf) {
-          setBuffers((prev) => ({ ...prev, [nodeId]: buf! }));
+          setSourceBuffers((prev) => ({ ...prev, [nodeId]: buf! }));
           setActiveNodeId(newNode.id);
         }
       }
@@ -928,155 +981,169 @@ function Workbench() {
       </header>
 
       {/* Main 100vw x 100vh Canvas Area with Floating HUD Panels */}
-      <div
-        style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
-        onMouseMove={(e) => {
-          canvasMousePosRef.current = { x: e.clientX, y: e.clientY };
+      <NodeBufferContext.Provider
+        value={{
+          evaluatedBuffers,
+          sourceBuffers,
+          setSourceBuffer,
+          onUpdateNodeData: handleUpdateNodeData,
         }}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
       >
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          onNodesChange={onNodesChange}
-          onEdgesChange={onEdgesChange}
-          onConnect={onConnect}
-          onEdgeClick={onEdgeClick}
-          onNodeClick={(_, node) => {
-            setActiveNodeId(node.id);
-          }}
-          onPaneClick={() => {
-            setActiveNodeId(null);
-            setPalettePos(null);
-          }}
-          onPaneContextMenu={(e) => {
-            e.preventDefault();
-            setPalettePos({ x: e.clientX, y: e.clientY });
-          }}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          panOnScrollMode={PanOnScrollMode.Free}
-          panOnDrag={[1, 2]} // Middle click or Right click pan (UE5)
-          selectionOnDrag={true}
-          connectionRadius={40}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="rgba(255, 255, 255, 0.08)" />
-        </ReactFlow>
-
-        {/* Minimalist Tactical Canvas Status Pill (DCC Workstation Telemetry) */}
         <div
-          style={{
-            position: 'absolute',
-            bottom: 14,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            zIndex: 15,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '4px 10px',
-            backgroundColor: 'rgba(13, 16, 23, 0.88)',
-            backdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: 20,
-            boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
-            fontSize: 9.5,
-            fontFamily: "'Geist Mono', monospace",
-            color: '#94a3b8',
-            userSelect: 'none',
-            pointerEvents: 'auto',
+          style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
+          onMouseMove={(e) => {
+            canvasMousePosRef.current = { x: e.clientX, y: e.clientY };
           }}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
         >
-          {/* Zoom Level & Fit Button */}
-          <button
-            type="button"
-            onClick={() => fitView({ duration: 250 })}
-            title="Click to Reset View (Fit Extents / F)"
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onReconnectStart={onReconnectStart}
+            onReconnect={onReconnect}
+            onReconnectEnd={onReconnectEnd}
+            onEdgeClick={onEdgeClick}
+            onNodeClick={(_, node) => {
+              setActiveNodeId(node.id);
+            }}
+            onPaneClick={() => {
+              setActiveNodeId(null);
+              setPalettePos(null);
+            }}
+            onPaneContextMenu={(e) => {
+              e.preventDefault();
+              setPalettePos({ x: e.clientX, y: e.clientY });
+            }}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            panOnScrollMode={PanOnScrollMode.Free}
+            panOnDrag={[1, 2]} // Middle click or Right click pan (UE5)
+            selectionOnDrag={true}
+            connectionRadius={40}
+            proOptions={{ hideAttribution: true }}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="rgba(255, 255, 255, 0.08)" />
+          </ReactFlow>
+
+          {/* Minimalist Tactical Canvas Status Pill (DCC Workstation Telemetry) */}
+          <div
             style={{
-              background: 'rgba(56, 189, 248, 0.1)',
-              border: '1px solid rgba(56, 189, 248, 0.25)',
-              color: '#38bdf8',
-              borderRadius: 10,
-              padding: '1px 6px',
-              fontSize: 8.5,
-              fontWeight: 700,
-              cursor: 'pointer',
+              position: 'absolute',
+              bottom: 14,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              zIndex: 15,
               display: 'flex',
               alignItems: 'center',
-              gap: 4,
-              transition: 'all 120ms ease',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.2)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.1)';
+              gap: 8,
+              padding: '4px 10px',
+              backgroundColor: 'rgba(13, 16, 23, 0.88)',
+              backdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: 20,
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.6)',
+              fontSize: 9.5,
+              fontFamily: "'Geist Mono', monospace",
+              color: '#94a3b8',
+              userSelect: 'none',
+              pointerEvents: 'auto',
             }}
           >
-            <Maximize2 size={9} />
-            <span>{Math.round(zoom * 100)}%</span>
-          </button>
-
-          <span style={{ color: 'rgba(255, 255, 255, 0.15)' }}>|</span>
-
-          {/* Node & Wire Telemetry */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9 }}>
-            <span style={{ color: '#f8fafc', fontWeight: 600 }}>{nodes.length} Nodes</span>
-            <span style={{ color: '#475569' }}>•</span>
-            <span style={{ color: '#cbd5e1' }}>{edges.length} Wires</span>
-          </div>
-
-          <span style={{ color: 'rgba(255, 255, 255, 0.15)' }}>|</span>
-
-          {/* Tactical Engine Status */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5 }}>
-            <div
+            {/* Zoom Level & Fit Button */}
+            <button
+              type="button"
+              onClick={() => fitView({ duration: 250 })}
+              title="Click to Reset View (Fit Extents / F)"
               style={{
-                width: 5,
-                height: 5,
-                borderRadius: '50%',
-                backgroundColor: '#22c55e',
-                boxShadow: '0 0 6px #22c55e',
+                background: 'rgba(56, 189, 248, 0.1)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                color: '#38bdf8',
+                borderRadius: 10,
+                padding: '1px 6px',
+                fontSize: 8.5,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                transition: 'all 120ms ease',
               }}
-            />
-            <span style={{ color: '#94a3b8', letterSpacing: '0.02em' }}>{statusMessage}</span>
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.1)';
+              }}
+            >
+              <Maximize2 size={9} />
+              <span>{Math.round(zoom * 100)}%</span>
+            </button>
+
+            <span style={{ color: 'rgba(255, 255, 255, 0.15)' }}>|</span>
+
+            {/* Node & Wire Telemetry */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 9 }}>
+              <span style={{ color: '#f8fafc', fontWeight: 600 }}>{nodes.length} Nodes</span>
+              <span style={{ color: '#475569' }}>•</span>
+              <span style={{ color: '#cbd5e1' }}>{edges.length} Wires</span>
+            </div>
+
+            <span style={{ color: 'rgba(255, 255, 255, 0.15)' }}>|</span>
+
+            {/* Tactical Engine Status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 8.5 }}>
+              <div
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: '50%',
+                  backgroundColor: '#22c55e',
+                  boxShadow: '0 0 6px #22c55e',
+                }}
+              />
+              <span style={{ color: '#94a3b8', letterSpacing: '0.02em' }}>{statusMessage}</span>
+            </div>
           </div>
-        </div>
 
-        {/* Floating Left Panel: Categorized Node Library */}
-        <FloatingNodeLibrary onSpawnNode={(typeKey) => spawnNode(typeKey)} />
+          {/* Floating Left Panel: Categorized Node Library */}
+          <FloatingNodeLibrary onSpawnNode={(typeKey) => spawnNode(typeKey)} />
 
-        {/* Floating Right Panel: Node Details & Viewport */}
-        <FloatingDetailsPanel
-          selectedNode={selectedNode}
-          primaryAsset={primaryAsset}
-          onAssetChange={handleAssetChange}
-          activeBuffer={activeBuffer}
-          onExportTarget={handleExport}
-        />
-
-        {/* Searchable Spawn Palette on Tab or Right-Click */}
-        {palettePos && (
-          <SpawnPalette
-            x={palettePos.x}
-            y={palettePos.y}
-            onSelectNode={(typeKey) => {
-              const pos = screenToFlowPosition({ x: palettePos.x, y: palettePos.y });
-              spawnNode(typeKey, { x: pos.x - 86, y: pos.y - 12 });
-            }}
-            onClose={() => setPalettePos(null)}
+          {/* Floating Right Panel: Node Details & Viewport */}
+          <FloatingDetailsPanel
+            selectedNode={selectedNode}
+            primaryAsset={primaryAsset}
+            onAssetChange={handleAssetChange}
+            activeBuffer={activeBuffer}
+            edges={edges}
+            onUpdateNodeData={handleUpdateNodeData}
+            onExportTarget={handleExport}
           />
-        )}
 
-        {/* Keyboard Shortcuts Cheatsheet Modal */}
-        <ShortcutsModal
-          isOpen={isShortcutsOpen}
-          onClose={() => setIsShortcutsOpen(false)}
-        />
-      </div>
+          {/* Searchable Spawn Palette on Tab or Right-Click */}
+          {palettePos && (
+            <SpawnPalette
+              x={palettePos.x}
+              y={palettePos.y}
+              onSelectNode={(typeKey) => {
+                const pos = screenToFlowPosition({ x: palettePos.x, y: palettePos.y });
+                spawnNode(typeKey, { x: pos.x - 86, y: pos.y - 12 });
+              }}
+              onClose={() => setPalettePos(null)}
+            />
+          )}
+
+          {/* Keyboard Shortcuts Cheatsheet Modal */}
+          <ShortcutsModal
+            isOpen={isShortcutsOpen}
+            onClose={() => setIsShortcutsOpen(false)}
+          />
+        </div>
+      </NodeBufferContext.Provider>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeDualSocket } from '../node-system/NodeSocket';
 import { NodeSlider, NodeBadge, NodeDivider } from '../node-system/NodeControls';
 
+import { useNodeBuffers } from '../../context/NodeBufferContext';
+
 export interface LevelsNodeData {
   title?: string;
   blackPoint?: number;
@@ -23,8 +25,9 @@ export interface LevelsNodeData {
   }) => void;
 }
 
-export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+export const LevelsNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = (data as LevelsNodeData) || {};
+  const { onUpdateNodeData } = useNodeBuffers();
   const [black, setBlack] = useState(d.blackPoint ?? 0);
   const [gamma, setGamma] = useState(d.gamma ?? 1.0);
   const [white, setWhite] = useState(d.whitePoint ?? 255);
@@ -39,13 +42,15 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
     newOutBlack = outBlack,
     newOutWhite = outWhite
   ) => {
-    d.onChange?.({
+    const patch = {
       blackPoint: newBlack,
       gamma: newGamma,
       whitePoint: newWhite,
       outBlack: newOutBlack,
       outWhite: newOutWhite,
-    });
+    };
+    d.onChange?.(patch);
+    onUpdateNodeData(id, patch);
   };
 
   const handleBlack = (val: number) => {

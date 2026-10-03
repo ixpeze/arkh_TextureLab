@@ -5,6 +5,8 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 
+import { useNodeBuffers } from '../../context/NodeBufferContext';
+
 export interface ChannelSwizzleData {
   title?: string;
   rSrc?: string;
@@ -29,8 +31,9 @@ const CHANNEL_OPTIONS = [
   { label: '1 (White)', value: '1' },
 ];
 
-export const ChannelSwizzleNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+export const ChannelSwizzleNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = (data as ChannelSwizzleData) || {};
+  const { onUpdateNodeData } = useNodeBuffers();
   const [rSrc, setRSrc] = useState(d.rSrc || 'r');
   const [gSrc, setGSrc] = useState(d.gSrc || 'g');
   const [bSrc, setBSrc] = useState(d.bSrc || 'b');
@@ -42,7 +45,9 @@ export const ChannelSwizzleNode: React.FC<NodeProps<any>> = ({ data, selected })
     setGSrc(newG);
     setBSrc(newB);
     setASrc(newA);
-    d.onChange?.({ rSrc: newR, gSrc: newG, bSrc: newB, aSrc: newA });
+    const patch = { rSrc: newR, gSrc: newG, bSrc: newB, aSrc: newA };
+    d.onChange?.(patch);
+    onUpdateNodeData(id, patch);
   };
 
   const applyPreset = (preset: 'identity' | 'inv_g' | 'mono_r' | 'alpha_all') => {

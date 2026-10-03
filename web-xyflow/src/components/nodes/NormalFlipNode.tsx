@@ -5,6 +5,8 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeDualSocket } from '../node-system/NodeSocket';
 import { NodeSlider, NodeBadge, NodeDivider } from '../node-system/NodeControls';
 
+import { useNodeBuffers } from '../../context/NodeBufferContext';
+
 export interface NormalFlipNodeData {
   title?: string;
   mode?: 'dx_to_gl' | 'gl_to_dx';
@@ -14,8 +16,9 @@ export interface NormalFlipNodeData {
   onChange?: (params: { mode: 'dx_to_gl' | 'gl_to_dx'; strength: number }) => void;
 }
 
-export const NormalFlipNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+export const NormalFlipNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = (data as NormalFlipNodeData) || {};
+  const { onUpdateNodeData } = useNodeBuffers();
   const [mode, setMode] = useState<'dx_to_gl' | 'gl_to_dx'>(d.mode || 'dx_to_gl');
   const [strength, setStrength] = useState<number>(d.strength ?? 1.0);
   const isBypassed = !!d.isBypassed;
@@ -24,11 +27,13 @@ export const NormalFlipNode: React.FC<NodeProps<any>> = ({ data, selected }) => 
     const nextMode = mode === 'dx_to_gl' ? 'gl_to_dx' : 'dx_to_gl';
     setMode(nextMode);
     d.onChange?.({ mode: nextMode, strength });
+    onUpdateNodeData(id, { mode: nextMode, strength });
   };
 
   const handleStrength = (val: number) => {
     setStrength(val);
     d.onChange?.({ mode, strength: val });
+    onUpdateNodeData(id, { mode, strength: val });
   };
 
   return (

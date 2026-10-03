@@ -9,13 +9,16 @@ import {
   Maximize,
   Minimize,
 } from 'lucide-react';
+import type { Edge } from '@xyflow/react';
 import { PixelEngine, type TextureBuffer, type HistogramData } from '../engine/pixelEngine';
+import { GraphEvaluator } from '../engine/graphEvaluator';
 
 export interface FloatingDetailsPanelProps {
   selectedNode: any | null;
   primaryAsset: string;
   onAssetChange: (asset: string) => void;
   activeBuffer?: TextureBuffer | null;
+  edges?: Edge[];
   onUpdateNodeData?: (nodeId: string, patch: any) => void;
   onExportTarget?: (filename: string) => void;
 }
@@ -25,6 +28,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   primaryAsset,
   onAssetChange,
   activeBuffer,
+  edges,
   onUpdateNodeData: _onUpdateNodeData,
   onExportTarget,
 }) => {
@@ -182,6 +186,11 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
   const nodeType = selectedNode?.type || '';
   const nodeData = selectedNode?.data || {};
+
+  const portTelemetry = useMemo(() => {
+    if (!selectedNode || !edges) return [];
+    return GraphEvaluator.getNodePortTelemetry(selectedNode, edges);
+  }, [selectedNode, edges]);
 
   return (
     <div
@@ -511,6 +520,63 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                   </span>
                 </div>
               </div>
+
+              {/* Dynamic Port & Socket Connection Telemetry */}
+              {portTelemetry.length > 0 && (
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 5,
+                    backgroundColor: 'rgba(10, 13, 20, 0.65)',
+                    padding: '8px',
+                    borderRadius: 4,
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: 8.5, fontWeight: 700, color: '#94a3b8', letterSpacing: '0.04em' }}>
+                      SOCKET CONNECTION TELEMETRY
+                    </span>
+                    <span style={{ fontSize: 7.5, color: '#64748b', fontFamily: "'Geist Mono', monospace" }}>
+                      {portTelemetry.filter((p) => p.isConnected).length}/{portTelemetry.length} Active
+                    </span>
+                  </div>
+
+                  {portTelemetry.map((port) => (
+                    <div
+                      key={port.handleId}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        fontSize: 9,
+                        fontFamily: "'Geist Mono', monospace",
+                        padding: '4px 6px',
+                        borderRadius: 3,
+                        backgroundColor: port.isConnected ? 'rgba(34, 197, 94, 0.08)' : 'rgba(239, 68, 68, 0.08)',
+                        border: `1px solid ${port.isConnected ? 'rgba(34, 197, 94, 0.22)' : 'rgba(239, 68, 68, 0.22)'}`,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span
+                          style={{
+                            width: 5,
+                            height: 5,
+                            borderRadius: '50%',
+                            backgroundColor: port.isConnected ? '#22c55e' : '#ef4444',
+                            boxShadow: `0 0 4px ${port.isConnected ? '#22c55e' : '#ef4444'}`,
+                          }}
+                        />
+                        <span style={{ color: '#f8fafc', fontWeight: 600 }}>{port.sourceLabel || port.handleId}</span>
+                      </div>
+                      <span style={{ color: port.isConnected ? '#4ade80' : '#f87171', fontSize: 8.5 }}>
+                        {port.isConnected ? `Connected (${port.sourceNodeId})` : `Disconnected [Fallback: ${port.fallbackValue ?? 'None'}]`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {activeBuffer && (
                 <button

@@ -5,6 +5,8 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeSlider, NodeSelect, NodeBadge, NodeDivider } from '../node-system/NodeControls';
 
+import { useNodeBuffers } from '../../context/NodeBufferContext';
+
 export type BlendMode = 'lerp' | 'multiply' | 'screen' | 'overlay' | 'add' | 'min' | 'max';
 
 export interface BlendNodeData {
@@ -16,8 +18,9 @@ export interface BlendNodeData {
   onChange?: (params: { mode: BlendMode; opacity: number }) => void;
 }
 
-export const BlendNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
+export const BlendNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = (data as BlendNodeData) || {};
+  const { onUpdateNodeData } = useNodeBuffers();
   const [mode, setMode] = useState<BlendMode>(d.mode || 'lerp');
   const [opacity, setOpacity] = useState<number>(d.opacity ?? 1.0);
   const isBypassed = !!d.isBypassed;
@@ -26,11 +29,13 @@ export const BlendNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
     const newMode = val as BlendMode;
     setMode(newMode);
     d.onChange?.({ mode: newMode, opacity });
+    onUpdateNodeData(id, { mode: newMode, opacity });
   };
 
   const handleOpacityChange = (val: number) => {
     setOpacity(val);
     d.onChange?.({ mode, opacity: val });
+    onUpdateNodeData(id, { mode, opacity: val });
   };
 
   return (
