@@ -10,7 +10,14 @@ import type {
   GlobalExportSettings,
   NamingTokenId,
   TokenItem,
+  PreflightOutputItem,
+  TextureExportFormat,
+  TextureBitDepth,
+  TextureColorSpace,
+  TextureCollection,
 } from '../types/export';
+import { BatchEngine } from './batchEngine';
+import { GraphEvaluator } from './graphEvaluator';
 
 /* ========================================================================= */
 /* 1. INDUSTRY STANDARD PRESETS & TOKENS                                     */
@@ -81,13 +88,17 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalExportSettings = {
 /* ========================================================================= */
 
 export interface TokenResolveContext {
-  project: string;
-  asset: string;
-  slot: string;
-  res: string;
+  project?: string;
+  asset?: string;
+  slot?: string;
+  res?: string;
   format: string;
-  colorSpace: string;
+  colorSpace?: string;
   udim?: string;
+  set?: string;
+  texture?: string;
+  map?: string;
+  index?: number | string;
 }
 
 export class ExportEngine {
@@ -139,9 +150,9 @@ export class ExportEngine {
     if (/\/{2,}/.test(pattern)) {
       return { isValid: false, error: 'Consecutive slashes (//) are not allowed in folder paths.' };
     }
-    const hasSlot = /\{slot\}|\$slot/i.test(pattern);
+    const hasSlot = /\{slot\}|\$slot|\{map\}|\$map/i.test(pattern);
     if (!hasSlot) {
-      return { isValid: true, warning: 'Warning: Missing {slot} token. Output filenames may overwrite each other.' };
+      return { isValid: true, warning: 'Warning: Missing {slot} or {map} token. Output filenames may overwrite each other.' };
     }
     return { isValid: true };
   }
@@ -159,11 +170,15 @@ export class ExportEngine {
       const replaceMap: Record<string, string> = {
         project: ctx.project || 'Project',
         asset: ctx.asset || 'Asset',
-        slot: ctx.slot || 'ORM',
+        slot: ctx.slot || ctx.map || 'ORM',
         res: ctx.res || '4K',
         format: ctx.format.toLowerCase() || 'png',
         colorspace: ctx.colorSpace || 'Linear',
         udim: ctx.udim || '1001',
+        set: ctx.set || ctx.asset || 'Set',
+        texture: ctx.texture || ctx.asset || 'Texture',
+        map: ctx.map || ctx.slot || 'Map',
+        index: ctx.index !== undefined ? String(ctx.index) : '1',
       };
       for (const [key, val] of Object.entries(replaceMap)) {
         raw = raw.replace(new RegExp(`\\{${key}\\}`, 'gi'), val);
@@ -206,6 +221,321 @@ export class ExportEngine {
 
     return segments.join('/');
   }
+
+  /**
+   * Unified Preflight Registry: Aggregates explicit TextureOutput nodes, auto-registered
+   * routing nodes (Pack, Unpack, Mixer), and BatchExport nodes with replacement rules and collision handling.
+   */
+  public static buildPreflightRegistry(
+    nodes: any[],
+    edges: any[],
+    evaluatedBuffers: Record<string, TextureBuffer>,
+    settings: GlobalExportSettings,
+    pattern: string,
+    batchCollections?: Record<string, TextureCollection>
+  ): PreflightOutputItem[] {
+    const consumedOutputs = new Set<string>();
+
+    // 1. Identify all outputs that are explicitly consumed by TextureOutput or BatchExport
+    for (const edge of edges) {
+      const targetNode = nodes.find((n) => n.id === edge.target);
+      if (targetNode && (targetNode.type === 'textureOutput' || targetNode.type === 'batchExport')) {
+        const srcHandle = edge.sourceHandle || 'rgba';
+        consumedOutputs.add(`${edge.source}:${srcHandle}`);
+      }
+    }
+
+    const items: PreflightOutputItem[] = [];
+
+    // Helper to resolve standard item attributes
+    const formatFromNode = (d: any): TextureExportFormat =>
+      d.formatOverride && d.formatOverride !== 'inherit' ? d.formatOverride : settings.defaultFormat;
+    const bitDepthFromNode = (d: any): TextureBitDepth =>
+      d.bitDepthOverride && d.bitDepthOverride !== 'inherit' ? d.bitDepthOverride : settings.defaultBitDepth;
+    const colorSpaceFromNode = (d: any, autoCs: TextureColorSpace = 'linear'): TextureColorSpace =>
+      d.isColorSpaceOverridden && d.colorSpace ? d.colorSpace : (d.autoDetectedColorSpace || d.colorSpace || autoCs);
+    const resFromNode = (d: any, buf?: TextureBuffer): string => {
+      if (d.resolutionOverride && d.resolutionOverride !== 'inherit') {
+        return `${Math.round(parseInt(d.resolutionOverride) / 1024)}K`;
+      }
+      if (settings.masterResolution !== 'inherit') {
+        return `${Math.round(parseInt(settings.masterResolution) / 1024)}K`;
+      }
+      if (buf) {
+        return `${Math.round(buf.width / 1024)}K`;
+      }
+      return '4K';
+    };
+
+    // 2. Explicit TextureOutput Nodes
+    const outputNodes = nodes.filter((n) => n.type === 'textureOutput');
+    for (const n of outputNodes) {
+      const d = n.data || {};
+      const inEdge = edges.find((e) => e.target === n.id && (e.targetHandle === 'rgba' || !e.targetHandle));
+      const isConnected = !!inEdge;
+      const buf = evaluatedBuffers[n.id];
+      const autoInfo = isConnected ? GraphEvaluator.autoDetectOutputRole(n.id, nodes, edges) : null;
+
+      const slot = (d.slot && typeof d.slot === 'string' && d.slot.trim() !== '')
+        ? d.slot
+        : (autoInfo?.slot || d.autoDetectedSlot || 'ORM');
+      const format = formatFromNode(d);
+      const bitDepth = bitDepthFromNode(d);
+      const colorSpace = colorSpaceFromNode(d, autoInfo?.colorSpace || 'linear');
+      const resLabel = resFromNode(d, buf);
+
+      const resolvedFilename = this.resolveFilename(pattern, {
+        project: settings.projectName,
+        asset: settings.assetName,
+        slot,
+        res: resLabel,
+        format,
+        colorSpace: colorSpace === 'sRGB' ? 'sRGB' : 'Linear',
+      });
+
+      const srcHandle = inEdge?.sourceHandle || 'rgba';
+      const sourceOutput = inEdge ? `${inEdge.source}:${srcHandle}` : undefined;
+
+      items.push({
+        nodeId: n.id,
+        title: d.title || 'Texture Output',
+        slot,
+        isSlotOverridden: !!d.isSlotOverridden,
+        isConnected,
+        previewUrl: buf?.dataUrl,
+        format,
+        bitDepth,
+        colorSpace,
+        resolution: resLabel,
+        resolvedFilename,
+        enabled: d.enabled !== false,
+        sourceType: 'explicit',
+        sourceOutput,
+        buffer: buf,
+      });
+    }
+
+    // 3. Auto-registered ChannelPack / ChannelCombiner Nodes (Output: RGBA)
+    const packNodes = nodes.filter((n) => n.type === 'channelPack' || n.type === 'channelCombiner');
+    for (const n of packNodes) {
+      const srcKey = `${n.id}:rgba`;
+      if (!consumedOutputs.has(srcKey)) {
+        const d = n.data || {};
+        const buf = evaluatedBuffers[n.id];
+        const isConnected = edges.some((e) => e.target === n.id);
+        const slot = d.slot || 'ORM';
+        const format = formatFromNode(d);
+        const bitDepth = bitDepthFromNode(d);
+        const colorSpace: TextureColorSpace = 'linear';
+        const resLabel = resFromNode(d, buf);
+
+        const resolvedFilename = this.resolveFilename(pattern, {
+          project: settings.projectName,
+          asset: settings.assetName,
+          slot,
+          res: resLabel,
+          format,
+          colorSpace: 'Linear',
+        });
+
+        items.push({
+          nodeId: n.id,
+          title: `Auto-Pack: ${slot}`,
+          slot,
+          isSlotOverridden: false,
+          isConnected,
+          previewUrl: buf?.dataUrl,
+          format,
+          bitDepth,
+          colorSpace,
+          resolution: resLabel,
+          resolvedFilename,
+          enabled: d.enabled !== false,
+          sourceType: 'channelPack',
+          sourceOutput: srcKey,
+          buffer: buf,
+        });
+      }
+    }
+
+    // 4. Auto-registered ChannelUnpack / ChannelSplitter Nodes (Outputs: R, G, B, A)
+    const unpackNodes = nodes.filter((n) => n.type === 'channelUnpack' || n.type === 'channelSplitter');
+    for (const n of unpackNodes) {
+      const d = n.data || {};
+      const inEdge = edges.find((e) => e.target === n.id);
+      const isConnected = !!inEdge;
+      const buf = evaluatedBuffers[n.id];
+      const channels = (d.channels as Record<string, string>) || { r: 'R', g: 'G', b: 'B', a: 'A' };
+
+      const activeChannels: ('r' | 'g' | 'b' | 'a')[] = ['r', 'g', 'b', 'a'];
+      for (const ch of activeChannels) {
+        const srcKey = `${n.id}:${ch}`;
+        if (!consumedOutputs.has(srcKey)) {
+          const slot = channels[ch] || ch.toUpperCase();
+          const format = formatFromNode(d);
+          const bitDepth = bitDepthFromNode(d);
+          const colorSpace: TextureColorSpace = 'linear';
+          const resLabel = resFromNode(d, buf);
+
+          const resolvedFilename = this.resolveFilename(pattern, {
+            project: settings.projectName,
+            asset: settings.assetName,
+            slot,
+            res: resLabel,
+            format,
+            colorSpace: 'Linear',
+          });
+
+          items.push({
+            nodeId: n.id,
+            title: `Auto-Unpack: ${slot}`,
+            slot,
+            isSlotOverridden: false,
+            isConnected,
+            previewUrl: buf?.dataUrl,
+            format,
+            bitDepth,
+            colorSpace,
+            resolution: resLabel,
+            resolvedFilename,
+            enabled: d.enabled !== false,
+            sourceType: 'channelUnpack',
+            sourceOutput: srcKey,
+            sourceHandle: ch,
+            buffer: buf,
+          });
+        }
+      }
+    }
+
+    // 5. Auto-registered ChannelMixer / ChannelSwizzle Nodes
+    const mixerNodes = nodes.filter((n) => n.type === 'channelMixer' || n.type === 'channelSwizzle');
+    for (const n of mixerNodes) {
+      const d = n.data || {};
+      const registeredOutputs: string[] = d.exportOutputs || ['rgba'];
+      const buf = evaluatedBuffers[n.id];
+      const isConnected = edges.some((e) => e.target === n.id);
+
+      for (const outKey of registeredOutputs) {
+        const srcKey = `${n.id}:${outKey}`;
+        if (!consumedOutputs.has(srcKey)) {
+          const slot = d.slot || outKey.toUpperCase();
+          const format = formatFromNode(d);
+          const bitDepth = bitDepthFromNode(d);
+          const colorSpace: TextureColorSpace = 'linear';
+          const resLabel = resFromNode(d, buf);
+
+          const resolvedFilename = this.resolveFilename(pattern, {
+            project: settings.projectName,
+            asset: settings.assetName,
+            slot,
+            res: resLabel,
+            format,
+            colorSpace: 'Linear',
+          });
+
+          items.push({
+            nodeId: n.id,
+            title: `Mixer Output: ${slot}`,
+            slot,
+            isSlotOverridden: false,
+            isConnected,
+            previewUrl: buf?.dataUrl,
+            format,
+            bitDepth,
+            colorSpace,
+            resolution: resLabel,
+            resolvedFilename,
+            enabled: d.enabled !== false,
+            sourceType: 'channelMixer',
+            sourceOutput: srcKey,
+            buffer: buf,
+          });
+        }
+      }
+    }
+
+    // 6. BatchExport Nodes (Registered Collections / ForEach outputs)
+    const batchNodes = nodes.filter((n) => n.type === 'batchExport');
+    for (const n of batchNodes) {
+      const d = n.data || {};
+      const colId = d.collectionId;
+      const collection = batchCollections?.[colId] || (d.collection as TextureCollection);
+      if (collection && collection.items) {
+        for (const texItem of collection.items) {
+          if (texItem.isExcluded) continue;
+          const slot = texItem.canonicalSuffix || texItem.mapType.toUpperCase();
+          const format = (d.format as TextureExportFormat) || settings.defaultFormat;
+          const bitDepth = (d.bitDepth as TextureBitDepth) || settings.defaultBitDepth;
+          const colorSpace = texItem.mapType === 'base_color' ? 'sRGB' : 'linear';
+          const resLabel = settings.masterResolution !== 'inherit' ? `${Math.round(parseInt(settings.masterResolution) / 1024)}K` : '4K';
+
+          const resolvedFilename = this.resolveFilename(d.pattern || pattern, {
+            project: settings.projectName,
+            asset: texItem.setName || settings.assetName,
+            slot,
+            res: resLabel,
+            format,
+            colorSpace: colorSpace === 'sRGB' ? 'sRGB' : 'Linear',
+          });
+
+          items.push({
+            nodeId: n.id,
+            title: `Batch: ${texItem.filename}`,
+            slot,
+            isSlotOverridden: false,
+            isConnected: true,
+            previewUrl: texItem.dataUrl,
+            format,
+            bitDepth,
+            colorSpace,
+            resolution: resLabel,
+            resolvedFilename,
+            enabled: d.enabled !== false,
+            sourceType: 'batchExport',
+            batchItemIdentity: `${n.id}:${texItem.id}`,
+            buffer: texItem.buffer,
+          });
+        }
+      }
+    }
+
+    // 7. Deduplication & Collision Policy
+    // Deduplicate by sourceOutput (if explicit exists, it replaces auto entry)
+    const deduped: PreflightOutputItem[] = [];
+    const sourceSeen = new Map<string, PreflightOutputItem>();
+
+    for (const item of items) {
+      if (item.sourceOutput) {
+        const existing = sourceSeen.get(item.sourceOutput);
+        if (existing) {
+          if (item.sourceType === 'explicit' && existing.sourceType !== 'explicit') {
+            // Replace automatic with explicit!
+            const idx = deduped.indexOf(existing);
+            if (idx !== -1) {
+              deduped[idx] = item;
+              sourceSeen.set(item.sourceOutput, item);
+            }
+          }
+          continue;
+        }
+        sourceSeen.set(item.sourceOutput, item);
+      }
+      deduped.push(item);
+    }
+
+    // Resolve Filename Collisions
+    const rawFilenames = deduped.map((i) => i.resolvedFilename);
+    const { resolved } = BatchEngine.resolveCollisions(rawFilenames, settings.collisionPolicy || 'rename');
+    for (let i = 0; i < deduped.length; i++) {
+      if (resolved[i]) {
+        deduped[i].resolvedFilename = resolved[i];
+      }
+    }
+
+    return deduped;
+  }
+
 
   /* ========================================================================= */
   /* 3. BINARY TRUEVISION TGA ENCODER (32-bit BGRA Uncompressed)               */
@@ -267,7 +597,7 @@ export class ExportEngine {
 
   public static async encodeImageBlob(
     buffer: TextureBuffer,
-    format: 'PNG' | 'TGA' | 'JPG' | 'WEBP',
+    format: TextureExportFormat,
     targetResolution?: number
   ): Promise<Blob> {
     if (format === 'TGA') {

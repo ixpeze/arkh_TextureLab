@@ -9,6 +9,7 @@ import { useNodeBuffers } from '../../context/NodeBufferContext';
 
 export interface LevelsNodeData {
   title?: string;
+  channel?: 'all' | 'r' | 'g' | 'b' | 'a';
   blackPoint?: number;
   gamma?: number;
   whitePoint?: number;
@@ -17,6 +18,7 @@ export interface LevelsNodeData {
   isBypassed?: boolean;
   onToggleBypass?: () => void;
   onChange?: (params: {
+    channel?: 'all' | 'r' | 'g' | 'b' | 'a';
     blackPoint: number;
     gamma: number;
     whitePoint: number;
@@ -28,6 +30,7 @@ export interface LevelsNodeData {
 export const LevelsNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = (data as LevelsNodeData) || {};
   const { onUpdateNodeData } = useNodeBuffers();
+  const [channel, setChannel] = useState<'all' | 'r' | 'g' | 'b' | 'a'>(d.channel || 'all');
   const [black, setBlack] = useState(d.blackPoint ?? 0);
   const [gamma, setGamma] = useState(d.gamma ?? 1.0);
   const [white, setWhite] = useState(d.whitePoint ?? 255);
@@ -36,6 +39,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => 
   const isBypassed = !!d.isBypassed;
 
   const triggerChange = (
+    newChannel = channel,
     newBlack = black,
     newGamma = gamma,
     newWhite = white,
@@ -43,6 +47,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => 
     newOutWhite = outWhite
   ) => {
     const patch = {
+      channel: newChannel,
       blackPoint: newBlack,
       gamma: newGamma,
       whitePoint: newWhite,
@@ -56,35 +61,35 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => 
   const handleBlack = (val: number) => {
     const safeVal = Math.max(0, Math.min(255, Math.round(Number(val) || 0)));
     setBlack(safeVal);
-    triggerChange(safeVal, gamma, white, outBlack, outWhite);
+    triggerChange(channel, safeVal, gamma, white, outBlack, outWhite);
   };
 
   const handleGamma = (val: number) => {
     const parsed = Number(val);
     const safeVal = Math.max(0.01, Math.min(5.0, isNaN(parsed) ? 1.0 : parsed));
     setGamma(safeVal);
-    triggerChange(black, safeVal, white, outBlack, outWhite);
+    triggerChange(channel, black, safeVal, white, outBlack, outWhite);
   };
 
   const handleWhite = (val: number) => {
     const num = Number(val);
     const safeVal = Math.max(0, Math.min(255, Math.round(isNaN(num) ? 255 : num)));
     setWhite(safeVal);
-    triggerChange(black, gamma, safeVal, outBlack, outWhite);
+    triggerChange(channel, black, gamma, safeVal, outBlack, outWhite);
   };
 
   const handleOutBlack = (val: number) => {
     const num = Number(val);
     const safeVal = Math.max(0, Math.min(255, Math.round(isNaN(num) ? 0 : num)));
     setOutBlack(safeVal);
-    triggerChange(black, gamma, white, safeVal, outWhite);
+    triggerChange(channel, black, gamma, white, safeVal, outWhite);
   };
 
   const handleOutWhite = (val: number) => {
     const num = Number(val);
     const safeVal = Math.max(0, Math.min(255, Math.round(isNaN(num) ? 255 : num)));
     setOutWhite(safeVal);
-    triggerChange(black, gamma, white, outBlack, safeVal);
+    triggerChange(channel, black, gamma, white, outBlack, safeVal);
   };
 
   // Generate SVG points for dynamic transfer curve preview with in/out range remapping
@@ -128,6 +133,43 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => 
         output={{ id: 'output', label: 'Out', color: 'var(--pbr-rough)' }}
         centerLabel="Levels"
       />
+
+      {/* Channel Selector: All, R, G, B, A */}
+      <div
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ display: 'flex', gap: 2, margin: '3px 0' }}
+      >
+        {(['all', 'r', 'g', 'b', 'a'] as const).map((ch) => {
+          const isActive = channel === ch;
+          const label = ch.toUpperCase();
+          const chColor = ch === 'r' ? '#ef4444' : ch === 'g' ? '#22c55e' : ch === 'b' ? '#3b82f6' : ch === 'a' ? '#94a3b8' : '#e2e8f0';
+          return (
+            <button
+              key={ch}
+              type="button"
+              onClick={() => {
+                setChannel(ch);
+                triggerChange(ch);
+              }}
+              style={{
+                flex: 1,
+                background: isActive ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+                border: `1px solid ${isActive ? chColor : 'rgba(255, 255, 255, 0.08)'}`,
+                color: isActive ? chColor : '#94a3b8',
+                borderRadius: 2,
+                fontSize: 7.5,
+                fontWeight: isActive ? 700 : 500,
+                padding: '2px 0',
+                cursor: 'pointer',
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
       <NodeDivider />
 

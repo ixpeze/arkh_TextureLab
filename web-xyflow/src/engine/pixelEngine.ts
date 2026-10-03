@@ -27,6 +27,19 @@ export class PixelEngine {
   private static workerReqId = 0;
 
   private static getContext(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
+    if (typeof document === 'undefined') {
+      return {
+        canvas: {
+          width,
+          height,
+          toDataURL: () => 'data:image/png;base64,mock',
+        } as unknown as HTMLCanvasElement,
+        ctx: {
+          createImageData: (w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }),
+          putImageData: () => {},
+        } as unknown as CanvasRenderingContext2D,
+      };
+    }
     if (!this.offscreenCanvas) {
       this.offscreenCanvas = document.createElement('canvas');
       this.offscreenCtx = this.offscreenCanvas.getContext('2d', { willReadFrequently: true });
@@ -789,6 +802,105 @@ export class PixelEngine {
   }
 
   /**
+   * Channel Mixer: Arbitrary routing, fan-out, combinations, and inline modifiers
+   */
+  public static mixChannels(
+    buffer: TextureBuffer,
+    routes?: Record<string, { sources: string[]; combineOp?: string; modifier?: string; modifierVal?: number }>,
+    scalarValues?: Record<string, number>,
+    fallbackRSrc = 'r',
+    fallbackGSrc = 'g',
+    fallbackBSrc = 'b',
+    fallbackASrc = 'a'
+  ): TextureBuffer {
+    if (!routes) {
+      return this.swizzleBuffer(buffer, fallbackRSrc, fallbackGSrc, fallbackBSrc, fallbackASrc);
+    }
+
+    const w = buffer.width;
+    const h = buffer.height;
+    const outData = new Uint8ClampedArray(w * h * 4);
+    const data = buffer.data;
+
+    const evalChannel = (
+      route: { sources: string[]; combineOp?: string; modifier?: string; modifierVal?: number } | undefined,
+      fallbackKey: string,
+      r: number,
+      g: number,
+      b: number,
+      a: number
+    ): number => {
+      if (!route || !route.sources || route.sources.length === 0) {
+        return fallbackKey === 'r' ? r : fallbackKey === 'g' ? g : fallbackKey === 'b' ? b : a;
+      }
+
+      const getSrcVal = (src: string): number => {
+        if (src === 'r') return r / 255;
+        if (src === 'g') return g / 255;
+        if (src === 'b') return b / 255;
+        if (src === 'a') return a / 255;
+        if (src === '0') return 0;
+        if (src === '1') return 1;
+        if (src.startsWith('1-')) {
+          const sub = src.replace('1-', '');
+          return 1.0 - getSrcVal(sub);
+        }
+        if (scalarValues && src in scalarValues) {
+          return Math.max(0, Math.min(1.0, scalarValues[src]));
+        }
+        return 0;
+      };
+
+      // Combine multiple sources if present
+      let combined = getSrcVal(route.sources[0]);
+      for (let i = 1; i < route.sources.length; i++) {
+        const val = getSrcVal(route.sources[i]);
+        if (route.combineOp === 'multiply') {
+          combined *= val;
+        } else if (route.combineOp === 'min') {
+          combined = Math.min(combined, val);
+        } else if (route.combineOp === 'max') {
+          combined = Math.max(combined, val);
+        } else {
+          // 'add'
+          combined += val;
+        }
+      }
+
+      // Apply inline modifier
+      if (route.modifier === 'oneMinus') {
+        combined = 1.0 - combined;
+      } else if (route.modifier === 'add') {
+        combined += (route.modifierVal ?? 0.2);
+      } else if (route.modifier === 'multiply') {
+        combined *= (route.modifierVal ?? 1.5);
+      } else if (route.modifier === 'clamp' || route.modifier === 'saturate') {
+        combined = Math.max(0.0, Math.min(1.0, combined));
+      }
+
+      return Math.max(0, Math.min(255, Math.round(combined * 255)));
+    };
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i + 0];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+
+      outData[i + 0] = evalChannel(routes.r, fallbackRSrc, r, g, b, a);
+      outData[i + 1] = evalChannel(routes.g, fallbackGSrc, r, g, b, a);
+      outData[i + 2] = evalChannel(routes.b, fallbackBSrc, r, g, b, a);
+      outData[i + 3] = evalChannel(routes.a, fallbackASrc, r, g, b, a);
+    }
+
+    const buf: TextureBuffer = { width: w, height: h, data: outData };
+    const proxy = this.createDownsampledProxy(buf, 512);
+    buf.proxy = proxy;
+    buf.dataUrl = proxy.dataUrl;
+    return buf;
+  }
+
+  /**
    * Compute RGB and Luminance Histograms (256 bins)
    */
   public static computeHistogram(buffer: TextureBuffer): HistogramData {
@@ -843,4 +955,513 @@ export class PixelEngine {
       URL.revokeObjectURL(url);
     }, 'image/png');
   }
+
+  /* ========================================================================= */
+  /* COMPOSABLE MATH OPERATORS (UE5 COMPATIBLE)                                */
+  /* ========================================================================= */
+
+  public static applyMath(
+    op: 'lerp' | 'multiply' | 'add' | 'subtract' | 'divide' | 'clamp' | 'saturate' | 'power' | 'oneMinus' | 'min' | 'max' | 'abs',
+    bufA?: TextureBuffer | null,
+    bufB?: TextureBuffer | null,
+    bufAlpha?: TextureBuffer | null,
+    scalarA?: number,
+    scalarB?: number,
+    param1?: number,
+    param2?: number
+  ): TextureBuffer {
+    const width = bufA?.width || bufB?.width || 512;
+    const height = bufA?.height || bufB?.height || 512;
+    const outData = new Uint8ClampedArray(width * height * 4);
+
+    const sA = scalarA ?? 0;
+    const sB = scalarB ?? (op === 'multiply' || op === 'divide' ? 1.0 : 0.0);
+    const alphaVal = param1 ?? 0.5;
+
+    const dataA = bufA?.data;
+    const dataB = bufB?.data;
+    const dataAlpha = bufAlpha?.data;
+
+    for (let i = 0; i < outData.length; i += 4) {
+      const rA = dataA ? dataA[i] : sA;
+      const gA = dataA ? dataA[i + 1] : sA;
+      const bA = dataA ? dataA[i + 2] : sA;
+      const aA = dataA ? dataA[i + 3] : 255;
+
+      const rB = dataB ? dataB[i] : sB;
+      const gB = dataB ? dataB[i + 1] : sB;
+      const bB = dataB ? dataB[i + 2] : sB;
+      const aB = dataB ? dataB[i + 3] : 255;
+
+      const aAlpha = dataAlpha ? dataAlpha[i] / 255.0 : alphaVal;
+
+      let ro = 0, go = 0, bo = 0, ao = 255;
+
+      switch (op) {
+        case 'lerp':
+          ro = rA * (1 - aAlpha) + rB * aAlpha;
+          go = gA * (1 - aAlpha) + gB * aAlpha;
+          bo = bA * (1 - aAlpha) + bB * aAlpha;
+          ao = aA * (1 - aAlpha) + aB * aAlpha;
+          break;
+        case 'multiply':
+          ro = (rA * rB) / 255.0;
+          go = (gA * gB) / 255.0;
+          bo = (bA * bB) / 255.0;
+          ao = (aA * aB) / 255.0;
+          break;
+        case 'add':
+          ro = Math.min(255, rA + rB);
+          go = Math.min(255, gA + gB);
+          bo = Math.min(255, bA + bB);
+          ao = Math.min(255, aA + aB);
+          break;
+        case 'subtract':
+          ro = Math.max(0, rA - rB);
+          go = Math.max(0, gA - gB);
+          bo = Math.max(0, bA - bB);
+          ao = Math.max(0, aA - aB);
+          break;
+        case 'divide':
+          ro = rB <= 0.0001 ? 0 : Math.min(255, (rA / rB) * 255.0);
+          go = gB <= 0.0001 ? 0 : Math.min(255, (gA / gB) * 255.0);
+          bo = bB <= 0.0001 ? 0 : Math.min(255, (bA / bB) * 255.0);
+          ao = aB <= 0.0001 ? 255 : Math.min(255, (aA / aB) * 255.0);
+          break;
+        case 'clamp': {
+          const cMin = param1 ?? 0;
+          const cMax = param2 ?? 255;
+          ro = Math.max(cMin, Math.min(cMax, rA));
+          go = Math.max(cMin, Math.min(cMax, gA));
+          bo = Math.max(cMin, Math.min(cMax, bA));
+          ao = Math.max(cMin, Math.min(cMax, aA));
+          break;
+        }
+        case 'saturate':
+          ro = Math.max(0, Math.min(255, rA));
+          go = Math.max(0, Math.min(255, gA));
+          bo = Math.max(0, Math.min(255, bA));
+          ao = Math.max(0, Math.min(255, aA));
+          break;
+        case 'power': {
+          const exp = param1 ?? 1.0;
+          ro = Math.pow(Math.max(0, rA) / 255.0, exp) * 255.0;
+          go = Math.pow(Math.max(0, gA) / 255.0, exp) * 255.0;
+          bo = Math.pow(Math.max(0, bA) / 255.0, exp) * 255.0;
+          ao = Math.pow(Math.max(0, aA) / 255.0, exp) * 255.0;
+          break;
+        }
+        case 'oneMinus':
+          ro = 255 - rA;
+          go = 255 - gA;
+          bo = 255 - bA;
+          ao = aA;
+          break;
+        case 'min':
+          ro = Math.min(rA, rB);
+          go = Math.min(gA, gB);
+          bo = Math.min(bA, bB);
+          ao = Math.min(aA, aB);
+          break;
+        case 'max':
+          ro = Math.max(rA, rB);
+          go = Math.max(gA, gB);
+          bo = Math.max(bA, bB);
+          ao = Math.max(aA, aB);
+          break;
+        case 'abs':
+          ro = Math.abs(rA);
+          go = Math.abs(gA);
+          bo = Math.abs(bA);
+          ao = aA;
+          break;
+      }
+
+      outData[i + 0] = Math.min(255, Math.max(0, Math.round(ro)));
+      outData[i + 1] = Math.min(255, Math.max(0, Math.round(go)));
+      outData[i + 2] = Math.min(255, Math.max(0, Math.round(bo)));
+      outData[i + 3] = Math.min(255, Math.max(0, Math.round(ao)));
+    }
+
+    const outBuf: TextureBuffer = { width, height, data: outData };
+    outBuf.dataUrl = this.toDataUrl(outBuf);
+    outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+    return outBuf;
+  }
+
+  public static async applyMathAsync(
+    op: 'lerp' | 'multiply' | 'add' | 'subtract' | 'divide' | 'clamp' | 'saturate' | 'power' | 'oneMinus' | 'min' | 'max' | 'abs',
+    bufA?: TextureBuffer | null,
+    bufB?: TextureBuffer | null,
+    bufAlpha?: TextureBuffer | null,
+    scalarA?: number,
+    scalarB?: number,
+    param1?: number,
+    param2?: number
+  ): Promise<TextureBuffer> {
+    return new Promise((resolve) => {
+      const worker = this.getWorker();
+      const reqId = ++this.workerReqId;
+      this.workerCallbacks.set(reqId, (result) => {
+        const outBuf: TextureBuffer = {
+          width: result.width,
+          height: result.height,
+          data: result.data,
+        };
+        outBuf.dataUrl = this.toDataUrl(outBuf);
+        outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+        resolve(outBuf);
+      });
+
+      const width = bufA?.width || bufB?.width || 512;
+      const height = bufA?.height || bufB?.height || 512;
+
+      const copyA = bufA ? new Uint8ClampedArray(bufA.data) : undefined;
+      const copyB = bufB ? new Uint8ClampedArray(bufB.data) : undefined;
+      const copyAlpha = bufAlpha ? new Uint8ClampedArray(bufAlpha.data) : undefined;
+
+      const transfers: Transferable[] = [];
+      if (copyA) transfers.push(copyA.buffer);
+      if (copyB) transfers.push(copyB.buffer);
+      if (copyAlpha) transfers.push(copyAlpha.buffer);
+
+      worker.postMessage(
+        {
+          reqId,
+          action: 'math',
+          op,
+          width,
+          height,
+          dataA: copyA,
+          dataB: copyB,
+          dataAlpha: copyAlpha,
+          scalarA,
+          scalarB,
+          param1,
+          param2,
+        },
+        transfers
+      );
+    });
+  }
+
+  /* ========================================================================= */
+  /* PER-CHANNEL LEVELS                                                        */
+  /* ========================================================================= */
+
+  public static applyLevelsChannel(
+    buffer: TextureBuffer,
+    channel: 'all' | 'r' | 'g' | 'b' | 'a',
+    blackPoint = 0,
+    gamma = 1.0,
+    whitePoint = 255,
+    outBlack = 0,
+    outWhite = 255
+  ): TextureBuffer {
+    const outData = new Uint8ClampedArray(buffer.data);
+    const lut = new Uint8Array(256);
+    const inRange = Math.max(1, whitePoint - blackPoint);
+    const outRange = outWhite - outBlack;
+    const invGamma = 1.0 / Math.max(0.01, gamma);
+
+    for (let i = 0; i < 256; i++) {
+      const normalizedIn = Math.max(0, Math.min(1.0, (i - blackPoint) / inRange));
+      const curved = Math.pow(normalizedIn, invGamma);
+      const scaledOut = Math.round(outBlack + curved * outRange);
+      lut[i] = Math.max(0, Math.min(255, scaledOut));
+    }
+
+    for (let i = 0; i < outData.length; i += 4) {
+      if (channel === 'all') {
+        outData[i + 0] = lut[outData[i + 0]];
+        outData[i + 1] = lut[outData[i + 1]];
+        outData[i + 2] = lut[outData[i + 2]];
+      } else if (channel === 'r') {
+        outData[i + 0] = lut[outData[i + 0]];
+      } else if (channel === 'g') {
+        outData[i + 1] = lut[outData[i + 1]];
+      } else if (channel === 'b') {
+        outData[i + 2] = lut[outData[i + 2]];
+      } else if (channel === 'a') {
+        outData[i + 3] = lut[outData[i + 3]];
+      }
+    }
+
+    const outBuf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
+    outBuf.dataUrl = this.toDataUrl(outBuf);
+    outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+    return outBuf;
+  }
+
+  /* ========================================================================= */
+  /* RESIZING & POWER-OF-TWO ENFORCEMENT                                       */
+  /* ========================================================================= */
+
+  public static toPowerOfTwo(val: number, mode: 'nearest' | 'up' | 'down' = 'nearest'): number {
+    if (val <= 0) return 512;
+    const log2 = Math.log2(val);
+    if (mode === 'up') return Math.pow(2, Math.ceil(log2));
+    if (mode === 'down') return Math.pow(2, Math.max(0, Math.floor(log2)));
+    const down = Math.pow(2, Math.floor(log2));
+    const up = Math.pow(2, Math.ceil(log2));
+    return val - down <= up - val ? down : up;
+  }
+
+  public static resizeBuffer(
+    buffer: TextureBuffer,
+    targetWidth: number,
+    targetHeight: number,
+    mode: 'preserve' | 'pad' | 'crop' | 'stretch' = 'stretch'
+  ): TextureBuffer {
+    const sw = buffer.width;
+    const sh = buffer.height;
+    const dw = targetWidth;
+    const dh = targetHeight;
+    const data = buffer.data;
+    const outData = new Uint8ClampedArray(dw * dh * 4);
+
+    let srcW = sw;
+    let srcH = sh;
+    let dstX = 0;
+    let dstY = 0;
+    let dstW = dw;
+    let dstH = dh;
+
+    if (mode === 'preserve' || mode === 'pad') {
+      const scale = Math.min(dw / sw, dh / sh);
+      dstW = Math.max(1, Math.round(sw * scale));
+      dstH = Math.max(1, Math.round(sh * scale));
+      dstX = Math.floor((dw - dstW) / 2);
+      dstY = Math.floor((dh - dstH) / 2);
+    } else if (mode === 'crop') {
+      const scale = Math.max(dw / sw, dh / sh);
+      srcW = Math.round(dw / scale);
+      srcH = Math.round(dh / scale);
+    }
+
+    const scaleX = (mode === 'crop' ? srcW : sw) / dstW;
+    const scaleY = (mode === 'crop' ? srcH : sh) / dstH;
+    const srcOffsetX = mode === 'crop' ? Math.floor((sw - srcW) / 2) : 0;
+    const srcOffsetY = mode === 'crop' ? Math.floor((sh - srcH) / 2) : 0;
+
+    for (let dy = 0; dy < dstH; dy++) {
+      const py = dstY + dy;
+      if (py < 0 || py >= dh) continue;
+
+      const sy = srcOffsetY + dy * scaleY;
+      const y0 = Math.floor(sy);
+      const y1 = Math.min(sh - 1, y0 + 1);
+      const fy = sy - y0;
+
+      for (let dx = 0; dx < dstW; dx++) {
+        const px = dstX + dx;
+        if (px < 0 || px >= dw) continue;
+
+        const sx = srcOffsetX + dx * scaleX;
+        const x0 = Math.floor(sx);
+        const x1 = Math.min(sw - 1, x0 + 1);
+        const fx = sx - x0;
+
+        const i00 = (y0 * sw + x0) * 4;
+        const i10 = (y0 * sw + x1) * 4;
+        const i01 = (y1 * sw + x0) * 4;
+        const i11 = (y1 * sw + x1) * 4;
+        const outIdx = (py * dw + px) * 4;
+
+        for (let c = 0; c < 4; c++) {
+          const top = data[i00 + c] * (1 - fx) + data[i10 + c] * fx;
+          const bot = data[i01 + c] * (1 - fx) + data[i11 + c] * fx;
+          outData[outIdx + c] = Math.round(top * (1 - fy) + bot * fy);
+        }
+      }
+    }
+
+    const outBuf: TextureBuffer = { width: dw, height: dh, data: outData };
+    outBuf.dataUrl = this.toDataUrl(outBuf);
+    outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+    return outBuf;
+  }
+
+  /* ========================================================================= */
+  /* UPSCALING                                                                 */
+  /* ========================================================================= */
+
+  public static async upscaleBufferAsync(
+    buffer: TextureBuffer,
+    scale: 2 | 4 = 2,
+    tileSize = 512
+  ): Promise<TextureBuffer> {
+    return new Promise((resolve) => {
+      const worker = this.getWorker();
+      const reqId = ++this.workerReqId;
+      this.workerCallbacks.set(reqId, (result) => {
+        const outBuf: TextureBuffer = {
+          width: result.width,
+          height: result.height,
+          data: result.data,
+        };
+        outBuf.dataUrl = this.toDataUrl(outBuf);
+        outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+        resolve(outBuf);
+      });
+
+      const copyData = new Uint8ClampedArray(buffer.data);
+      worker.postMessage(
+        {
+          reqId,
+          action: 'upscale',
+          width: buffer.width,
+          height: buffer.height,
+          data: copyData,
+          scale,
+          tileSize,
+        },
+        [copyData.buffer]
+      );
+    });
+  }
+
+  /* ========================================================================= */
+  /* INSPECTION: COMPARE & SEAM CHECK                                          */
+  /* ========================================================================= */
+
+  public static createCompareBuffer(
+    bufA: TextureBuffer,
+    bufB: TextureBuffer,
+    mode: 'wipe' | 'sideBySide' | 'difference' = 'wipe',
+    wipeProgress = 0.5,
+    diffGain = 1.0
+  ): TextureBuffer {
+    const w = bufA.width;
+    const h = bufA.height;
+    // Resample B to match A if dimensions differ
+    const targetB = (bufB.width !== w || bufB.height !== h)
+      ? this.resizeBuffer(bufB, w, h, 'stretch')
+      : bufB;
+
+    const dataA = bufA.data;
+    const dataB = targetB.data;
+    const outData = new Uint8ClampedArray(w * h * 4);
+
+    const wipeX = Math.round(w * wipeProgress);
+
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+
+        if (mode === 'wipe') {
+          // Draw thin 1px dividing hairline
+          if (x === wipeX) {
+            outData[idx + 0] = 56;
+            outData[idx + 1] = 189;
+            outData[idx + 2] = 248;
+            outData[idx + 3] = 255;
+          } else if (x < wipeX) {
+            outData[idx + 0] = dataA[idx + 0];
+            outData[idx + 1] = dataA[idx + 1];
+            outData[idx + 2] = dataA[idx + 2];
+            outData[idx + 3] = dataA[idx + 3];
+          } else {
+            outData[idx + 0] = dataB[idx + 0];
+            outData[idx + 1] = dataB[idx + 1];
+            outData[idx + 2] = dataB[idx + 2];
+            outData[idx + 3] = dataB[idx + 3];
+          }
+        } else if (mode === 'sideBySide') {
+          const midX = Math.floor(w / 2);
+          if (x < midX) {
+            const srcIdx = (y * w + Math.floor((x / midX) * w)) * 4;
+            outData[idx + 0] = dataA[srcIdx + 0];
+            outData[idx + 1] = dataA[srcIdx + 1];
+            outData[idx + 2] = dataA[srcIdx + 2];
+            outData[idx + 3] = dataA[srcIdx + 3];
+          } else {
+            const srcIdx = (y * w + Math.floor(((x - midX) / midX) * w)) * 4;
+            outData[idx + 0] = dataB[srcIdx + 0];
+            outData[idx + 1] = dataB[srcIdx + 1];
+            outData[idx + 2] = dataB[srcIdx + 2];
+            outData[idx + 3] = dataB[srcIdx + 3];
+          }
+        } else {
+          // Difference mode
+          const dr = Math.abs(dataA[idx + 0] - dataB[idx + 0]) * diffGain;
+          const dg = Math.abs(dataA[idx + 1] - dataB[idx + 1]) * diffGain;
+          const db = Math.abs(dataA[idx + 2] - dataB[idx + 2]) * diffGain;
+          outData[idx + 0] = Math.min(255, Math.round(dr));
+          outData[idx + 1] = Math.min(255, Math.round(dg));
+          outData[idx + 2] = Math.min(255, Math.round(db));
+          outData[idx + 3] = 255;
+        }
+      }
+    }
+
+    const outBuf: TextureBuffer = { width: w, height: h, data: outData };
+    outBuf.dataUrl = this.toDataUrl(outBuf);
+    outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+    return outBuf;
+  }
+
+  public static createSeamCheckBuffer(
+    buffer: TextureBuffer,
+    repeats: 2 | 3 | 4 = 2,
+    showBorders = true
+  ): TextureBuffer {
+    const sw = buffer.width;
+    const sh = buffer.height;
+    const dw = Math.min(2048, sw * repeats);
+    const dh = Math.min(2048, sh * repeats);
+    const outData = new Uint8ClampedArray(dw * dh * 4);
+    const data = buffer.data;
+
+    const tileW = dw / repeats;
+    const tileH = dh / repeats;
+
+    for (let dy = 0; dy < dh; dy++) {
+      const sy = Math.floor((dy % tileH) * (sh / tileH));
+      const isHBorder = showBorders && (Math.abs(dy % tileH) < 1 || Math.abs((dy + 1) % tileH) < 1);
+
+      for (let dx = 0; dx < dw; dx++) {
+        const sx = Math.floor((dx % tileW) * (sw / tileW));
+        const isVBorder = showBorders && (Math.abs(dx % tileW) < 1 || Math.abs((dx + 1) % tileW) < 1);
+
+        const outIdx = (dy * dw + dx) * 4;
+        const srcIdx = (sy * sw + sx) * 4;
+
+        if (isHBorder || isVBorder) {
+          // Yellow-orange boundary hairline overlay
+          outData[outIdx + 0] = 245;
+          outData[outIdx + 1] = 158;
+          outData[outIdx + 2] = 11;
+          outData[outIdx + 3] = 255;
+        } else {
+          outData[outIdx + 0] = data[srcIdx + 0];
+          outData[outIdx + 1] = data[srcIdx + 1];
+          outData[outIdx + 2] = data[srcIdx + 2];
+          outData[outIdx + 3] = data[srcIdx + 3];
+        }
+      }
+    }
+
+    const outBuf: TextureBuffer = { width: dw, height: dh, data: outData };
+    outBuf.dataUrl = this.toDataUrl(outBuf);
+    outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+    return outBuf;
+  }
+
+  public static samplePixel(
+    buffer: TextureBuffer,
+    x: number,
+    y: number
+  ): { r: number; g: number; b: number; a: number } {
+    const cx = Math.max(0, Math.min(buffer.width - 1, Math.floor(x)));
+    const cy = Math.max(0, Math.min(buffer.height - 1, Math.floor(y)));
+    const idx = (cy * buffer.width + cx) * 4;
+    return {
+      r: buffer.data[idx + 0],
+      g: buffer.data[idx + 1],
+      b: buffer.data[idx + 2],
+      a: buffer.data[idx + 3],
+    };
+  }
 }
+

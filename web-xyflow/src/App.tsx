@@ -22,21 +22,45 @@ import {
   Redo2,
   MessageSquare,
   Download,
+  FolderOpen,
 } from 'lucide-react';
 
 import { TextureInputNode } from './components/nodes/TextureInputNode';
-import { ChannelCombinerNode } from './components/nodes/ChannelCombinerNode';
-import { ChannelSplitterNode } from './components/nodes/ChannelSplitterNode';
+import { ChannelPackNode, ChannelCombinerNode } from './components/nodes/ChannelPackNode';
+import { ChannelUnpackNode, ChannelSplitterNode } from './components/nodes/ChannelUnpackNode';
+import { ChannelMixerNode, ChannelSwizzleNode } from './components/nodes/ChannelMixerNode';
+import { ColorNode, ConstantColorNode } from './components/nodes/ColorNode';
+import { ConstantScalarNode } from './components/nodes/ConstantScalarNode';
+import { CommentBoxNode } from './components/nodes/CommentBoxNode';
 import { InvertNode } from './components/nodes/InvertNode';
 import { LevelsNode } from './components/nodes/LevelsNode';
+import { ResizeNode } from './components/nodes/ResizeNode';
+import { UpscaleNode } from './components/nodes/UpscaleNode';
 import { NormalFlipNode } from './components/nodes/NormalFlipNode';
-import { TextureOutputNode } from './components/nodes/TextureOutputNode';
-import { ConstantScalarNode } from './components/nodes/ConstantScalarNode';
-import { ConstantColorNode } from './components/nodes/ConstantColorNode';
-import { CommentBoxNode } from './components/nodes/CommentBoxNode';
-import { BlendNode } from './components/nodes/BlendNode';
 import { NormalBlendNode } from './components/nodes/NormalBlendNode';
-import { ChannelSwizzleNode } from './components/nodes/ChannelSwizzleNode';
+import { BlendNode } from './components/nodes/BlendNode';
+import {
+  MathNode,
+  LerpNode,
+  MultiplyNode,
+  AddNode,
+  SubtractNode,
+  DivideNode,
+  ClampNode,
+  SaturateNode,
+  PowerNode,
+  OneMinusNode,
+  MinNode,
+  MaxNode,
+  AbsNode,
+} from './components/nodes/MathNode';
+import { CompareNode } from './components/nodes/CompareNode';
+import { SeamCheckNode } from './components/nodes/SeamCheckNode';
+import { LoadFolderNode } from './components/nodes/LoadFolderNode';
+import { NormalizeNode } from './components/nodes/NormalizeNode';
+import { ForEachNode } from './components/nodes/ForEachNode';
+import { BatchExportNode } from './components/nodes/BatchExportNode';
+import { TextureOutputNode } from './components/nodes/TextureOutputNode';
 
 import { DualMarchingAntsEdge, PulsingChannelEdge } from './components/edges/AnimatedEdge';
 import { FloatingNodeLibrary } from './components/FloatingNodeLibrary';
@@ -252,18 +276,43 @@ function Workbench() {
   const nodeTypes: NodeTypes = useMemo(
     () => ({
       textureInput: TextureInputNode as any,
-      channelCombiner: ChannelCombinerNode as any,
-      channelSplitter: ChannelSplitterNode as any,
-      invert: InvertNode as any,
-      levels: LevelsNode as any,
-      normalFlip: NormalFlipNode as any,
-      textureOutput: TextureOutputNode as any,
-      constantScalar: ConstantScalarNode as any,
+      color: ColorNode as any,
       constantColor: ConstantColorNode as any,
+      constantScalar: ConstantScalarNode as any,
+      channelPack: ChannelPackNode as any,
+      channelCombiner: ChannelCombinerNode as any,
+      channelUnpack: ChannelUnpackNode as any,
+      channelSplitter: ChannelSplitterNode as any,
+      channelMixer: ChannelMixerNode as any,
+      channelSwizzle: ChannelSwizzleNode as any,
+      math: MathNode as any,
+      lerp: LerpNode as any,
+      multiply: MultiplyNode as any,
+      add: AddNode as any,
+      subtract: SubtractNode as any,
+      divide: DivideNode as any,
+      clamp: ClampNode as any,
+      saturate: SaturateNode as any,
+      power: PowerNode as any,
+      oneMinus: OneMinusNode as any,
+      min: MinNode as any,
+      max: MaxNode as any,
+      abs: AbsNode as any,
+      levels: LevelsNode as any,
+      resize: ResizeNode as any,
+      upscale: UpscaleNode as any,
+      compare: CompareNode as any,
+      seamCheck: SeamCheckNode as any,
+      loadFolder: LoadFolderNode as any,
+      normalize: NormalizeNode as any,
+      forEach: ForEachNode as any,
+      batchExport: BatchExportNode as any,
+      textureOutput: TextureOutputNode as any,
       commentBox: CommentBoxNode as any,
+      invert: InvertNode as any,
+      normalFlip: NormalFlipNode as any,
       blend: BlendNode as any,
       normalBlend: NormalBlendNode as any,
-      channelSwizzle: ChannelSwizzleNode as any,
     }),
     []
   );
@@ -526,20 +575,60 @@ function Workbench() {
       }
 
       let newNode: Node;
-      if (typeKey === 'channelCombiner') {
-        newNode = { id, type: 'channelCombiner', position: pos, data: {} };
-      } else if (typeKey === 'channelSplitter') {
-        newNode = { id, type: 'channelSplitter', position: pos, data: {} };
+      if (typeKey === 'channelPack' || typeKey === 'channelCombiner') {
+        newNode = { id, type: 'channelPack', position: pos, data: { slot: 'ORM' } };
+      } else if (typeKey === 'channelUnpack' || typeKey === 'channelSplitter') {
+        newNode = { id, type: 'channelUnpack', position: pos, data: { channels: { r: 'R', g: 'G', b: 'B', a: 'A' } } };
+      } else if (typeKey === 'channelMixer' || typeKey === 'channelSwizzle') {
+        newNode = { id, type: 'channelMixer', position: pos, data: { rSrc: 'r', gSrc: 'g', bSrc: 'b', aSrc: 'a', exportOutputs: ['rgba'] } };
+      } else if (typeKey === 'color' || typeKey === 'constantColor') {
+        newNode = { id, type: 'color', position: pos, data: { color: '#f43f5e' } };
+      } else if (typeKey === 'constantScalar') {
+        newNode = { id, type: 'constantScalar', position: pos, data: { value: 1.0 } };
       } else if (typeKey === 'invert') {
         newNode = { id, type: 'invert', position: pos, data: {} };
       } else if (typeKey === 'levels') {
-        newNode = { id, type: 'levels', position: pos, data: { blackPoint: 0, gamma: 1.0, whitePoint: 255 } };
+        newNode = { id, type: 'levels', position: pos, data: { blackPoint: 0, gamma: 1.0, whitePoint: 255, outBlack: 0, outWhite: 255, channel: 'all' } };
+      } else if (typeKey === 'resize') {
+        newNode = { id, type: 'resize', position: pos, data: { targetWidth: 1024, targetHeight: 1024, potMode: 'none', mode: 'preserve' } };
+      } else if (typeKey === 'upscale') {
+        newNode = { id, type: 'upscale', position: pos, data: { scale: 2, tileSize: 512 } };
+      } else if (typeKey === 'compare') {
+        newNode = { id, type: 'compare', position: pos, data: { mode: 'wipe', wipeProgress: 0.5, diffGain: 1.0 } };
+      } else if (typeKey === 'seamCheck') {
+        newNode = { id, type: 'seamCheck', position: pos, data: { repeats: 2, showBorders: true } };
+      } else if (typeKey === 'loadFolder') {
+        newNode = { id, type: 'loadFolder', position: pos, data: { folderName: 'Textures', recursive: true } };
+      } else if (typeKey === 'normalize') {
+        newNode = { id, type: 'normalize', position: pos, data: { cleanStem: true, flipGreen: true, deduplicate: true } };
+      } else if (typeKey === 'forEach') {
+        newNode = { id, type: 'forEach', position: pos, data: { filter: '*' } };
+      } else if (typeKey === 'batchExport') {
+        newNode = { id, type: 'batchExport', position: pos, data: { destinationFolder: 'Export/Textures', format: 'PNG', bitDepth: '8b', namingPattern: '{set}_{map}_{res}.{format}', collisionPolicy: 'rename' } };
+      } else if (
+        [
+          'lerp',
+          'multiply',
+          'add',
+          'subtract',
+          'divide',
+          'clamp',
+          'saturate',
+          'power',
+          'oneMinus',
+          'min',
+          'max',
+          'abs',
+          'math',
+        ].includes(typeKey)
+      ) {
+        newNode = { id, type: typeKey, position: pos, data: { op: typeKey } };
       } else if (typeKey === 'normalFlip') {
         newNode = { id, type: 'normalFlip', position: pos, data: {} };
-      } else if (typeKey === 'constantScalar') {
-        newNode = { id, type: 'constantScalar', position: pos, data: { value: 1.0 } };
-      } else if (typeKey === 'constantColor') {
-        newNode = { id, type: 'constantColor', position: pos, data: { color: '#f43f5e' } };
+      } else if (typeKey === 'normalBlend') {
+        newNode = { id, type: 'normalBlend', position: pos, data: { detailStrength: 1.0 } };
+      } else if (typeKey === 'blend') {
+        newNode = { id, type: 'blend', position: pos, data: { mode: 'lerp', opacity: 1.0 } };
       } else if (typeKey === 'commentBox') {
         newNode = {
           id,
@@ -548,12 +637,6 @@ function Workbench() {
           style: { width: 340, height: 220, zIndex: -1 },
           data: { title: 'Comment Group', color: '#38bdf8' },
         };
-      } else if (typeKey === 'blend') {
-        newNode = { id, type: 'blend', position: pos, data: { mode: 'lerp', opacity: 1.0 } };
-      } else if (typeKey === 'normalBlend') {
-        newNode = { id, type: 'normalBlend', position: pos, data: { detailStrength: 1.0 } };
-      } else if (typeKey === 'channelSwizzle') {
-        newNode = { id, type: 'channelSwizzle', position: pos, data: { rSrc: 'r', gSrc: 'g', bSrc: 'b', aSrc: 'a' } };
       } else if (typeKey === 'textureOutput') {
         newNode = {
           id,
@@ -593,6 +676,124 @@ function Workbench() {
     },
     [primaryAsset, pushSnapshot, screenToFlowPosition, setNodes]
   );
+
+  // Load working Batch Pipeline: Load Folder → For Each → Normalize/Resize → Batch Export
+  const loadBatchPipelineExample = useCallback(() => {
+    pushSnapshot();
+    const exampleNodes: Node[] = [
+      {
+        id: 'batch_load_folder',
+        type: 'loadFolder',
+        position: { x: -480, y: 150 },
+        data: {
+          title: 'Load Source Folder',
+          folderName: 'Cobblestone_4K',
+          itemCount: 4,
+          setCount: 1,
+          recursive: true,
+        },
+      },
+      {
+        id: 'batch_for_each',
+        type: 'forEach',
+        position: { x: -220, y: 150 },
+        data: {
+          title: 'For Each Texture',
+          filter: '*',
+        },
+      },
+      {
+        id: 'batch_normalize',
+        type: 'normalize',
+        position: { x: 40, y: 70 },
+        data: {
+          title: 'Normalize PBR Stems',
+          cleanStem: true,
+          flipGreen: true,
+          deduplicate: true,
+        },
+      },
+      {
+        id: 'batch_resize',
+        type: 'resize',
+        position: { x: 290, y: 70 },
+        data: {
+          title: 'Power-of-Two Resize',
+          targetWidth: 2048,
+          targetHeight: 2048,
+          potMode: 'nearest',
+          mode: 'preserve',
+        },
+      },
+      {
+        id: 'batch_export',
+        type: 'batchExport',
+        position: { x: 550, y: 150 },
+        data: {
+          title: 'Batch Export Target',
+          destinationFolder: 'Export/Normalized',
+          format: 'PNG',
+          bitDepth: '8b',
+          namingPattern: '{set}_{map}_{res}.{format}',
+          collisionPolicy: 'rename',
+        },
+      },
+    ];
+
+    const exampleEdges: Edge[] = [
+      {
+        id: 'e_load_to_loop',
+        source: 'batch_load_folder',
+        sourceHandle: 'collection',
+        target: 'batch_for_each',
+        targetHandle: 'collection',
+        type: 'dualMarching',
+        style: { stroke: '#38bdf8' },
+      },
+      {
+        id: 'e_loop_to_norm',
+        source: 'batch_for_each',
+        sourceHandle: 'item',
+        target: 'batch_normalize',
+        targetHandle: 'input',
+        type: 'dualMarching',
+        style: { stroke: '#ffffff' },
+      },
+      {
+        id: 'e_norm_to_resize',
+        source: 'batch_normalize',
+        sourceHandle: 'output',
+        target: 'batch_resize',
+        targetHandle: 'input',
+        type: 'dualMarching',
+        style: { stroke: '#10b981' },
+      },
+      {
+        id: 'e_resize_to_collect',
+        source: 'batch_resize',
+        sourceHandle: 'output',
+        target: 'batch_for_each',
+        targetHandle: 'collect',
+        type: 'dualMarching',
+        style: { stroke: '#38bdf8' },
+      },
+      {
+        id: 'e_loop_to_export',
+        source: 'batch_for_each',
+        sourceHandle: 'collection',
+        target: 'batch_export',
+        targetHandle: 'collection',
+        type: 'dualMarching',
+        style: { stroke: '#8b5cf6' },
+      },
+    ];
+
+    setNodes(exampleNodes);
+    setEdges(exampleEdges);
+    setActiveNodeId('batch_export');
+    setStatusMessage('Loaded working Batch Pipeline: Load Folder → For Each → Normalize/Resize → Batch Export');
+    setTimeout(() => fitView({ duration: 300 }), 50);
+  }, [fitView, pushSnapshot, setEdges, setNodes]);
 
   // UE5 style Comment Box grouping (C Key)
   const spawnCommentBox = useCallback(() => {
@@ -660,11 +861,21 @@ function Workbench() {
   // Auto-Wire ORMH Combiner
   const autoWireORMH = useCallback(() => {
     pushSnapshot();
-    const inputAo = nodes.find((n) => n.data?.role === 'Ambient Occlusion');
-    const inputRough = nodes.find((n) => n.data?.role === 'Roughness');
-    const inputMetal = nodes.find((n) => n.data?.role === 'Metallic');
-    const inputHeight = nodes.find((n) => n.data?.role === 'Height / Displacement' || n.data?.role === 'Height');
-    const combiner = nodes.find((n) => n.type === 'channelCombiner');
+    const matchesRole = (n: Node, roleKey: string) => {
+      const d = n.data || {};
+      const r = `${(d.detectedRole || '')} ${(d.role || '')}`.toLowerCase();
+      if (roleKey === 'ao') return r.includes('ambient') || r.includes('ao') || r.includes('occlusion');
+      if (roleKey === 'roughness') return r.includes('rough') || r.includes('gloss');
+      if (roleKey === 'metallic') return r.includes('metal');
+      if (roleKey === 'height') return r.includes('height') || r.includes('disp');
+      return false;
+    };
+
+    const inputAo = nodes.find((n) => matchesRole(n, 'ao'));
+    const inputRough = nodes.find((n) => matchesRole(n, 'roughness'));
+    const inputMetal = nodes.find((n) => matchesRole(n, 'metallic'));
+    const inputHeight = nodes.find((n) => matchesRole(n, 'height'));
+    const combiner = nodes.find((n) => n.type === 'channelCombiner' || n.type === 'channelPack');
     const output = nodes.find((n) => n.type === 'textureOutput');
 
     if (!combiner) return;
@@ -883,16 +1094,26 @@ function Workbench() {
           console.error(err);
         }
 
+        const resLabel = buf
+          ? buf.width >= 3840
+            ? '4K'
+            : buf.width >= 1920
+            ? '2K'
+            : '1K'
+          : meta.resolution || '4K';
+
         const nodeId = `input_${Date.now()}_${i}`;
         const newNode: Node = {
           id: nodeId,
-          type: meta.isPacked ? 'channelSplitter' : 'textureInput',
-          position: { x: dropPos.x - 86, y: dropPos.y - 12 + i * 190 },
+          type: 'textureInput',
+          position: { x: dropPos.x - 86, y: dropPos.y - 12 + i * 210 },
           data: {
-            title: `Input: ${meta.roleLabel}`,
+            title: meta.assetName ? `${meta.assetName} (${meta.roleLabel})` : `Input: ${meta.roleLabel}`,
             role: meta.roleLabel,
+            detectedRole: meta.detectedRole,
             roleColor: meta.roleColor,
-            res: meta.resolution || '4K',
+            colorSpace: meta.colorSpace,
+            res: meta.resolution || resLabel,
             previewUrl: buf?.dataUrl || '',
             channels: meta.channels,
           },
@@ -966,8 +1187,8 @@ function Workbench() {
           userSelect: 'none',
         }}
       >
-        {/* Left Branding: Strictly Minimalist Name */}
-        <div style={{ display: 'flex', alignItems: 'center' }}>
+        {/* Left Branding: Strictly Minimalist Name & Batch Pipeline Example */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span
             style={{
               fontFamily: "'Geist', sans-serif",
@@ -981,6 +1202,35 @@ function Workbench() {
           >
             TextureLAB
           </span>
+
+          <button
+            type="button"
+            onClick={loadBatchPipelineExample}
+            title="Load Example Pipeline: Load Folder → For Each → Normalize/Resize → Batch Export"
+            style={{
+              background: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              color: '#38bdf8',
+              borderRadius: 3,
+              padding: '2px 8px',
+              fontSize: 8.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 120ms ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.1)';
+            }}
+          >
+            <FolderOpen size={10} />
+            <span>Batch Pipeline Example</span>
+          </button>
         </div>
 
         {/* Right Toolbar Controls: 1:1 Square Icon-Only Buttons with Rich Hover Tooltip */}

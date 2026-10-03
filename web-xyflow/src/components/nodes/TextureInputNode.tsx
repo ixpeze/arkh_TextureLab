@@ -1,10 +1,11 @@
 import React, { useRef, useState } from 'react';
 import type { NodeProps } from '@xyflow/react';
-import { Layers, UploadCloud } from 'lucide-react';
+import { Layers, UploadCloud, Sliders } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 import { PixelEngine } from '../../engine/pixelEngine';
+import { LexicalNormalizer } from '../../engine/normalizer';
 import { useNodeBuffers } from '../../context/NodeBufferContext';
 
 export interface TextureInputData {
@@ -14,6 +15,8 @@ export interface TextureInputData {
   res: string;
   previewUrl: string;
   colorSpace?: 'sRGB' | 'Linear';
+  tileU?: number;
+  tileV?: number;
   isPinned?: boolean;
   onPinToggle?: () => void;
   onLoadBuffer?: (buffer: any) => void;
@@ -32,6 +35,10 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [colorSpace, setColorSpace] = useState<'sRGB' | 'Linear'>(d.colorSpace || 'Linear');
   const [preview, setPreview] = useState(d.previewUrl);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [showTiling, setShowTiling] = useState(false);
+  const [tileU, setTileU] = useState(d.tileU ?? 1.0);
+  const [tileV, setTileV] = useState(d.tileV ?? 1.0);
 
   const toggleColorSpace = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -41,23 +48,84 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
     onUpdateNodeData(id, { colorSpace: nextCs });
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processLoadedFile = async (file: File) => {
     try {
       const buffer = await PixelEngine.loadFromFile(file);
       setPreview(buffer.dataUrl || '');
-      d.onLoadBuffer?.(buffer);
       setSourceBuffer(id, buffer);
-      onUpdateNodeData(id, { previewUrl: buffer.dataUrl || '' });
+
+      // Infer texture role from filename
+      const meta = LexicalNormalizer.normalizeFilename(file.name);
+      const resLabel = buffer.width >= 3840 ? '4K' : buffer.width >= 1920 ? '2K' : '1K';
+      const patch = {
+        previewUrl: buffer.dataUrl || '',
+        title: meta.assetName ? `${meta.assetName} (${meta.roleLabel})` : file.name,
+        role: meta.roleLabel,
+        detectedRole: meta.detectedRole,
+        roleColor: meta.roleColor,
+        colorSpace: meta.colorSpace,
+        res: meta.resolution || resLabel,
+        channels: meta.channels,
+      };
+
+      setColorSpace(meta.colorSpace);
+      d.onLoadBuffer?.(buffer);
+      onUpdateNodeData(id, patch);
     } catch (err) {
-      console.error('Failed to load local file into TextureInputNode:', err);
+      console.error('Failed to load file into TextureInputNode:', err);
     }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await processLoadedFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) await processLoadedFile(file);
   };
 
   const headerAction = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+      <button
+        type="button"
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={() => setShowTiling(!showTiling)}
+        title="Toggle Tiling & UV Controls"
+        style={{
+          background: showTiling ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+          border: `1px solid ${showTiling ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
+          borderRadius: 3,
+          color: showTiling ? '#38bdf8' : '#94a3b8',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 15,
+          height: 15,
+          padding: 0,
+        }}
+      >
+        <Sliders size={8} />
+      </button>
       <button
         type="button"
         className="nodrag nopan"
@@ -92,32 +160,37 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
       icon={<Layers size={11} />}
       accentColor={d.roleColor || '#38bdf8'}
       headerAction={headerAction}
-      width={176}
+      width={184}
     >
       {/* Hidden Native File Input */}
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.tga,.exr"
         style={{ display: 'none' }}
         onChange={handleFileChange}
       />
 
-      {/* Interactive Thumbnail & Meta Section with File Browse Click */}
+      {/* Interactive Drop Zone & Thumbnail Section */}
       <div
         className="nodrag nopan"
         onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
         onClick={() => fileInputRef.current?.click()}
-        title="Click to browse & load local texture from disk"
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        title="Click to browse or drag & drop texture file here"
         style={{
           display: 'flex',
           gap: 6,
           alignItems: 'center',
           cursor: 'pointer',
-          padding: 2,
+          padding: 3,
           borderRadius: 4,
-          transition: 'background-color 120ms ease',
+          backgroundColor: isDragOver ? 'rgba(56, 189, 248, 0.15)' : 'transparent',
+          border: isDragOver ? '1px dashed #38bdf8' : '1px solid transparent',
+          transition: 'all 120ms ease',
         }}
       >
         <div
@@ -158,25 +231,98 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
               whiteSpace: 'nowrap',
             }}
           >
-            {d.role || 'Custom Map'}
+            {d.role || 'Drop Image'}
           </span>
           <span style={{ fontSize: 7.5, color: '#64748b', fontFamily: 'monospace' }}>
-            Browse local map ↗
+            {isDragOver ? 'Drop file now' : 'Drop or browse ↗'}
           </span>
         </div>
       </div>
 
+      {/* Optional Tiling Controls */}
+      {showTiling && (
+        <div
+          className="nodrag nopan"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          style={{
+            marginTop: 4,
+            padding: '4px 6px',
+            backgroundColor: 'rgba(10, 12, 18, 0.85)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 4,
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+          }}
+        >
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ fontSize: 7.5, color: '#94a3b8', fontFamily: 'monospace' }}>U:</span>
+            <input
+              type="number"
+              step="0.1"
+              value={tileU}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value) || 1.0;
+                setTileU(val);
+                onUpdateNodeData(id, { tileU: val });
+              }}
+              style={{
+                width: '100%',
+                background: 'rgba(0, 0, 0, 0.5)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#fff',
+                fontSize: 8.5,
+                padding: '1px 3px',
+                borderRadius: 2,
+              }}
+            />
+          </div>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ fontSize: 7.5, color: '#94a3b8', fontFamily: 'monospace' }}>V:</span>
+            <input
+              type="number"
+              step="0.1"
+              value={tileV}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value) || 1.0;
+                setTileV(val);
+                onUpdateNodeData(id, { tileV: val });
+              }}
+              style={{
+                width: '100%',
+                background: 'rgba(0, 0, 0, 0.5)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                color: '#fff',
+                fontSize: 8.5,
+                padding: '1px 3px',
+                borderRadius: 2,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <NodeDivider />
 
-      {/* Output Sockets with Dedicated Horizontal Section on RGBA */}
+      {/* Output Sockets: RGBA (White), RGB (White), R (Red), G (Green), B (Blue), A (Gray) */}
       <NodeSocket
         isSection
         id="rgba"
         type="source"
-        label="RGBA Stream"
-        color="var(--pbr-packed)"
+        label="RGBA"
+        color="#ffffff"
         shape="diamond"
-        sectionTag="STREAM"
+        sectionTag="RGBA"
+      />
+      <NodeSocket
+        isSection
+        id="rgb"
+        type="source"
+        label="RGB"
+        color="#ffffff"
+        shape="diamond"
+        sectionTag="RGB"
       />
 
       <NodeDivider />
@@ -185,28 +331,29 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
         <NodeSocket
           id="r"
           type="source"
-          label={d.channels?.r ? `R: ${d.channels.r.slice(0, 6)}` : 'R: AO'}
-          color="var(--pbr-ao)"
+          label={d.channels?.r ? `R: ${d.channels.r.slice(0, 6)}` : 'R'}
+          color="#ef4444"
         />
         <NodeSocket
           id="g"
           type="source"
-          label={d.channels?.g ? `G: ${d.channels.g.slice(0, 6)}` : 'G: Rough'}
-          color="var(--pbr-rough)"
+          label={d.channels?.g ? `G: ${d.channels.g.slice(0, 6)}` : 'G'}
+          color="#22c55e"
         />
         <NodeSocket
           id="b"
           type="source"
-          label={d.channels?.b ? `B: ${d.channels.b.slice(0, 6)}` : 'B: Metal'}
-          color="var(--pbr-metal)"
+          label={d.channels?.b ? `B: ${d.channels.b.slice(0, 6)}` : 'B'}
+          color="#3b82f6"
         />
         <NodeSocket
           id="a"
           type="source"
-          label={d.channels?.a ? `A: ${d.channels.a.slice(0, 6)}` : 'A: Height'}
-          color="var(--pbr-height)"
+          label={d.channels?.a ? `A: ${d.channels.a.slice(0, 6)}` : 'A'}
+          color="#94a3b8"
         />
       </NodeSocketGroup>
     </NodeCard>
   );
 };
+

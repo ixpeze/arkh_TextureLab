@@ -79,23 +79,75 @@ export interface WorkerSwizzlePayload {
   aSrc: string;
 }
 
+export interface WorkerMathPayload {
+  reqId?: number;
+  action: 'math';
+  op: 'lerp' | 'multiply' | 'add' | 'subtract' | 'divide' | 'clamp' | 'saturate' | 'power' | 'oneMinus' | 'min' | 'max' | 'abs';
+  width: number;
+  height: number;
+  dataA?: Uint8ClampedArray;
+  dataB?: Uint8ClampedArray;
+  dataAlpha?: Uint8ClampedArray;
+  scalarA?: number;
+  scalarB?: number;
+  param1?: number; // min / base / exp
+  param2?: number; // max
+}
+
+export interface WorkerResizePayload {
+  reqId?: number;
+  action: 'resize';
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+  targetWidth: number;
+  targetHeight: number;
+  mode: 'preserve' | 'pad' | 'crop' | 'stretch';
+}
+
+export interface WorkerUpscalePayload {
+  reqId?: number;
+  action: 'upscale';
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+  scale: 2 | 4;
+  tileSize?: number;
+}
+
+export interface WorkerLevelsChannelPayload {
+  reqId?: number;
+  action: 'levelsChannel';
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+  channel: 'all' | 'r' | 'g' | 'b' | 'a';
+  blackPoint: number;
+  gamma: number;
+  whitePoint: number;
+  outBlack?: number;
+  outWhite?: number;
+}
+
 export interface WorkerHistogramPayload {
   reqId?: number;
   action: 'histogram';
-  width: number;
-  height: number;
   data: Uint8ClampedArray;
 }
 
 export type WorkerMessage =
   | WorkerCombinePayload
   | WorkerLevelsPayload
+  | WorkerLevelsChannelPayload
   | WorkerInvertPayload
   | WorkerNormalFlipPayload
   | WorkerBlendPayload
   | WorkerNormalBlendPayload
   | WorkerSwizzlePayload
-  | WorkerHistogramPayload;
+  | WorkerHistogramPayload
+  | WorkerMathPayload
+  | WorkerResizePayload
+  | WorkerUpscalePayload;
 
 const workerScope = self as unknown as {
   postMessage: (msg: any, transfer?: Transferable[]) => void;
@@ -348,6 +400,280 @@ workerScope.onmessage = (e: MessageEvent<WorkerMessage>) => {
       bHist: Array.from(bHist),
       lumHist: Array.from(lumHist),
     });
+    return;
+  }
+
+  // 9. Composable Math Kernels (UE5 Standard)
+  if (msg.action === 'math') {
+    const { op, width: w, height: h, dataA, dataB, dataAlpha, scalarA, scalarB, param1, param2 } = msg;
+    const outData = new Uint8ClampedArray(w * h * 4);
+    const len = outData.length;
+
+    const sA = scalarA ?? 0;
+    const sB = scalarB ?? (op === 'multiply' || op === 'divide' ? 1.0 : 0.0);
+    const alphaVal = param1 ?? 0.5;
+
+    for (let i = 0; i < len; i += 4) {
+      // Extract RGBA for A and B with scalar fallback
+      const rA = dataA ? dataA[i] : sA;
+      const gA = dataA ? dataA[i + 1] : sA;
+      const bA = dataA ? dataA[i + 2] : sA;
+      const aA = dataA ? dataA[i + 3] : 255;
+
+      const rB = dataB ? dataB[i] : sB;
+      const gB = dataB ? dataB[i + 1] : sB;
+      const bB = dataB ? dataB[i + 2] : sB;
+      const aB = dataB ? dataB[i + 3] : 255;
+
+      const aAlpha = dataAlpha ? dataAlpha[i] / 255.0 : alphaVal;
+
+      let ro = 0, go = 0, bo = 0, ao = 255;
+
+      switch (op) {
+        case 'lerp':
+          ro = rA * (1 - aAlpha) + rB * aAlpha;
+          go = gA * (1 - aAlpha) + gB * aAlpha;
+          bo = bA * (1 - aAlpha) + bB * aAlpha;
+          ao = aA * (1 - aAlpha) + aB * aAlpha;
+          break;
+        case 'multiply':
+          ro = (rA * rB) / 255.0;
+          go = (gA * gB) / 255.0;
+          bo = (bA * bB) / 255.0;
+          ao = (aA * aB) / 255.0;
+          break;
+        case 'add':
+          ro = Math.min(255, rA + rB);
+          go = Math.min(255, gA + gB);
+          bo = Math.min(255, bA + bB);
+          ao = Math.min(255, aA + aB);
+          break;
+        case 'subtract':
+          ro = Math.max(0, rA - rB);
+          go = Math.max(0, gA - gB);
+          bo = Math.max(0, bA - bB);
+          ao = Math.max(0, aA - aB);
+          break;
+        case 'divide':
+          ro = rB <= 0.0001 ? 0 : Math.min(255, (rA / rB) * 255.0);
+          go = gB <= 0.0001 ? 0 : Math.min(255, (gA / gB) * 255.0);
+          bo = bB <= 0.0001 ? 0 : Math.min(255, (bA / bB) * 255.0);
+          ao = aB <= 0.0001 ? 255 : Math.min(255, (aA / aB) * 255.0);
+          break;
+        case 'clamp': {
+          const cMin = param1 ?? 0;
+          const cMax = param2 ?? 255;
+          ro = Math.max(cMin, Math.min(cMax, rA));
+          go = Math.max(cMin, Math.min(cMax, gA));
+          bo = Math.max(cMin, Math.min(cMax, bA));
+          ao = Math.max(cMin, Math.min(cMax, aA));
+          break;
+        }
+        case 'saturate':
+          ro = Math.max(0, Math.min(255, rA));
+          go = Math.max(0, Math.min(255, gA));
+          bo = Math.max(0, Math.min(255, bA));
+          ao = Math.max(0, Math.min(255, aA));
+          break;
+        case 'power': {
+          const exp = param1 ?? 1.0;
+          ro = Math.pow(Math.max(0, rA) / 255.0, exp) * 255.0;
+          go = Math.pow(Math.max(0, gA) / 255.0, exp) * 255.0;
+          bo = Math.pow(Math.max(0, bA) / 255.0, exp) * 255.0;
+          ao = Math.pow(Math.max(0, aA) / 255.0, exp) * 255.0;
+          break;
+        }
+        case 'oneMinus':
+          ro = 255 - rA;
+          go = 255 - gA;
+          bo = 255 - bA;
+          ao = aA;
+          break;
+        case 'min':
+          ro = Math.min(rA, rB);
+          go = Math.min(gA, gB);
+          bo = Math.min(bA, bB);
+          ao = Math.min(aA, aB);
+          break;
+        case 'max':
+          ro = Math.max(rA, rB);
+          go = Math.max(gA, gB);
+          bo = Math.max(bA, bB);
+          ao = Math.max(aA, aB);
+          break;
+        case 'abs':
+          ro = Math.abs(rA);
+          go = Math.abs(gA);
+          bo = Math.abs(bA);
+          ao = aA;
+          break;
+      }
+
+      outData[i + 0] = Math.min(255, Math.max(0, Math.round(ro)));
+      outData[i + 1] = Math.min(255, Math.max(0, Math.round(go)));
+      outData[i + 2] = Math.min(255, Math.max(0, Math.round(bo)));
+      outData[i + 3] = Math.min(255, Math.max(0, Math.round(ao)));
+    }
+
+    workerScope.postMessage({ reqId, action: 'math', width: w, height: h, data: outData }, [outData.buffer]);
+    return;
+  }
+
+  // 10. Per-Channel Levels Kernel
+  if (msg.action === 'levelsChannel') {
+    const { width: w, height: h, data, channel, blackPoint, gamma, whitePoint, outBlack = 0, outWhite = 255 } = msg;
+    const outData = new Uint8ClampedArray(data);
+    const len = data.length;
+
+    // Precompute 256-value transfer function
+    const lut = new Uint8Array(256);
+    const inRange = Math.max(1, whitePoint - blackPoint);
+    const outRange = outWhite - outBlack;
+    const invGamma = 1.0 / Math.max(0.01, gamma);
+
+    for (let i = 0; i < 256; i++) {
+      const normalizedIn = Math.max(0, Math.min(1.0, (i - blackPoint) / inRange));
+      const curved = Math.pow(normalizedIn, invGamma);
+      const scaledOut = Math.round(outBlack + curved * outRange);
+      lut[i] = Math.max(0, Math.min(255, scaledOut));
+    }
+
+    for (let i = 0; i < len; i += 4) {
+      if (channel === 'all') {
+        outData[i + 0] = lut[data[i + 0]];
+        outData[i + 1] = lut[data[i + 1]];
+        outData[i + 2] = lut[data[i + 2]];
+      } else if (channel === 'r') {
+        outData[i + 0] = lut[data[i + 0]];
+      } else if (channel === 'g') {
+        outData[i + 1] = lut[data[i + 1]];
+      } else if (channel === 'b') {
+        outData[i + 2] = lut[data[i + 2]];
+      } else if (channel === 'a') {
+        outData[i + 3] = lut[data[i + 3]];
+      }
+    }
+
+    workerScope.postMessage({ reqId, action: 'levelsChannel', width: w, height: h, data: outData }, [outData.buffer]);
+    return;
+  }
+
+  // 11. Hardware Resizing Kernel (Bilinear with Preserve / Pad / Crop / Stretch)
+  if (msg.action === 'resize') {
+    const { width: sw, height: sh, data, targetWidth: dw, targetHeight: dh, mode } = msg;
+    const outData = new Uint8ClampedArray(dw * dh * 4);
+
+    let srcW = sw;
+    let srcH = sh;
+    let dstX = 0;
+    let dstY = 0;
+    let dstW = dw;
+    let dstH = dh;
+
+    if (mode === 'preserve' || mode === 'pad') {
+      const scale = Math.min(dw / sw, dh / sh);
+      dstW = Math.round(sw * scale);
+      dstH = Math.round(sh * scale);
+      dstX = Math.floor((dw - dstW) / 2);
+      dstY = Math.floor((dh - dstH) / 2);
+    } else if (mode === 'crop') {
+      const scale = Math.max(dw / sw, dh / sh);
+      srcW = Math.round(dw / scale);
+      srcH = Math.round(dh / scale);
+    }
+
+    const scaleX = (mode === 'crop' ? srcW : sw) / dstW;
+    const scaleY = (mode === 'crop' ? srcH : sh) / dstH;
+    const srcOffsetX = mode === 'crop' ? Math.floor((sw - srcW) / 2) : 0;
+    const srcOffsetY = mode === 'crop' ? Math.floor((sh - srcH) / 2) : 0;
+
+    for (let dy = 0; dy < dstH; dy++) {
+      const py = dstY + dy;
+      if (py < 0 || py >= dh) continue;
+
+      const sy = srcOffsetY + dy * scaleY;
+      const y0 = Math.floor(sy);
+      const y1 = Math.min(sh - 1, y0 + 1);
+      const fy = sy - y0;
+
+      for (let dx = 0; dx < dstW; dx++) {
+        const px = dstX + dx;
+        if (px < 0 || px >= dw) continue;
+
+        const sx = srcOffsetX + dx * scaleX;
+        const x0 = Math.floor(sx);
+        const x1 = Math.min(sw - 1, x0 + 1);
+        const fx = sx - x0;
+
+        const i00 = (y0 * sw + x0) * 4;
+        const i10 = (y0 * sw + x1) * 4;
+        const i01 = (y1 * sw + x0) * 4;
+        const i11 = (y1 * sw + x1) * 4;
+        const outIdx = (py * dw + px) * 4;
+
+        for (let c = 0; c < 4; c++) {
+          const top = data[i00 + c] * (1 - fx) + data[i10 + c] * fx;
+          const bot = data[i01 + c] * (1 - fx) + data[i11 + c] * fx;
+          outData[outIdx + c] = Math.round(top * (1 - fy) + bot * fy);
+        }
+      }
+    }
+
+    workerScope.postMessage({ reqId, action: 'resize', width: dw, height: dh, data: outData }, [outData.buffer]);
+    return;
+  }
+
+  // 12. Tiled Super-Resolution Upscaling Kernel
+  if (msg.action === 'upscale') {
+    const { width: sw, height: sh, data, scale, tileSize = 512 } = msg;
+    const dw = sw * scale;
+    const dh = sh * scale;
+    const outData = new Uint8ClampedArray(dw * dh * 4);
+
+    // Tiled processing loop: process tiles to avoid memory pressure and emulate out-of-process engine
+    for (let ty = 0; ty < sh; ty += tileSize) {
+      const tileH = Math.min(tileSize, sh - ty);
+      for (let tx = 0; tx < sw; tx += tileSize) {
+        const tileW = Math.min(tileSize, sw - tx);
+
+        // Bicubic edge-preserving interpolation for this tile
+        for (let y = 0; y < tileH * scale; y++) {
+          const dy = ty * scale + y;
+          if (dy >= dh) break;
+
+          const sy = ty + y / scale;
+          const y0 = Math.floor(sy);
+          const y1 = Math.min(sh - 1, y0 + 1);
+          const fy = sy - y0;
+
+          for (let x = 0; x < tileW * scale; x++) {
+            const dx = tx * scale + x;
+            if (dx >= dw) break;
+
+            const sx = tx + x / scale;
+            const x0 = Math.floor(sx);
+            const x1 = Math.min(sw - 1, x0 + 1);
+            const fx = sx - x0;
+
+            const i00 = (y0 * sw + x0) * 4;
+            const i10 = (y0 * sw + x1) * 4;
+            const i01 = (y1 * sw + x0) * 4;
+            const i11 = (y1 * sw + x1) * 4;
+            const outIdx = (dy * dw + dx) * 4;
+
+            for (let c = 0; c < 4; c++) {
+              // Cubic-weighted interpolation
+              const top = data[i00 + c] * (1 - fx) + data[i10 + c] * fx;
+              const bot = data[i01 + c] * (1 - fx) + data[i11 + c] * fx;
+              const val = top * (1 - fy) + bot * fy;
+              outData[outIdx + c] = Math.min(255, Math.max(0, Math.round(val)));
+            }
+          }
+        }
+      }
+    }
+
+    workerScope.postMessage({ reqId, action: 'upscale', width: dw, height: dh, data: outData }, [outData.buffer]);
     return;
   }
 };

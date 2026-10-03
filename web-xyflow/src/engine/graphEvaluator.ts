@@ -101,13 +101,13 @@ export class GraphEvaluator {
           const val = Math.max(0, Math.min(1, rawVal));
           const byteVal = Math.min(255, Math.max(0, Math.round(val * 255)));
           result = PixelEngine.createSolid(512, 512, byteVal, byteVal, byteVal, 255);
-        } else if (nodeType === 'constantColor') {
+        } else if (nodeType === 'constantColor' || nodeType === 'color') {
           const rawHex = typeof data.color === 'string' ? data.color : '#ffffff';
           const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(rawHex) ? rawHex : '#ffffff';
           const rgb = this.hexToRgb(hex);
           result = PixelEngine.createSolid(512, 512, rgb.r, rgb.g, rgb.b, 255);
-        } else if (nodeType === 'channelCombiner') {
-          // Find incoming edges for handles r, g, b, a
+        } else if (nodeType === 'channelCombiner' || nodeType === 'channelPack') {
+          // Inputs: r, g, b, a; each defaults to 0 (UE5 standard)
           const rEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
           const gEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'g');
           const bEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
@@ -138,19 +138,184 @@ export class GraphEvaluator {
             const n = Number(val);
             return isNaN(n) ? def : Math.max(0, Math.min(255, Math.round(n)));
           };
+          // Defaults each to 0 per spec unless user configured fallbacks
           const fallbacks = {
-            r: parseFallback(rawFallbacks.r, 255),
-            g: parseFallback(rawFallbacks.g, 128),
+            r: parseFallback(rawFallbacks.r, 0),
+            g: parseFallback(rawFallbacks.g, 0),
             b: parseFallback(rawFallbacks.b, 0),
-            a: parseFallback(rawFallbacks.a, 255),
+            a: parseFallback(rawFallbacks.a, 0),
           };
 
-          // Combine channels: zero intermediate buffer allocations, ultra-fast direct multiplexing!
           result = PixelEngine.combineChannels(rSrc, gSrc, bSrc, aSrc, undefined, fallbacks);
-        } else if (nodeType === 'channelSplitter') {
-          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || !e.targetHandle));
+        } else if (nodeType === 'channelSplitter' || nodeType === 'channelUnpack') {
+          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
+          if (inEdge) {
+            const inBuf = evaluateNode(inEdge.source);
+            if (inBuf) {
+              const srcHandle = inEdge.sourceHandle || 'rgba';
+              result = this.coerceUE5(inBuf, srcHandle, 'rgba');
+            }
+          }
+        } else if (nodeType === 'channelSwizzle' || nodeType === 'channelMixer') {
+          // Channel Mixer: straight wires, scalar slots, custom remapping
+          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
+          const inBuf = inEdge ? evaluateNode(inEdge.source) : null;
+          const rSrc = (data.rSrc as string) || 'r';
+          const gSrc = (data.gSrc as string) || 'g';
+          const bSrc = (data.bSrc as string) || 'b';
+          const aSrc = (data.aSrc as string) || 'a';
+          const routes = data.routes as any;
+          const scalarSlots = (data.scalarSlots as { id: string; value: number }[]) || [];
+          const scalarValues: Record<string, number> = {};
+          for (const s of scalarSlots) {
+            scalarValues[s.id] = s.value;
+          }
+
+          if (inBuf) {
+            result = data.isBypassed
+              ? inBuf
+              : PixelEngine.mixChannels(inBuf, routes, scalarValues, rSrc, gSrc, bSrc, aSrc);
+          } else {
+            // Check if individual channel pins are connected
+            const rEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
+            const gEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'g');
+            const bEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
+            const aEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
+
+            if (rEdge || gEdge || bEdge || aEdge) {
+              const rB = rEdge ? evaluateNode(rEdge.source) : null;
+              const gB = gEdge ? evaluateNode(gEdge.source) : null;
+              const bB = bEdge ? evaluateNode(bEdge.source) : null;
+              const aB = aEdge ? evaluateNode(aEdge.source) : null;
+              const combined = PixelEngine.combineChannels(
+                { buffer: rB || undefined, channel: 0 },
+                { buffer: gB || undefined, channel: 1 },
+                { buffer: bB || undefined, channel: 2 },
+                { buffer: aB || undefined, channel: 3 },
+                undefined,
+                { r: 0, g: 0, b: 0, a: 255 }
+              );
+              result = routes ? PixelEngine.mixChannels(combined, routes, scalarValues, rSrc, gSrc, bSrc, aSrc) : combined;
+            }
+          }
+        } else if (
+          nodeType === 'lerp' ||
+          nodeType === 'multiply' ||
+          nodeType === 'add' ||
+          nodeType === 'subtract' ||
+          nodeType === 'divide' ||
+          nodeType === 'clamp' ||
+          nodeType === 'saturate' ||
+          nodeType === 'power' ||
+          nodeType === 'oneMinus' ||
+          nodeType === 'min' ||
+          nodeType === 'max' ||
+          nodeType === 'abs' ||
+          nodeType === 'math'
+        ) {
+          const op = (nodeType === 'math' ? data.op || 'multiply' : nodeType) as any;
+          const edgeA = edges.find((e) => e.target === nodeId && (e.targetHandle === 'a' || e.targetHandle === 'base' || e.targetHandle === 'input' || !e.targetHandle));
+          const edgeB = edges.find((e) => e.target === nodeId && (e.targetHandle === 'b' || e.targetHandle === 'exp'));
+          const edgeAlpha = edges.find((e) => e.target === nodeId && (e.targetHandle === 'alpha' || e.targetHandle === 'mask'));
+
+          const bufA = edgeA ? evaluateNode(edgeA.source) : null;
+          const bufB = edgeB ? evaluateNode(edgeB.source) : null;
+          const bufAlpha = edgeAlpha ? evaluateNode(edgeAlpha.source) : null;
+
+          const scalarA = typeof data.valA === 'number' ? data.valA : (typeof data.a === 'number' ? data.a : undefined);
+          const scalarB = typeof data.valB === 'number' ? data.valB : (typeof data.b === 'number' ? data.b : undefined);
+          const param1 = typeof data.param1 === 'number' ? data.param1 : (typeof data.min === 'number' ? data.min : (typeof data.exp === 'number' ? data.exp : (typeof data.alpha === 'number' ? data.alpha : undefined)));
+          const param2 = typeof data.param2 === 'number' ? data.param2 : (typeof data.max === 'number' ? data.max : undefined);
+
+          result = data.isBypassed && bufA
+            ? bufA
+            : PixelEngine.applyMath(op, bufA, bufB, bufAlpha, scalarA, scalarB, param1, param2);
+        } else if (nodeType === 'levels') {
+          const inEdge = edges.find((e) => e.target === nodeId);
+          if (inEdge) {
+            const inBuf = evaluateNode(inEdge.source);
+            if (inBuf) {
+              const ch = (data.channel as 'all' | 'r' | 'g' | 'b' | 'a') || 'all';
+              const bp = typeof data.blackPoint === 'number' && !isNaN(data.blackPoint) ? Math.max(0, Math.min(255, data.blackPoint)) : 0;
+              const wp = typeof data.whitePoint === 'number' && !isNaN(data.whitePoint) ? Math.max(0, Math.min(255, data.whitePoint)) : 255;
+              const gm = typeof data.gamma === 'number' && !isNaN(data.gamma) ? Math.max(0.01, Math.min(5.0, data.gamma)) : 1.0;
+              const ob = typeof data.outBlack === 'number' && !isNaN(data.outBlack) ? Math.max(0, Math.min(255, data.outBlack)) : 0;
+              const ow = typeof data.outWhite === 'number' && !isNaN(data.outWhite) ? Math.max(0, Math.min(255, data.outWhite)) : 255;
+
+              result = data.isBypassed
+                ? inBuf
+                : PixelEngine.applyLevelsChannel(inBuf, ch, bp, gm, wp, ob, ow);
+            }
+          }
+        } else if (nodeType === 'resize') {
+          const inEdge = edges.find((e) => e.target === nodeId);
+          if (inEdge) {
+            const inBuf = evaluateNode(inEdge.source);
+            if (inBuf) {
+              let tw = typeof data.targetWidth === 'number' ? data.targetWidth : 1024;
+              let th = typeof data.targetHeight === 'number' ? data.targetHeight : 1024;
+              const potMode = (data.potMode as 'none' | 'nearest' | 'up' | 'down') || 'none';
+              if (potMode !== 'none') {
+                tw = PixelEngine.toPowerOfTwo(tw, potMode);
+                th = PixelEngine.toPowerOfTwo(th, potMode);
+              }
+              const mode = (data.mode as 'preserve' | 'pad' | 'crop' | 'stretch') || 'preserve';
+              result = data.isBypassed ? inBuf : PixelEngine.resizeBuffer(inBuf, tw, th, mode);
+            }
+          }
+        } else if (nodeType === 'upscale') {
+          const inEdge = edges.find((e) => e.target === nodeId);
+          if (inEdge) {
+            const inBuf = evaluateNode(inEdge.source);
+            if (inBuf) {
+              const scale = (data.scale === 4 ? 4 : 2) as 2 | 4;
+              // Synchronous preview: fast bilinear resize; export uses upscaleBufferAsync
+              result = data.isBypassed ? inBuf : PixelEngine.resizeBuffer(inBuf, inBuf.width * scale, inBuf.height * scale, 'stretch');
+            }
+          }
+        } else if (nodeType === 'compare') {
+          const edgeA = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
+          const edgeB = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
+          const bufA = edgeA ? evaluateNode(edgeA.source) : null;
+          const bufB = edgeB ? evaluateNode(edgeB.source) : null;
+
+          if (bufA && bufB) {
+            const mode = (data.mode as 'wipe' | 'sideBySide' | 'difference') || 'wipe';
+            const wipeProgress = typeof data.wipeProgress === 'number' ? data.wipeProgress : 0.5;
+            const diffGain = typeof data.diffGain === 'number' ? data.diffGain : 1.0;
+            result = PixelEngine.createCompareBuffer(bufA, bufB, mode, wipeProgress, diffGain);
+          } else if (bufA) {
+            result = bufA;
+          } else if (bufB) {
+            result = bufB;
+          }
+        } else if (nodeType === 'seamCheck') {
+          const inEdge = edges.find((e) => e.target === nodeId);
+          if (inEdge) {
+            const inBuf = evaluateNode(inEdge.source);
+            if (inBuf) {
+              const repeats = (data.repeats === 3 ? 3 : data.repeats === 4 ? 4 : 2) as 2 | 3 | 4;
+              const showBorders = data.showBorders !== false;
+              result = PixelEngine.createSeamCheckBuffer(inBuf, repeats, showBorders);
+            }
+          }
+        } else if (nodeType === 'loadFolder' || nodeType === 'forEach' || nodeType === 'batchExport') {
+          // Pass-through or active item buffer
+          const inEdge = edges.find((e) => e.target === nodeId);
           if (inEdge) {
             result = evaluateNode(inEdge.source);
+          } else if (data.activeBuffer) {
+            result = data.activeBuffer as TextureBuffer;
+          }
+        } else if (nodeType === 'normalize') {
+          const inEdge = edges.find((e) => e.target === nodeId);
+          if (inEdge) {
+            const inBuf = evaluateNode(inEdge.source);
+            if (inBuf) {
+              // If normal map and flip requested:
+              const shouldFlipGreen = !!data.requiresGreenFlip || data.flipGreen;
+              result = shouldFlipGreen ? PixelEngine.flipGreenChannel(inBuf) : inBuf;
+            }
           }
         } else if (nodeType === 'invert') {
           const inEdge = edges.find((e) => e.target === nodeId);
@@ -158,19 +323,6 @@ export class GraphEvaluator {
             const inBuf = evaluateNode(inEdge.source);
             if (inBuf) {
               result = data.isBypassed ? inBuf : PixelEngine.invertBuffer(inBuf);
-            }
-          }
-        } else if (nodeType === 'levels') {
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              const bp = typeof data.blackPoint === 'number' && !isNaN(data.blackPoint) ? Math.max(0, Math.min(255, data.blackPoint)) : 0;
-              const wp = typeof data.whitePoint === 'number' && !isNaN(data.whitePoint) ? Math.max(0, Math.min(255, data.whitePoint)) : 255;
-              const gm = typeof data.gamma === 'number' && !isNaN(data.gamma) ? Math.max(0.01, Math.min(5.0, data.gamma)) : 1.0;
-              result = data.isBypassed
-                ? inBuf
-                : PixelEngine.applyLevels(inBuf, bp, gm, wp);
             }
           }
         } else if (nodeType === 'normalFlip') {
@@ -217,34 +369,18 @@ export class GraphEvaluator {
             const safeStrength = typeof data.detailStrength === 'number' && !isNaN(data.detailStrength) ? Math.max(0, Math.min(5.0, data.detailStrength)) : 1.0;
             result = data.isBypassed
               ? bufBase
-              : PixelEngine.blendNormalRNM(
-                  bufBase,
-                  bufDetail,
-                  safeStrength
-                );
+              : PixelEngine.blendNormalRNM(bufBase, bufDetail, safeStrength);
           } else if (bufBase) {
             result = bufBase;
           }
-        } else if (nodeType === 'channelSwizzle') {
-          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || !e.targetHandle));
+        } else if (nodeType === 'textureOutput') {
+          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
           if (inEdge) {
             const inBuf = evaluateNode(inEdge.source);
             if (inBuf) {
-              result = data.isBypassed
-                ? inBuf
-                : PixelEngine.swizzleBuffer(
-                    inBuf,
-                    (data.rSrc as string) || 'r',
-                    (data.gSrc as string) || 'g',
-                    (data.bSrc as string) || 'b',
-                    (data.aSrc as string) || 'a'
-                  );
+              const srcHandle = inEdge.sourceHandle || 'rgba';
+              result = this.coerceUE5(inBuf, srcHandle, 'rgba');
             }
-          }
-        } else if (nodeType === 'textureOutput') {
-          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || !e.targetHandle));
-          if (inEdge) {
-            result = evaluateNode(inEdge.source);
           }
         }
       } finally {
@@ -266,6 +402,74 @@ export class GraphEvaluator {
   }
 
   /**
+   * UE5-Compatible Pin & Type Coercion:
+   * 1. Scalar extraction: 'r', 'g', 'b', 'a'
+   *    - To Scalar: solid/channel buffer with extracted scalar.
+   *    - To Vector3 (RGB) or Vector4 (RGBA): Replicates scalar across lanes (R=S, G=S, B=S, A=255).
+   * 2. Vector3 (RGB):
+   *    - To Vector4 (RGBA): Appends Alpha=255 (1.0).
+   *    - To Scalar: Takes Red channel.
+   * 3. Vector4 (RGBA):
+   *    - To Vector3 (RGB): Drops Alpha.
+   *    - To Scalar: Takes Red channel.
+   */
+  public static coerceUE5(
+    buffer: TextureBuffer,
+    sourceHandle = 'rgba',
+    expectedType: 'rgba' | 'rgb' | 'scalar' | 'r' | 'g' | 'b' | 'a' = 'rgba'
+  ): TextureBuffer {
+    const sh = sourceHandle.toLowerCase();
+    const isScalarSource = ['r', 'g', 'b', 'a'].includes(sh);
+    const exp = expectedType.toLowerCase();
+    const isScalarExpected = exp === 'scalar' || ['r', 'g', 'b', 'a'].includes(exp);
+
+    if (isScalarSource) {
+      const chIdx = sh === 'r' ? 0 : sh === 'g' ? 1 : sh === 'b' ? 2 : 3;
+      const w = buffer.width;
+      const h = buffer.height;
+      const outData = new Uint8ClampedArray(w * h * 4);
+      const data = buffer.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const val = data[i + chIdx];
+        outData[i + 0] = val;
+        outData[i + 1] = val;
+        outData[i + 2] = val;
+        outData[i + 3] = exp === 'rgba' ? val : 255;
+      }
+      return { width: w, height: h, data: outData, dataUrl: PixelEngine.toDataUrl({ width: w, height: h, data: outData }) };
+    }
+
+    if (sh === 'rgb') {
+      const w = buffer.width;
+      const h = buffer.height;
+      const outData = new Uint8ClampedArray(buffer.data);
+      for (let i = 0; i < outData.length; i += 4) {
+        outData[i + 3] = 255;
+      }
+      return { width: w, height: h, data: outData, dataUrl: PixelEngine.toDataUrl({ width: w, height: h, data: outData }) };
+    }
+
+    if (isScalarExpected) {
+      const chIdx = exp === 'g' ? 1 : exp === 'b' ? 2 : exp === 'a' ? 3 : 0; // Default to Red channel
+      const w = buffer.width;
+      const h = buffer.height;
+      const outData = new Uint8ClampedArray(w * h * 4);
+      const data = buffer.data;
+      for (let i = 0; i < data.length; i += 4) {
+        const val = data[i + chIdx];
+        outData[i + 0] = val;
+        outData[i + 1] = val;
+        outData[i + 2] = val;
+        outData[i + 3] = 255;
+      }
+      return { width: w, height: h, data: outData, dataUrl: PixelEngine.toDataUrl({ width: w, height: h, data: outData }) };
+    }
+
+    return buffer;
+  }
+
+  /**
    * Get detailed port connection info for a specific node to display in telemetry
    */
   public static getNodePortTelemetry(
@@ -275,13 +479,13 @@ export class GraphEvaluator {
     const nodeType = node.type || '';
     const data = node.data || {};
 
-    if (nodeType === 'channelCombiner') {
-      const fallbacks = (data.fallbacks as any) || { r: 255, g: 128, b: 0, a: 255 };
+    if (nodeType === 'channelCombiner' || nodeType === 'channelPack') {
+      const fallbacks = (data.fallbacks as any) || { r: 0, g: 0, b: 0, a: 0 };
       const ports = [
-        { handleId: 'r', label: 'R (AO)', fallback: fallbacks.r ?? 255 },
-        { handleId: 'g', label: 'G (Roughness)', fallback: fallbacks.g ?? 128 },
+        { handleId: 'r', label: 'R (AO)', fallback: fallbacks.r ?? 0 },
+        { handleId: 'g', label: 'G (Roughness)', fallback: fallbacks.g ?? 0 },
         { handleId: 'b', label: 'B (Metallic)', fallback: fallbacks.b ?? 0 },
-        { handleId: 'a', label: 'A (Height)', fallback: fallbacks.a ?? 255 },
+        { handleId: 'a', label: 'A (Height)', fallback: fallbacks.a ?? 0 },
       ];
 
       return ports.map((p) => {
@@ -297,8 +501,80 @@ export class GraphEvaluator {
       });
     }
 
+    if (nodeType === 'channelSplitter' || nodeType === 'channelUnpack') {
+      const edge = edges.find((e) => e.target === node.id && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
+      return [
+        {
+          handleId: 'rgba',
+          isConnected: !!edge,
+          sourceNodeId: edge?.source,
+          sourceHandle: edge?.sourceHandle || 'rgba',
+          sourceLabel: 'Input Stream',
+        },
+      ];
+    }
+
+    if (nodeType === 'channelSwizzle' || nodeType === 'channelMixer') {
+      const edge = edges.find((e) => e.target === node.id && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
+      return [
+        {
+          handleId: 'rgba',
+          isConnected: !!edge,
+          sourceNodeId: edge?.source,
+          sourceHandle: edge?.sourceHandle || 'rgba',
+          sourceLabel: 'Input Stream',
+        },
+      ];
+    }
+
+    if (
+      nodeType === 'lerp' ||
+      nodeType === 'multiply' ||
+      nodeType === 'add' ||
+      nodeType === 'subtract' ||
+      nodeType === 'divide' ||
+      nodeType === 'min' ||
+      nodeType === 'max' ||
+      nodeType === 'math'
+    ) {
+      const edgeA = edges.find((e) => e.target === node.id && (e.targetHandle === 'a' || !e.targetHandle));
+      const edgeB = edges.find((e) => e.target === node.id && e.targetHandle === 'b');
+      const edgeAlpha = edges.find((e) => e.target === node.id && e.targetHandle === 'alpha');
+
+      const ports: HandleConnectionInfo[] = [
+        { handleId: 'a', isConnected: !!edgeA, sourceNodeId: edgeA?.source, sourceLabel: 'Input A' },
+        { handleId: 'b', isConnected: !!edgeB, sourceNodeId: edgeB?.source, sourceLabel: 'Input B' },
+      ];
+      if (nodeType === 'lerp') {
+        ports.push({ handleId: 'alpha', isConnected: !!edgeAlpha, sourceNodeId: edgeAlpha?.source, sourceLabel: 'Alpha' });
+      }
+      return ports;
+    }
+
+    if (nodeType === 'clamp' || nodeType === 'saturate' || nodeType === 'power' || nodeType === 'oneMinus' || nodeType === 'abs') {
+      const edge = edges.find((e) => e.target === node.id);
+      return [
+        {
+          handleId: 'input',
+          isConnected: !!edge,
+          sourceNodeId: edge?.source,
+          sourceHandle: edge?.sourceHandle || undefined,
+          sourceLabel: 'Value',
+        },
+      ];
+    }
+
+    if (nodeType === 'compare') {
+      const edgeA = edges.find((e) => e.target === node.id && e.targetHandle === 'a');
+      const edgeB = edges.find((e) => e.target === node.id && e.targetHandle === 'b');
+      return [
+        { handleId: 'a', isConnected: !!edgeA, sourceNodeId: edgeA?.source, sourceLabel: 'Input A' },
+        { handleId: 'b', isConnected: !!edgeB, sourceNodeId: edgeB?.source, sourceLabel: 'Input B' },
+      ];
+    }
+
     if (nodeType === 'textureOutput') {
-      const edge = edges.find((e) => e.target === node.id && (e.targetHandle === 'rgba' || !e.targetHandle));
+      const edge = edges.find((e) => e.target === node.id && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
       return [
         {
           handleId: 'rgba',
@@ -363,7 +639,7 @@ export class GraphEvaluator {
       const type = node.type || '';
       const data = (node.data as any) || {};
 
-      if (type === 'channelCombiner') {
+      if (type === 'channelCombiner' || type === 'channelPack') {
         const edgeR = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
         const edgeG = edges.find((e) => e.target === nodeId && e.targetHandle === 'g');
         const edgeB = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
@@ -380,12 +656,25 @@ export class GraphEvaluator {
         const isA_Height = roleA.includes('height') || roleA.includes('disp');
 
         if (isR_AO && isG_Rough && isB_Metal) {
-          return { slot: isA_Height ? 'ORMH' : 'ORM', colorSpace: 'linear', sourceLabel: 'Combiner (ORM)' };
+          return { slot: isA_Height ? 'ORMH' : 'ORM', colorSpace: 'linear', sourceLabel: 'Pack (ORM)' };
         }
         if (roleR.includes('rough') && roleG.includes('metal') && (roleB.includes('ambient') || roleB.includes('ao'))) {
-          return { slot: 'RMA', colorSpace: 'linear', sourceLabel: 'Combiner (RMA)' };
+          return { slot: 'RMA', colorSpace: 'linear', sourceLabel: 'Pack (RMA)' };
         }
-        return { slot: 'Packed_RGBA', colorSpace: 'linear', sourceLabel: 'Combiner' };
+        return { slot: (data as any)?.slot || 'Packed_RGBA', colorSpace: 'linear', sourceLabel: 'Channel Pack' };
+      }
+
+      if (type === 'channelSplitter' || type === 'channelUnpack') {
+        const inEdgeUnpack = edges.find((e) => e.target === nodeId);
+        if (inEdgeUnpack) {
+          const upstream = traceNode(inEdgeUnpack.source);
+          return { slot: `${upstream.slot}_Channel`, colorSpace: 'linear', sourceLabel: 'Unpack Channel' };
+        }
+        return { slot: 'Channel', colorSpace: 'linear', sourceLabel: 'Unpack' };
+      }
+
+      if (type === 'channelSwizzle' || type === 'channelMixer') {
+        return { slot: data.slot || 'Mixed_RGBA', colorSpace: 'linear', sourceLabel: 'Channel Mixer' };
       }
 
       if (type === 'normalBlend' || type === 'normalFlip') {

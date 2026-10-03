@@ -27,10 +27,13 @@ export interface ExportPreset {
   isBuiltIn?: boolean;
 }
 
-export type TextureExportFormat = 'PNG' | 'TGA' | 'JPG' | 'WEBP';
+export type TextureExportFormat = 'PNG' | 'TGA' | 'JPG' | 'WEBP' | 'EXR';
+export type ExportFormat = TextureExportFormat;
 export type TextureBitDepth = '8b' | '16b';
+export type BitDepth = TextureBitDepth;
 export type TextureColorSpace = 'linear' | 'sRGB';
 export type ExportResolutionSetting = 'inherit' | '512' | '1024' | '2048' | '4096' | '8192';
+export type CollisionPolicy = 'skip' | 'overwrite' | 'rename';
 
 export interface GlobalExportSettings {
   projectName: string;
@@ -41,6 +44,7 @@ export interface GlobalExportSettings {
   defaultFormat: TextureExportFormat;
   defaultBitDepth: TextureBitDepth;
   directoryName?: string;
+  collisionPolicy?: CollisionPolicy;
 }
 
 export interface LocalOutputData {
@@ -61,6 +65,33 @@ export interface LocalOutputData {
   onChangeFormat?: (fmt: string) => void;
 }
 
+export interface TextureItem {
+  id: string;
+  originalPath: string;
+  filename: string;
+  stem: string;
+  ext: string;
+  setName: string;
+  mapType: string;
+  canonicalSuffix: string;
+  orientation?: 'gl' | 'dx' | null;
+  variantNum?: number | null;
+  mtime?: number;
+  dataUrl?: string;
+  buffer?: any;
+  status?: string;
+  action?: 'keep_rename' | 'flip_gl' | 'delete_gl' | 'delete_variant' | 'delete_type_dup' | 'delete_dupe';
+  isExcluded?: boolean;
+}
+
+export interface TextureCollection {
+  id: string;
+  name: string;
+  items: TextureItem[];
+  folder?: string;
+  createdAt: number;
+}
+
 export interface PreflightOutputItem {
   nodeId: string;
   title: string;
@@ -75,4 +106,11 @@ export interface PreflightOutputItem {
   resolution: string;
   resolvedFilename: string;
   enabled: boolean;
+  // Shared export registration metadata
+  sourceOutput?: string; // e.g. `${sourceNodeId}:${sourceHandle}`
+  sourceType?: 'explicit' | 'channelPack' | 'channelUnpack' | 'channelMixer' | 'batchExport';
+  sourceHandle?: string;
+  batchItemIdentity?: string;
+  buffer?: any;
 }
+
