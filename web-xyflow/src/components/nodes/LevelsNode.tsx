@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { SlidersHorizontal } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
@@ -10,6 +10,8 @@ export interface LevelsNodeData {
   blackPoint?: number;
   gamma?: number;
   whitePoint?: number;
+  isBypassed?: boolean;
+  onToggleBypass?: () => void;
   onChange?: (params: { blackPoint: number; gamma: number; whitePoint: number }) => void;
 }
 
@@ -18,6 +20,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
   const [black, setBlack] = useState(d.blackPoint ?? 0);
   const [gamma, setGamma] = useState(d.gamma ?? 1.0);
   const [white, setWhite] = useState(d.whitePoint ?? 255);
+  const [isBypassed, setIsBypassed] = useState(d.isBypassed ?? false);
 
   const handleBlack = (val: number) => {
     setBlack(val);
@@ -31,8 +34,33 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
 
   const handleWhite = (val: number) => {
     setWhite(val);
-    d.onChange?.({ blackPoint: black, gamma, whitePoint: val });
+    d.onChange?.({ blackPoint: black, gamma: val, whitePoint: val });
   };
+
+  const handleToggleBypass = () => {
+    const next = !isBypassed;
+    setIsBypassed(next);
+    d.onToggleBypass?.();
+  };
+
+  // Generate SVG points for dynamic transfer curve preview (width 156 x height 32)
+  const curvePath = useMemo(() => {
+    const w = 156;
+    const h = 32;
+    const points: string[] = [];
+    const range = Math.max(1, white - black);
+
+    for (let x = 0; x <= w; x += 4) {
+      const inVal = (x / w) * 255;
+      let norm = (inVal - black) / range;
+      norm = Math.min(1.0, Math.max(0.0, norm));
+      const outVal = Math.pow(norm, 1.0 / gamma);
+      const y = h - outVal * (h - 4) - 2; // inverted for SVG coordinates
+      points.push(`${x},${y.toFixed(1)}`);
+    }
+
+    return `M ${points.join(' L ')}`;
+  }, [black, gamma, white]);
 
   return (
     <NodeCard
@@ -41,6 +69,8 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
       icon={<SlidersHorizontal size={11} />}
       accentColor="var(--pbr-rough)"
       headerAction={<NodeBadge color="var(--pbr-rough)">REMAP</NodeBadge>}
+      isBypassed={isBypassed}
+      onToggleBypass={handleToggleBypass}
       width={172}
     >
       {/* Sockets Row with Dual Horizontal Hit-Zones */}
@@ -49,6 +79,55 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
         output={{ id: 'output', label: 'Out', color: 'var(--pbr-rough)' }}
         centerLabel="Remap"
       />
+
+      <NodeDivider />
+
+      {/* Dynamic Mini Transfer Curve Visualizer */}
+      <div
+        style={{
+          width: '100%',
+          height: 32,
+          backgroundColor: '#0c0e14',
+          borderRadius: 4,
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          position: 'relative',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <svg width="156" height="32" style={{ display: 'block' }}>
+          {/* Subtle grid lines */}
+          <line x1="39" y1="0" x2="39" y2="32" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+          <line x1="78" y1="0" x2="78" y2="32" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+          <line x1="117" y1="0" x2="117" y2="32" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+          <line x1="0" y1="16" x2="156" y2="16" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+
+          {/* Transfer curve */}
+          <path
+            d={curvePath}
+            fill="none"
+            stroke="var(--pbr-rough)"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+
+        {/* Dynamic Black/White markers */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 2,
+            right: 4,
+            fontSize: 7.5,
+            fontFamily: 'monospace',
+            color: '#64748b',
+          }}
+        >
+          γ {gamma.toFixed(2)}
+        </div>
+      </div>
 
       <NodeDivider />
 

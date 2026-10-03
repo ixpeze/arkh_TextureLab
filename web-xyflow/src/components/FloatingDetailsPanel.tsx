@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ChevronLeft,
   ChevronRight,
@@ -7,8 +7,13 @@ import {
   FolderOpen,
   Info,
   Sparkles,
+  BarChart2,
+  Crosshair,
+  Maximize,
+  Minimize,
+  Sliders,
 } from 'lucide-react';
-import { PixelEngine, type TextureBuffer } from '../engine/pixelEngine';
+import { PixelEngine, type TextureBuffer, type HistogramData } from '../engine/pixelEngine';
 import { TokenEngine, type CasingType } from '../engine/tokenizer';
 
 export interface FloatingDetailsPanelProps {
@@ -20,6 +25,7 @@ export interface FloatingDetailsPanelProps {
   onExportTarget?: (filename: string) => void;
   onLoadBenchmark?: () => void;
   onAutoWireORMH?: () => void;
+  onApplyPreset?: (presetKey: string) => void;
   nodeCount: number;
   edgeCount: number;
 }
@@ -33,6 +39,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   onExportTarget,
   onLoadBenchmark,
   onAutoWireORMH,
+  onApplyPreset,
   nodeCount,
   edgeCount,
 }) => {
@@ -41,8 +48,11 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   const [pattern, setPattern] = useState(TokenEngine.DEFAULT_PATTERN);
   const [casing, setCasing] = useState<CasingType>('UPPER_SNAKE');
   const [hoverPixel, setHoverPixel] = useState<{ x: number; y: number; r: number; g: number; b: number; a: number } | null>(null);
+  const [isPixelExact, setIsPixelExact] = useState(false);
+  const [activeTab, setActiveTab] = useState<'viewport' | 'histogram'>('viewport');
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const histCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Evaluate output filename
   const evaluateFilename = () => {
@@ -66,7 +76,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
     );
   };
 
-  // Render buffer to canvas
+  // Render 2D Viewport buffer to canvas
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !activeBuffer) return;
@@ -91,6 +101,80 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
       ctx.putImageData(imgData, 0, 0);
     }
   }, [activeBuffer, isolatedChannel]);
+
+  // Compute and render Histogram
+  const histogramData: HistogramData | null = useMemo(() => {
+    if (!activeBuffer) return null;
+    return PixelEngine.computeHistogram(activeBuffer);
+  }, [activeBuffer]);
+
+  useEffect(() => {
+    const canvas = histCanvasRef.current;
+    if (!canvas || !histogramData) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+
+    // Dark grid background
+    ctx.fillStyle = '#0c0e14';
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle grid lines at 25%, 50%, 75%
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.lineWidth = 1;
+    [0.25, 0.5, 0.75].forEach((pct) => {
+      const x = Math.round(w * pct);
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+      ctx.stroke();
+    });
+
+    const max = histogramData.maxCount || 1;
+
+    // Helper to draw a channel curve
+    const drawCurve = (bins: number[], color: string, alpha = 0.8) => {
+      ctx.strokeStyle = color;
+      ctx.fillStyle = color.replace(')', ', 0.12)').replace('rgb', 'rgba');
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+
+      for (let i = 0; i < 256; i++) {
+        const x = (i / 255) * w;
+        const norm = bins[i] / max;
+        // log-like scaling for visibility of low frequency data
+        const scaled = Math.min(1, Math.sqrt(norm) * 1.15);
+        const y = h - scaled * (h - 4);
+        ctx.lineTo(x, y);
+      }
+
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      ctx.globalAlpha = alpha;
+      ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    };
+
+    if (isolatedChannel === 'RGBA') {
+      drawCurve(histogramData.lum, '#f8fafc', 0.9);
+      drawCurve(histogramData.r, '#fb7185', 0.65);
+      drawCurve(histogramData.g, '#22c55e', 0.65);
+      drawCurve(histogramData.b, '#38bdf8', 0.65);
+    } else if (isolatedChannel === 'R') {
+      drawCurve(histogramData.r, '#fb7185', 0.9);
+    } else if (isolatedChannel === 'G') {
+      drawCurve(histogramData.g, '#22c55e', 0.9);
+    } else if (isolatedChannel === 'B') {
+      drawCurve(histogramData.b, '#38bdf8', 0.9);
+    } else if (isolatedChannel === 'A') {
+      drawCurve(histogramData.lum, '#facc15', 0.9);
+    }
+  }, [histogramData, isolatedChannel]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -219,12 +303,60 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
               </span>
             </div>
 
-            {/* 2D Mini Viewport */}
+            {/* Viewport Sub-Header: Mode Switch (2D Viewport vs Histogram) */}
+            <div style={{ display: 'flex', gap: 4, backgroundColor: 'rgba(10, 12, 18, 0.6)', padding: 2, borderRadius: 5 }}>
+              <button
+                onClick={() => setActiveTab('viewport')}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  height: 22,
+                  fontSize: 9,
+                  fontWeight: 700,
+                  borderRadius: 3,
+                  border: 'none',
+                  backgroundColor: activeTab === 'viewport' ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                  color: activeTab === 'viewport' ? '#38bdf8' : '#64748b',
+                  cursor: 'pointer',
+                }}
+              >
+                <Crosshair size={10} />
+                <span>2D VIEWPORT</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('histogram')}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 4,
+                  height: 22,
+                  fontSize: 9,
+                  fontWeight: 700,
+                  borderRadius: 3,
+                  border: 'none',
+                  backgroundColor: activeTab === 'histogram' ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
+                  color: activeTab === 'histogram' ? '#38bdf8' : '#64748b',
+                  cursor: 'pointer',
+                }}
+              >
+                <BarChart2 size={10} />
+                <span>HISTOGRAM</span>
+              </button>
+            </div>
+
+            {/* 2D Mini Viewport OR Histogram Waveform */}
             <div
               style={{
                 width: '100%',
                 height: 190,
-                backgroundColor: '#12151c',
+                backgroundColor: '#0c0e14',
+                backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 0)',
+                backgroundSize: '12px 12px',
                 borderRadius: 6,
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 position: 'relative',
@@ -232,48 +364,89 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: 'crosshair',
+                cursor: activeTab === 'viewport' ? 'crosshair' : 'default',
               }}
             >
-              {activeBuffer ? (
-                <canvas
-                  ref={canvasRef}
-                  onMouseMove={handleMouseMove}
-                  onMouseLeave={() => setHoverPixel(null)}
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    objectFit: 'contain',
-                    imageRendering: 'pixelated',
-                  }}
-                />
+              {activeTab === 'viewport' ? (
+                activeBuffer ? (
+                  <>
+                    <canvas
+                      ref={canvasRef}
+                      onMouseMove={handleMouseMove}
+                      onMouseLeave={() => setHoverPixel(null)}
+                      style={{
+                        width: isPixelExact ? activeBuffer.width : '100%',
+                        height: isPixelExact ? activeBuffer.height : '100%',
+                        objectFit: isPixelExact ? 'none' : 'contain',
+                        imageRendering: 'pixelated',
+                      }}
+                    />
+                    <button
+                      onClick={() => setIsPixelExact(!isPixelExact)}
+                      title={isPixelExact ? 'Fit Viewport' : '1:1 Pixel Space'}
+                      style={{
+                        position: 'absolute',
+                        bottom: 6,
+                        right: 6,
+                        background: 'rgba(15, 23, 42, 0.85)',
+                        border: '1px solid rgba(255, 255, 255, 0.15)',
+                        borderRadius: 3,
+                        color: '#94a3b8',
+                        padding: '2px 4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                      }}
+                    >
+                      {isPixelExact ? <Minimize size={11} /> : <Maximize size={11} />}
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ color: '#64748b', fontSize: 10 }}>No Buffer Data</div>
+                )
               ) : (
-                <div style={{ color: '#64748b', fontSize: 10 }}>No Buffer Data</div>
+                /* Histogram Full Viewport */
+                <canvas
+                  ref={histCanvasRef}
+                  width={310}
+                  height={190}
+                  style={{ width: '100%', height: '100%' }}
+                />
               )}
 
-              {/* Pixel Probe Tooltip */}
-              {hoverPixel && (
+              {/* Enhanced Precision Pixel Probe Tooltip */}
+              {hoverPixel && activeTab === 'viewport' && (
                 <div
                   style={{
                     position: 'absolute',
                     top: 6,
                     right: 6,
-                    background: 'rgba(15, 23, 42, 0.88)',
-                    border: '1px solid rgba(255, 255, 255, 0.12)',
-                    padding: '3px 6px',
-                    borderRadius: 3,
+                    background: 'rgba(10, 13, 20, 0.95)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    padding: '4px 6px',
+                    borderRadius: 4,
                     fontSize: 8,
-                    fontFamily: 'monospace',
+                    fontFamily: "'Geist Mono', monospace",
                     color: '#f8fafc',
                     pointerEvents: 'none',
                     display: 'flex',
-                    gap: 5,
+                    flexDirection: 'column',
+                    gap: 2,
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.6)',
                   }}
                 >
-                  <span style={{ color: 'var(--pbr-ao)' }}>R:{hoverPixel.r}</span>
-                  <span style={{ color: 'var(--pbr-rough)' }}>G:{hoverPixel.g}</span>
-                  <span style={{ color: 'var(--pbr-metal)' }}>B:{hoverPixel.b}</span>
-                  <span style={{ color: 'var(--pbr-height)' }}>A:{hoverPixel.a}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 7 }}>
+                    <span>X: {hoverPixel.x}</span>
+                    <span>Y: {hoverPixel.y}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    <span style={{ color: 'var(--pbr-ao)' }}>R:{hoverPixel.r} ({(hoverPixel.r / 255).toFixed(2)})</span>
+                    <span style={{ color: 'var(--pbr-rough)' }}>G:{hoverPixel.g} ({(hoverPixel.g / 255).toFixed(2)})</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 5 }}>
+                    <span style={{ color: 'var(--pbr-metal)' }}>B:{hoverPixel.b} ({(hoverPixel.b / 255).toFixed(2)})</span>
+                    <span style={{ color: 'var(--pbr-height)' }}>A:{hoverPixel.a} ({(hoverPixel.a / 255).toFixed(2)})</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -313,15 +486,20 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 8,
-                backgroundColor: 'rgba(32, 36, 46, 0.5)',
+                backgroundColor: 'rgba(20, 24, 34, 0.6)',
                 border: '1px solid rgba(255, 255, 255, 0.06)',
                 borderRadius: 6,
                 padding: '10px',
               }}
             >
-              <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.6 }}>
-                NODE PARAMETERS
-              </span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.6 }}>
+                  NODE PARAMETERS
+                </span>
+                {nodeData.isBypassed && (
+                  <span style={{ fontSize: 8, color: '#ef4444', fontWeight: 700 }}>MUTED / BYPASS ACTIVE</span>
+                )}
+              </div>
 
               {/* 1. Levels Node Controls */}
               {nodeType === 'levels' && (
@@ -520,7 +698,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
           </>
         ) : (
           /* ============================================================ */
-          /* NO NODE SELECTED: GLOBAL PROJECT PROPERTIES                  */
+          /* NO NODE SELECTED: GLOBAL PROJECT PROPERTIES & PRESETS        */
           /* ============================================================ */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -532,7 +710,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
             <div
               style={{
-                backgroundColor: 'rgba(32, 36, 46, 0.5)',
+                backgroundColor: 'rgba(20, 24, 34, 0.6)',
                 border: '1px solid rgba(255, 255, 255, 0.06)',
                 borderRadius: 6,
                 padding: '12px',
@@ -550,7 +728,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                   onChange={(e) => onAssetChange(e.target.value)}
                   style={{
                     height: 26,
-                    backgroundColor: '#14171d',
+                    backgroundColor: '#10131a',
                     border: '1px solid rgba(56, 189, 248, 0.3)',
                     borderRadius: 4,
                     padding: '0 8px',
@@ -563,14 +741,98 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
               {/* Graph Census */}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 10 }}>
-                <div style={{ background: '#14171d', padding: '6px', borderRadius: 4, border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                <div style={{ background: '#10131a', padding: '6px', borderRadius: 4, border: '1px solid rgba(255, 255, 255, 0.04)' }}>
                   <span style={{ color: '#64748b', fontSize: 8, display: 'block' }}>TOTAL NODES</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc' }}>{nodeCount}</span>
                 </div>
-                <div style={{ background: '#14171d', padding: '6px', borderRadius: 4, border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                <div style={{ background: '#10131a', padding: '6px', borderRadius: 4, border: '1px solid rgba(255, 255, 255, 0.04)' }}>
                   <span style={{ color: '#64748b', fontSize: 8, display: 'block' }}>CONNECTIONS</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--pbr-packed)' }}>{edgeCount}</span>
                 </div>
+              </div>
+            </div>
+
+            {/* Industry Preset Templates */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <Sliders size={11} color="var(--accent-amber)" />
+                <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
+                  INDUSTRY PRESETS
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
+                <button
+                  onClick={() => onApplyPreset?.('ue5_ormh')}
+                  style={{
+                    padding: '6px',
+                    backgroundColor: 'rgba(168, 85, 247, 0.08)',
+                    border: '1px solid rgba(168, 85, 247, 0.25)',
+                    borderRadius: 4,
+                    color: '#d8b4fe',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: '#f8fafc' }}>UE5 ORMH</div>
+                  <div style={{ fontSize: 7.5, color: '#94a3b8' }}>AO, R, M, Height</div>
+                </button>
+
+                <button
+                  onClick={() => onApplyPreset?.('ue5_orm')}
+                  style={{
+                    padding: '6px',
+                    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    borderRadius: 4,
+                    color: '#7dd3fc',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: '#f8fafc' }}>UE5 Standard ORM</div>
+                  <div style={{ fontSize: 7.5, color: '#94a3b8' }}>AO, Rough, Metal</div>
+                </button>
+
+                <button
+                  onClick={() => onApplyPreset?.('unity_hdrp')}
+                  style={{
+                    padding: '6px',
+                    backgroundColor: 'rgba(34, 197, 94, 0.08)',
+                    border: '1px solid rgba(34, 197, 94, 0.25)',
+                    borderRadius: 4,
+                    color: '#86efac',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: '#f8fafc' }}>Unity HDRP Mask</div>
+                  <div style={{ fontSize: 7.5, color: '#94a3b8' }}>M, AO, Detail, Smooth</div>
+                </button>
+
+                <button
+                  onClick={() => onApplyPreset?.('godot_pbr')}
+                  style={{
+                    padding: '6px',
+                    backgroundColor: 'rgba(251, 113, 133, 0.08)',
+                    border: '1px solid rgba(251, 113, 133, 0.25)',
+                    borderRadius: 4,
+                    color: '#fda4af',
+                    fontSize: 9,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: '#f8fafc' }}>Godot / Blender</div>
+                  <div style={{ fontSize: 7.5, color: '#94a3b8' }}>AO, Rough, Metal</div>
+                </button>
               </div>
             </div>
 
@@ -619,7 +881,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                 }}
               >
                 <Sparkles size={12} />
-                Auto-Wire ORMH Pack
+                Auto-Wire ORMH Pack (W)
               </button>
             </div>
 

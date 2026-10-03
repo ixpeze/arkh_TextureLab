@@ -29,26 +29,29 @@
 }
 
 :root {
-  --bg-canvas: #0c0e14;
-  --bg-card: #151822;
-  --bg-header: #1c2130;
-  --bg-inset: #0f1118;
-  --panel-bg: rgba(18, 21, 30, 0.92);
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-active: #a855f7;
+  --bg-canvas: #090a0f;
+  --bg-card: #12151e;
+  --bg-header: #171b26;
+  --bg-inset: #0d0f15;
+  --panel-bg: rgba(16, 20, 29, 0.94);
+  --border-subtle: rgba(255, 255, 255, 0.07);
+  --border-active: #38bdf8;
   --text-main: #f8fafc;
   --text-muted: #94a3b8;
   --text-dim: #64748b;
   
-  /* NanoFlow Neon-Pastel Color Tokens */
-  --pbr-ao: #fb7185;       /* NanoFlow Pink/Rose */
-  --pbr-rough: #22c55e;    /* NanoFlow Conditioning Green */
-  --pbr-metal: #38bdf8;    /* NanoFlow Sky Cyan */
-  --pbr-height: #facc15;   /* NanoFlow Amber/Yellow */
-  --pbr-normal: #06b6d4;   /* NanoFlow Turquoise */
-  --pbr-packed: #a855f7;   /* NanoFlow Model Purple */
-  --pbr-albedo: #f43f5e;   /* NanoFlow Rose */
-  --pbr-scalar: #e2e8f0;   /* NanoFlow White/Silver */
+  /* Tactical DCC Telemetry & PBR Socket Tokens */
+  --accent-amber: #f59e0b;
+  --accent-cyan: #38bdf8;
+  --accent-purple: #a855f7;
+  --pbr-ao: #fb7185;       /* Ambient Occlusion (Rose Red) */
+  --pbr-rough: #22c55e;    /* Roughness (Emerald Green) */
+  --pbr-metal: #38bdf8;    /* Metallic (Sky Cyan) */
+  --pbr-height: #facc15;   /* Height / Displacement (Amber) */
+  --pbr-normal: #06b6d4;   /* Normal Map (Turquoise) */
+  --pbr-packed: #a855f7;   /* Multiplexed / Packed (Purple) */
+  --pbr-albedo: #f43f5e;   /* Base Color / Albedo */
+  --pbr-scalar: #e2e8f0;   /* Constant Float Scalar */
 }
 
 * {
@@ -119,9 +122,14 @@ body, html, #root {
 
 /* Selection Marquee Box */
 .react-flow__selection {
-  background: rgba(168, 85, 247, 0.08) !important;
-  border: 1px solid rgba(168, 85, 247, 0.4) !important;
+  background: rgba(56, 189, 248, 0.08) !important;
+  border: 1px solid rgba(56, 189, 248, 0.4) !important;
   border-radius: 4px;
+}
+
+/* Comment Box Framing Container behind regular nodes */
+.react-flow__node-commentBox {
+  z-index: -1 !important;
 }
 
 /* Wire Animations: Marching Ants & Directional Channel Flow */

@@ -13,6 +13,7 @@ import {
   Download,
   Palette,
   Binary,
+  MessageSquare,
 } from 'lucide-react';
 
 export interface NodeCategory {
@@ -122,6 +123,19 @@ const CATEGORIES: NodeCategory[] = [
         description: 'Export target with token naming',
         icon: <Download size={13} />,
         color: '#4ade80',
+      },
+    ],
+  },
+  {
+    name: 'Organization',
+    items: [
+      {
+        key: 'commentBox',
+        label: 'Comment Box',
+        shortcut: 'C',
+        description: 'UE5-style framing & group container',
+        icon: <MessageSquare size={13} />,
+        color: '#38bdf8',
       },
     ],
   },

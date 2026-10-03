@@ -18,6 +18,10 @@ import {
   Maximize2,
   Trash2,
   Keyboard,
+  Undo2,
+  Redo2,
+  MessageSquare,
+  Sliders,
 } from 'lucide-react';
 
 import { TextureInputNode } from './components/nodes/TextureInputNode';
@@ -29,6 +33,7 @@ import { NormalFlipNode } from './components/nodes/NormalFlipNode';
 import { TextureOutputNode } from './components/nodes/TextureOutputNode';
 import { ConstantScalarNode } from './components/nodes/ConstantScalarNode';
 import { ConstantColorNode } from './components/nodes/ConstantColorNode';
+import { CommentBoxNode } from './components/nodes/CommentBoxNode';
 
 import { DualMarchingAntsEdge, PulsingChannelEdge } from './components/edges/AnimatedEdge';
 import { FloatingNodeLibrary } from './components/FloatingNodeLibrary';
@@ -150,8 +155,13 @@ function Workbench() {
 
   // Live in-memory buffers
   const [buffers, setBuffers] = useState<Record<string, TextureBuffer>>({});
-  const [activeBuffer, setActiveBuffer] = useState<TextureBuffer | null>(null);
-  const [statusMessage, setStatusMessage] = useState('Ready | Drag nodes from Library or drop textures onto canvas');
+  const [statusMessage, setStatusMessage] = useState('Ready | Tactical DCC Workstation online');
+
+  // History stack for Undo/Redo
+  const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
+  const redoRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   const { screenToFlowPosition, fitView } = useReactFlow();
 
@@ -166,6 +176,7 @@ function Workbench() {
       textureOutput: TextureOutputNode as any,
       constantScalar: ConstantScalarNode as any,
       constantColor: ConstantColorNode as any,
+      commentBox: CommentBoxNode as any,
     }),
     []
   );
@@ -177,6 +188,48 @@ function Workbench() {
     }),
     []
   );
+
+  // Snapshot current graph for Undo
+  const pushSnapshot = useCallback(() => {
+    historyRef.current.push({
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
+    });
+    if (historyRef.current.length > 40) historyRef.current.shift();
+    redoRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  }, [nodes, edges]);
+
+  // Undo action
+  const handleUndo = useCallback(() => {
+    if (historyRef.current.length === 0) return;
+    const prev = historyRef.current.pop()!;
+    redoRef.current.push({
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
+    });
+    setNodes(prev.nodes);
+    setEdges(prev.edges);
+    setCanUndo(historyRef.current.length > 0);
+    setCanRedo(true);
+    setStatusMessage('Undo');
+  }, [nodes, edges, setNodes, setEdges]);
+
+  // Redo action
+  const handleRedo = useCallback(() => {
+    if (redoRef.current.length === 0) return;
+    const next = redoRef.current.pop()!;
+    historyRef.current.push({
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
+    });
+    setNodes(next.nodes);
+    setEdges(next.edges);
+    setCanUndo(true);
+    setCanRedo(redoRef.current.length > 0);
+    setStatusMessage('Redo');
+  }, [nodes, edges, setNodes, setEdges]);
 
   // Automatic semantic wire configuration based on source handle
   const getEdgeConfig = useCallback((sourceHandle?: string | null, targetHandle?: string | null) => {
@@ -204,14 +257,16 @@ function Workbench() {
     return nodes.find((n) => n.id === activeNodeId) || null;
   }, [nodes, activeNodeId]);
 
-  // Sync active buffer when inspected node changes
-  useEffect(() => {
-    if (!selectedNode) return;
+  // Derive active buffer directly via useMemo (zero React 19 setState cascading renders!)
+  const activeBuffer = useMemo<TextureBuffer | null>(() => {
+    if (!selectedNode) return null;
     if (buffers[selectedNode.id]) {
-      setActiveBuffer(buffers[selectedNode.id]);
-    } else if (buffers['packed_ormh'] && (selectedNode.type === 'channelCombiner' || selectedNode.type === 'textureOutput')) {
-      setActiveBuffer(buffers['packed_ormh']);
+      return buffers[selectedNode.id];
     }
+    if (buffers['packed_ormh'] && (selectedNode.type === 'channelCombiner' || selectedNode.type === 'textureOutput')) {
+      return buffers['packed_ormh'];
+    }
+    return null;
   }, [selectedNode, buffers]);
 
   // Load benchmark textures and compute initial merged buffer
@@ -239,7 +294,6 @@ function Workbench() {
 
       loaded['packed_ormh'] = packed;
       setBuffers(loaded);
-      setActiveBuffer(packed);
       setStatusMessage('Loaded 4K benchmark maps & computed ORMH buffer');
     } catch (err) {
       console.error(err);
@@ -248,11 +302,21 @@ function Workbench() {
   }, []);
 
   useEffect(() => {
-    loadBenchmarkTextures();
+    let isMounted = true;
+    const timer = setTimeout(() => {
+      loadBenchmarkTextures().then(() => {
+        if (isMounted) setStatusMessage('Ready | Anthracite Concrete 4K buffer online');
+      });
+    }, 0);
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, [loadBenchmarkTextures]);
 
   const onConnect = useCallback(
     (params: Connection) => {
+      pushSnapshot();
       const cfg = getEdgeConfig(params.sourceHandle, params.targetHandle);
       setEdges((eds) =>
         addEdge(
@@ -264,22 +328,24 @@ function Workbench() {
         )
       );
     },
-    [getEdgeConfig, setEdges]
+    [getEdgeConfig, pushSnapshot, setEdges]
   );
 
   // UE5 Alt + Click wire cutting
   const onEdgeClick = useCallback(
     (e: React.MouseEvent, edge: Edge) => {
       if (e.altKey) {
+        pushSnapshot();
         setEdges((eds) => eds.filter((ed) => ed.id !== edge.id));
       }
     },
-    [setEdges]
+    [pushSnapshot, setEdges]
   );
 
   // Node spawning helper with Top-Center cursor alignment
   const spawnNode = useCallback(
     (typeKey: string, customPos?: { x: number; y: number }) => {
+      pushSnapshot();
       const id = `node_${Date.now()}`;
       
       let pos: { x: number; y: number };
@@ -308,6 +374,14 @@ function Workbench() {
         newNode = { id, type: 'constantScalar', position: pos, data: { value: 1.0 } };
       } else if (typeKey === 'constantColor') {
         newNode = { id, type: 'constantColor', position: pos, data: { color: '#f43f5e' } };
+      } else if (typeKey === 'commentBox') {
+        newNode = {
+          id,
+          type: 'commentBox',
+          position: pos,
+          style: { width: 340, height: 220, zIndex: -1 },
+          data: { title: 'Comment Group', color: '#38bdf8' },
+        };
       } else if (typeKey === 'textureOutput') {
         newNode = {
           id,
@@ -342,11 +416,75 @@ function Workbench() {
       setStatusMessage(`Spawned ${newNode.type} node`);
       return newNode;
     },
-    [primaryAsset, screenToFlowPosition, setNodes]
+    [primaryAsset, pushSnapshot, screenToFlowPosition, setNodes]
   );
+
+  // UE5 style Comment Box grouping (C Key)
+  const spawnCommentBox = useCallback(() => {
+    pushSnapshot();
+    const id = `comment_${Date.now()}`;
+    const targetNodes = nodes.filter((n) => (n.selected || n.id === activeNodeId) && n.type !== 'commentBox');
+
+    let pos: { x: number; y: number };
+    let size: { width: number; height: number };
+
+    if (targetNodes.length > 0) {
+      const minX = Math.min(...targetNodes.map((n) => n.position.x));
+      const minY = Math.min(...targetNodes.map((n) => n.position.y));
+      const maxX = Math.max(...targetNodes.map((n) => n.position.x + (Number(n.width) || 172)));
+      const maxY = Math.max(...targetNodes.map((n) => n.position.y + (Number(n.height) || 180)));
+
+      pos = { x: minX - 25, y: minY - 36 };
+      size = { width: Math.max(220, maxX - minX + 50), height: Math.max(140, maxY - minY + 56) };
+    } else if (canvasMousePosRef.current) {
+      const flowPos = screenToFlowPosition(canvasMousePosRef.current);
+      pos = { x: flowPos.x - 120, y: flowPos.y - 20 };
+      size = { width: 340, height: 220 };
+    } else {
+      const center = screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
+      pos = { x: center.x - 120, y: center.y - 20 };
+      size = { width: 340, height: 220 };
+    }
+
+    const newCommentNode: Node = {
+      id,
+      type: 'commentBox',
+      position: pos,
+      style: { width: size.width, height: size.height, zIndex: -1 },
+      data: {
+        title: targetNodes.length > 0 ? 'PBR Channel Group' : 'Comment Group',
+        color: '#38bdf8',
+      },
+    };
+
+    setNodes((nds) => [newCommentNode, ...nds]);
+    setStatusMessage('Created Comment Box (UE5)');
+  }, [nodes, activeNodeId, pushSnapshot, screenToFlowPosition, setNodes]);
+
+  // Toggle Bypass / Mute on selected node (D Key)
+  const toggleBypassSelected = useCallback(() => {
+    pushSnapshot();
+    setNodes((nds) =>
+      nds.map((n) => {
+        if (n.selected || n.id === activeNodeId) {
+          const currentBypassed = !!n.data?.isBypassed;
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              isBypassed: !currentBypassed,
+            },
+          };
+        }
+        return n;
+      })
+    );
+    setStatusMessage('Toggled Bypass / Mute state on selected node (D)');
+  }, [activeNodeId, pushSnapshot, setNodes]);
 
   // Auto-Wire ORMH Combiner
   const autoWireORMH = useCallback(() => {
+    pushSnapshot();
     const inputAo = nodes.find((n) => n.data?.role === 'Ambient Occlusion');
     const inputRough = nodes.find((n) => n.data?.role === 'Roughness');
     const inputMetal = nodes.find((n) => n.data?.role === 'Metallic');
@@ -365,13 +503,58 @@ function Workbench() {
 
     setEdges((prev) => [...prev.filter((e) => e.target !== combiner.id && e.source !== combiner.id), ...newEdges]);
     setStatusMessage('Auto-wired PBR channels into ORMH Combiner');
-  }, [nodes, setEdges]);
+  }, [nodes, pushSnapshot, setEdges]);
+
+  // Apply Industry Preset Templates
+  const handleApplyPreset = useCallback((presetKey: string) => {
+    pushSnapshot();
+    if (presetKey === 'ue5_ormh') {
+      autoWireORMH();
+      setStatusMessage('Applied Preset: Unreal Engine ORMH (AO/Rough/Metal/Height)');
+    } else if (presetKey === 'ue5_orm') {
+      const inputAo = nodes.find((n) => n.data?.role === 'Ambient Occlusion');
+      const inputRough = nodes.find((n) => n.data?.role === 'Roughness');
+      const inputMetal = nodes.find((n) => n.data?.role === 'Metallic');
+      const combiner = nodes.find((n) => n.type === 'channelCombiner');
+      const output = nodes.find((n) => n.type === 'textureOutput');
+      if (combiner) {
+        const newEdges: Edge[] = [];
+        if (inputAo) newEdges.push({ id: `e_${inputAo.id}_r`, source: inputAo.id, sourceHandle: 'r', target: combiner.id, targetHandle: 'r', type: 'pulsingChannel', style: { stroke: 'var(--pbr-ao)' } });
+        if (inputRough) newEdges.push({ id: `e_${inputRough.id}_g`, source: inputRough.id, sourceHandle: 'g', target: combiner.id, targetHandle: 'g', type: 'pulsingChannel', style: { stroke: 'var(--pbr-rough)' } });
+        if (inputMetal) newEdges.push({ id: `e_${inputMetal.id}_b`, source: inputMetal.id, sourceHandle: 'b', target: combiner.id, targetHandle: 'b', type: 'pulsingChannel', style: { stroke: 'var(--pbr-metal)' } });
+        if (output) newEdges.push({ id: `e_${combiner.id}_out`, source: combiner.id, sourceHandle: 'rgba', target: output.id, targetHandle: 'rgba', type: 'dualMarching', style: { stroke: 'var(--pbr-packed)' } });
+        setEdges((prev) => [...prev.filter((e) => e.target !== combiner.id && e.source !== combiner.id), ...newEdges]);
+      }
+      setStatusMessage('Applied Preset: Unreal Engine Standard ORM (AO/Rough/Metal)');
+    } else if (presetKey === 'unity_hdrp') {
+      setStatusMessage('Configured for Unity HDRP Mask (Metallic -> R, AO -> G, Detail -> B, Smoothness -> A)');
+    } else if (presetKey === 'godot_pbr') {
+      setStatusMessage('Configured for Godot / Blender standard PBR packing');
+    }
+  }, [nodes, autoWireORMH, pushSnapshot, setEdges]);
 
   // Keyboard navigation & hotkeys
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Ignore typing in inputs, textareas, or selects
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
+        return;
+      }
+
+      // Ctrl + Z: Undo
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+
+      // Ctrl + Y or Ctrl + Shift + Z: Redo
+      if (
+        ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) ||
+        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z'))
+      ) {
+        e.preventDefault();
+        handleRedo();
         return;
       }
 
@@ -406,9 +589,22 @@ function Workbench() {
         return;
       }
 
+      // 'C': Group selected nodes into Comment Box (or spawn at cursor)
+      if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey) {
+        spawnCommentBox();
+        return;
+      }
+
+      // 'D': Toggle Bypass / Mute on selected node (without Ctrl)
+      if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey) {
+        toggleBypassSelected();
+        return;
+      }
+
       // Ctrl + D: Duplicate selected node(s)
       if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
+        pushSnapshot();
         setNodes((nds) => {
           const selectedNodes = nds.filter((n) => n.selected || n.id === activeNodeId);
           if (selectedNodes.length === 0) return nds;
@@ -439,6 +635,7 @@ function Workbench() {
 
       // Delete / Backspace: Delete selected node(s) and connected wires
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        pushSnapshot();
         setNodes((nds) => {
           const toDelete = nds.filter((n) => n.selected || n.id === activeNodeId);
           if (toDelete.length === 0) return nds;
@@ -475,7 +672,19 @@ function Workbench() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fitView, spawnNode, activeNodeId, autoWireORMH, setEdges, setNodes]);
+  }, [
+    fitView,
+    spawnNode,
+    spawnCommentBox,
+    toggleBypassSelected,
+    handleUndo,
+    handleRedo,
+    activeNodeId,
+    autoWireORMH,
+    pushSnapshot,
+    setEdges,
+    setNodes,
+  ]);
 
   // Drag over handler for canvas
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -534,7 +743,6 @@ function Workbench() {
         setNodes((nds) => [...nds, newNode]);
         if (buf) {
           setBuffers((prev) => ({ ...prev, [nodeId]: buf! }));
-          setActiveBuffer(buf);
           setActiveNodeId(newNode.id);
         }
       }
@@ -581,15 +789,14 @@ function Workbench() {
     );
   }, [setNodes]);
 
-  // Clear Graph
+  // Clear Graph with Undo safety
   const handleClearGraph = useCallback(() => {
+    pushSnapshot();
     setNodes([]);
     setEdges([]);
     setActiveNodeId(null);
-    setActiveBuffer(null);
-    setStatusMessage('Canvas cleared');
-  }, [setNodes, setEdges]);
-
+    setStatusMessage('Canvas cleared (Ctrl+Z to Undo)');
+  }, [pushSnapshot, setEdges, setNodes]);
 
   // Export buffer
   const handleExport = useCallback((filename: string) => {
@@ -601,7 +808,7 @@ function Workbench() {
 
   return (
     <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden' }}>
-      {/* Minimal Top Header Bar: Strictly "TextureLAB" NanoFlow Dark Studio */}
+      {/* Tactical DCC Workstation Top Header Bar */}
       <header
         style={{
           height: 38,
@@ -610,20 +817,20 @@ function Workbench() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 16px',
+          padding: '0 14px',
           zIndex: 30,
           userSelect: 'none',
         }}
       >
-        {/* Left Branding */}
+        {/* Left Branding & Quick Preset Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span
             style={{
               fontFamily: "'Geist', sans-serif",
               fontWeight: 800,
-              fontSize: 14,
+              fontSize: 13,
               letterSpacing: '0.06em',
-              background: 'linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)',
+              background: 'linear-gradient(135deg, #38bdf8 0%, #a855f7 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
             }}
@@ -632,28 +839,148 @@ function Workbench() {
           </span>
           <span
             style={{
-              fontSize: 9,
+              fontSize: 8.5,
               fontWeight: 700,
               letterSpacing: '0.05em',
-              color: '#a855f7',
-              backgroundColor: 'rgba(168, 85, 247, 0.1)',
-              border: '1px solid rgba(168, 85, 247, 0.25)',
-              padding: '2px 6px',
-              borderRadius: 4,
+              color: '#38bdf8',
+              backgroundColor: 'rgba(56, 189, 248, 0.1)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              padding: '2px 5px',
+              borderRadius: 3,
             }}
           >
-            NanoFlow v1.0
+            DCC STUDIO
+          </span>
+
+          <div style={{ width: 1, height: 16, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
+
+          {/* Quick Preset Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <Sliders size={11} color="var(--accent-amber)" />
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleApplyPreset(e.target.value);
+                  e.target.value = '';
+                }
+              }}
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--border-subtle)',
+                color: '#cbd5e1',
+                borderRadius: 4,
+                padding: '3px 6px',
+                fontSize: 10,
+                fontWeight: 500,
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="" disabled>Load Preset...</option>
+              <option value="ue5_ormh">Unreal Engine ORMH (Pack)</option>
+              <option value="ue5_orm">Unreal Engine Standard ORM</option>
+              <option value="unity_hdrp">Unity HDRP Mask Map</option>
+              <option value="godot_pbr">Godot / Blender PBR</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Center Telemetry Readout */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748b' }}>
+            <span>NODES:</span>
+            <span style={{ color: '#f8fafc', fontWeight: 700 }}>{nodes.length}</span>
+          </div>
+          <div style={{ width: 1, height: 12, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748b' }}>
+            <span>WIRES:</span>
+            <span style={{ color: 'var(--pbr-packed)', fontWeight: 700 }}>{edges.length}</span>
+          </div>
+          <div style={{ width: 1, height: 12, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
+          <span style={{ color: '#94a3b8', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {statusMessage}
           </span>
         </div>
 
-        {/* Right Status & Utility Controls */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 11, color: '#94a3b8' }}>
-            {statusMessage}
-          </span>
+        {/* Right Toolbar Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* Undo Button */}
+          <button
+            onClick={handleUndo}
+            disabled={!canUndo}
+            title="Undo Last Action (Ctrl+Z)"
+            style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--border-subtle)',
+              color: canUndo ? '#f8fafc' : '#475569',
+              borderRadius: 4,
+              padding: '4px 7px',
+              fontSize: 10,
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              cursor: canUndo ? 'pointer' : 'default',
+              opacity: canUndo ? 1 : 0.4,
+              transition: 'all 120ms ease',
+            }}
+          >
+            <Undo2 size={11} />
+            <span>Undo</span>
+          </button>
 
-          <div style={{ width: 1, height: 16, backgroundColor: 'rgba(255, 255, 255, 0.1)' }} />
+          {/* Redo Button */}
+          <button
+            onClick={handleRedo}
+            disabled={!canRedo}
+            title="Redo Action (Ctrl+Y)"
+            style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid var(--border-subtle)',
+              color: canRedo ? '#f8fafc' : '#475569',
+              borderRadius: 4,
+              padding: '4px 7px',
+              fontSize: 10,
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              cursor: canRedo ? 'pointer' : 'default',
+              opacity: canRedo ? 1 : 0.4,
+              transition: 'all 120ms ease',
+            }}
+          >
+            <Redo2 size={11} />
+            <span>Redo</span>
+          </button>
 
+          {/* Comment Box Button */}
+          <button
+            onClick={spawnCommentBox}
+            title="Group Selected Nodes into Comment Box (C)"
+            style={{
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              color: '#38bdf8',
+              borderRadius: 4,
+              padding: '4px 7px',
+              fontSize: 10,
+              fontWeight: 500,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              cursor: 'pointer',
+              transition: 'all 120ms ease',
+            }}
+          >
+            <MessageSquare size={11} />
+            <span>Group (C)</span>
+          </button>
+
+          <div style={{ width: 1, height: 16, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
+
+          {/* Shortcuts Modal Button */}
           <button
             onClick={() => setIsShortcutsOpen(true)}
             title="Keyboard Shortcuts Cheatsheet (?)"
@@ -661,29 +988,22 @@ function Workbench() {
               background: 'rgba(168, 85, 247, 0.1)',
               border: '1px solid rgba(168, 85, 247, 0.3)',
               color: '#d8b4fe',
-              borderRadius: 6,
-              padding: '4px 9px',
-              fontSize: 11,
+              borderRadius: 4,
+              padding: '4px 8px',
+              fontSize: 10,
               fontWeight: 500,
               display: 'flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
               cursor: 'pointer',
               transition: 'all 120ms ease',
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.2)';
-              e.currentTarget.style.color = '#ffffff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
-              e.currentTarget.style.color = '#d8b4fe';
-            }}
           >
-            <Keyboard size={12} color="#a855f7" />
+            <Keyboard size={11} color="#a855f7" />
             <span>Shortcuts (?)</span>
           </button>
 
+          {/* Focus Extents */}
           <button
             onClick={() => fitView({ duration: 300 })}
             title="Focus Extents (F)"
@@ -691,29 +1011,22 @@ function Workbench() {
               background: 'rgba(255, 255, 255, 0.04)',
               border: '1px solid var(--border-subtle)',
               color: '#cbd5e1',
-              borderRadius: 6,
-              padding: '4px 9px',
-              fontSize: 11,
+              borderRadius: 4,
+              padding: '4px 8px',
+              fontSize: 10,
               fontWeight: 500,
               display: 'flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
               cursor: 'pointer',
               transition: 'all 120ms ease',
             }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.08)';
-              e.currentTarget.style.color = '#ffffff';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.04)';
-              e.currentTarget.style.color = '#cbd5e1';
-            }}
           >
-            <Maximize2 size={12} color="#38bdf8" />
+            <Maximize2 size={11} color="#38bdf8" />
             <span>Focus (F)</span>
           </button>
 
+          {/* Clear Graph */}
           <button
             onClick={handleClearGraph}
             title="Clear All Nodes and Edges"
@@ -721,21 +1034,19 @@ function Workbench() {
               background: 'rgba(239, 68, 68, 0.08)',
               border: '1px solid rgba(239, 68, 68, 0.25)',
               color: '#f87171',
-              borderRadius: 6,
-              padding: '4px 9px',
-              fontSize: 11,
+              borderRadius: 4,
+              padding: '4px 8px',
+              fontSize: 10,
               fontWeight: 500,
               display: 'flex',
               alignItems: 'center',
-              gap: 5,
+              gap: 4,
               cursor: 'pointer',
               transition: 'background 120ms ease',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.18)')}
-            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.08)')}
           >
-            <Trash2 size={12} />
-            <span>Clear Graph</span>
+            <Trash2 size={11} />
+            <span>Clear</span>
           </button>
         </div>
       </header>
@@ -779,7 +1090,7 @@ function Workbench() {
           <Controls style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 6 }} />
           <MiniMap
             style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}
-            nodeColor={() => '#a855f7'}
+            nodeColor={() => '#38bdf8'}
           />
         </ReactFlow>
 
@@ -796,6 +1107,7 @@ function Workbench() {
           onExportTarget={handleExport}
           onLoadBenchmark={loadBenchmarkTextures}
           onAutoWireORMH={autoWireORMH}
+          onApplyPreset={handleApplyPreset}
           nodeCount={nodes.length}
           edgeCount={edges.length}
         />

@@ -24,9 +24,12 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['L'], description: 'Levels / Remap Node', category: 'spawn', tag: 'Adjust', tagColor: '#22c55e' },
   { keys: ['I'], description: 'Invert Node (1 - x)', category: 'spawn', tag: 'Adjust', tagColor: '#fb7185' },
   { keys: ['N'], description: 'Normal Flip Green (DirectX <=> OpenGL)', category: 'spawn', tag: 'Filter', tagColor: '#06b6d4' },
-  { keys: ['O'], description: 'Texture Output Target Node', category: 'spawn', tag: 'Output', tagColor: '#4ade80' },
+  { keys: ['C'], description: 'Group selected nodes into Comment Box (UE5)', category: 'spawn', tag: 'Group', tagColor: '#38bdf8' },
 
   // Graph Productivity
+  { keys: ['Ctrl', 'Z'], description: 'Undo last graph action', category: 'graph' },
+  { keys: ['Ctrl', 'Y'], description: 'Redo last graph action (or Ctrl+Shift+Z)', category: 'graph' },
+  { keys: ['D'], description: 'Bypass / Mute selected node', category: 'graph', tag: 'Mute', tagColor: '#ef4444' },
   { keys: ['Del', 'Bksp'], description: 'Delete selected node(s) and connected wires', category: 'graph' },
   { keys: ['Ctrl', 'D'], description: 'Duplicate selected node(s)', category: 'graph' },
   { keys: ['Ctrl', 'A'], description: 'Select all nodes on canvas', category: 'graph' },

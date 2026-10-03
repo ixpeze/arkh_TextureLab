@@ -1,6 +1,6 @@
 /**
  * Client-Side Pixel Processing Engine
- * Offscreen Canvas2D / WebGL image processing for live PBR multiplexing and channel isolation.
+ * Offscreen Canvas2D / Web Worker pipeline for live PBR multiplexing, proxy rendering, and channel isolation.
  */
 
 export interface TextureBuffer {
@@ -8,11 +8,23 @@ export interface TextureBuffer {
   height: number;
   data: Uint8ClampedArray; // RGBA 8-bit
   dataUrl?: string;
+  proxy?: TextureBuffer; // Downsampled 512px interactive proxy for 60 FPS slider dragging
+}
+
+export interface HistogramData {
+  r: number[];
+  g: number[];
+  b: number[];
+  lum: number[];
+  maxCount: number;
 }
 
 export class PixelEngine {
   private static offscreenCanvas: HTMLCanvasElement | null = null;
   private static offscreenCtx: CanvasRenderingContext2D | null = null;
+  private static worker: Worker | null = null;
+  private static workerCallbacks = new Map<number, (res: any) => void>();
+  private static workerReqId = 0;
 
   private static getContext(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
     if (!this.offscreenCanvas) {
@@ -25,7 +37,68 @@ export class PixelEngine {
   }
 
   /**
-   * Load texture image from URL into TextureBuffer
+   * Lazily initialize Web Worker
+   */
+  public static getWorker(): Worker {
+    if (!this.worker) {
+      this.worker = new Worker(new URL('./pixelWorker.ts', import.meta.url), { type: 'module' });
+      this.worker.onmessage = (e) => {
+        const { reqId, ...result } = e.data;
+        if (reqId !== undefined) {
+          const cb = this.workerCallbacks.get(reqId);
+          if (cb) {
+            this.workerCallbacks.delete(reqId);
+            cb(result);
+          }
+        }
+      };
+    }
+    return this.worker;
+  }
+
+  /**
+   * Run Levels on Web Worker (Non-blocking 4K execution)
+   */
+  public static async applyLevelsAsync(
+    buffer: TextureBuffer,
+    blackPoint = 0,
+    gamma = 1.0,
+    whitePoint = 255
+  ): Promise<TextureBuffer> {
+    return new Promise((resolve) => {
+      const worker = this.getWorker();
+      const reqId = ++this.workerReqId;
+      this.workerCallbacks.set(reqId, (result) => {
+        const outBuf: TextureBuffer = {
+          width: result.width,
+          height: result.height,
+          data: result.data,
+        };
+        outBuf.dataUrl = this.toDataUrl(outBuf);
+        outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+        resolve(outBuf);
+      });
+
+      // Clone data array for worker transfer
+      const dataCopy = new Uint8ClampedArray(buffer.data);
+      worker.postMessage(
+        {
+          reqId,
+          action: 'levels',
+          width: buffer.width,
+          height: buffer.height,
+          data: dataCopy,
+          blackPoint,
+          gamma,
+          whitePoint,
+        },
+        [dataCopy.buffer]
+      );
+    });
+  }
+
+  /**
+   * Load texture image from URL into TextureBuffer with automatic 512px proxy generation
    */
   public static async loadFromUrl(url: string): Promise<TextureBuffer> {
     return new Promise((resolve, reject) => {
@@ -36,12 +109,18 @@ export class PixelEngine {
         ctx.clearRect(0, 0, img.width, img.height);
         ctx.drawImage(img, 0, 0);
         const imgData = ctx.getImageData(0, 0, img.width, img.height);
-        resolve({
+
+        const fullBuffer: TextureBuffer = {
           width: img.width,
           height: img.height,
           data: imgData.data,
           dataUrl: canvas.toDataURL('image/png'),
-        });
+        };
+
+        // Create interactive proxy
+        fullBuffer.proxy = this.createDownsampledProxy(fullBuffer, 512);
+
+        resolve(fullBuffer);
       };
       img.onerror = (e) => reject(e);
       img.src = url;
@@ -54,17 +133,57 @@ export class PixelEngine {
   public static async loadFromFile(file: File): Promise<TextureBuffer> {
     const objectUrl = URL.createObjectURL(file);
     try {
-      const buf = await this.loadFromUrl(objectUrl);
-      return buf;
+      return await this.loadFromUrl(objectUrl);
     } finally {
       URL.revokeObjectURL(objectUrl);
     }
   }
 
   /**
+   * Create interactive downsampled proxy buffer (e.g. 512x512) for ultra-fast 60 FPS response
+   */
+  public static createDownsampledProxy(source: TextureBuffer, maxDim = 512): TextureBuffer {
+    if (source.width <= maxDim && source.height <= maxDim) {
+      return source;
+    }
+
+    const scale = Math.min(maxDim / source.width, maxDim / source.height);
+    const pw = Math.max(64, Math.round(source.width * scale));
+    const ph = Math.max(64, Math.round(source.height * scale));
+
+    const { canvas: srcCanvas, ctx: srcCtx } = this.getContext(source.width, source.height);
+    const srcImgData = srcCtx.createImageData(source.width, source.height);
+    srcImgData.data.set(source.data);
+    srcCtx.putImageData(srcImgData, 0, 0);
+
+    // Downscale onto a temporary offscreen canvas
+    const proxyCanvas = document.createElement('canvas');
+    proxyCanvas.width = pw;
+    proxyCanvas.height = ph;
+    const proxyCtx = proxyCanvas.getContext('2d', { willReadFrequently: true });
+    if (!proxyCtx) {
+      return source;
+    }
+
+    proxyCtx.imageSmoothingEnabled = true;
+    proxyCtx.imageSmoothingQuality = 'medium';
+    proxyCtx.drawImage(srcCanvas, 0, 0, pw, ph);
+
+    const proxyImgData = proxyCtx.getImageData(0, 0, pw, ph);
+    const proxyBuf: TextureBuffer = {
+      width: pw,
+      height: ph,
+      data: proxyImgData.data,
+      dataUrl: proxyCanvas.toDataURL('image/png'),
+    };
+
+    return proxyBuf;
+  }
+
+  /**
    * Create solid color buffer
    */
-  public static createSolid(width: number, height: number, r: number, g: number, b: number, a: number = 255): TextureBuffer {
+  public static createSolid(width: number, height: number, r: number, g: number, b: number, a = 255): TextureBuffer {
     const data = new Uint8ClampedArray(width * height * 4);
     for (let i = 0; i < width * height; i++) {
       data[i * 4 + 0] = r;
@@ -72,7 +191,10 @@ export class PixelEngine {
       data[i * 4 + 2] = b;
       data[i * 4 + 3] = a;
     }
-    return { width, height, data };
+    const buf: TextureBuffer = { width, height, data };
+    buf.dataUrl = this.toDataUrl(buf);
+    buf.proxy = buf;
+    return buf;
   }
 
   /**
@@ -134,7 +256,7 @@ export class PixelEngine {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const outIdx = (y * w + x) * 4;
-        outData[outIdx + 0] = sampleChannel(rBuf, 255, 0, x, y); // R: AO (default white 255)
+        outData[outIdx + 0] = sampleChannel(rBuf, 255, 0, x, y); // R: AO (default 255)
         outData[outIdx + 1] = sampleChannel(gBuf, 128, 1, x, y); // G: Roughness (default 128)
         outData[outIdx + 2] = sampleChannel(bBuf, 0, 2, x, y);   // B: Metallic (default 0)
         outData[outIdx + 3] = sampleChannel(aBuf, 255, 3, x, y); // A: Height / Alpha (default 255)
@@ -143,6 +265,7 @@ export class PixelEngine {
 
     const buf: TextureBuffer = { width: w, height: h, data: outData };
     buf.dataUrl = this.toDataUrl(buf);
+    buf.proxy = this.createDownsampledProxy(buf, 512);
     return buf;
   }
 
@@ -176,6 +299,7 @@ export class PixelEngine {
     }
     const buf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
     buf.dataUrl = this.toDataUrl(buf);
+    buf.proxy = this.createDownsampledProxy(buf, 512);
     return buf;
   }
 
@@ -189,6 +313,7 @@ export class PixelEngine {
     }
     const buf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
     buf.dataUrl = this.toDataUrl(buf);
+    buf.proxy = this.createDownsampledProxy(buf, 512);
     return buf;
   }
 
@@ -197,14 +322,14 @@ export class PixelEngine {
    */
   public static applyLevels(
     buffer: TextureBuffer,
-    blackPoint: number = 0, // 0..255
-    gamma: number = 1.0,    // 0.1..5.0
-    whitePoint: number = 255 // 0..255
+    blackPoint = 0, // 0..255
+    gamma = 1.0,    // 0.1..5.0
+    whitePoint = 255 // 0..255
   ): TextureBuffer {
     const outData = new Uint8ClampedArray(buffer.data.length);
     const range = Math.max(1, whitePoint - blackPoint);
 
-    // Precompute LUT for performance
+    // Precompute LUT for instant execution
     const lut = new Uint8Array(256);
     for (let i = 0; i < 256; i++) {
       let normalized = (i - blackPoint) / range;
@@ -222,7 +347,42 @@ export class PixelEngine {
 
     const buf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
     buf.dataUrl = this.toDataUrl(buf);
+    buf.proxy = this.createDownsampledProxy(buf, 512);
     return buf;
+  }
+
+  /**
+   * Compute RGB and Luminance Histograms (256 bins)
+   */
+  public static computeHistogram(buffer: TextureBuffer): HistogramData {
+    // Fast path: use proxy buffer for histogram if available to avoid 16M pixel iterations
+    const target = buffer.proxy || buffer;
+    const data = target.data;
+    const r = new Array(256).fill(0);
+    const g = new Array(256).fill(0);
+    const b = new Array(256).fill(0);
+    const lum = new Array(256).fill(0);
+
+    let maxCount = 0;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const rv = data[i + 0];
+      const gv = data[i + 1];
+      const bv = data[i + 2];
+      const lv = Math.round(0.2126 * rv + 0.7152 * gv + 0.0722 * bv);
+
+      r[rv]++;
+      g[gv]++;
+      b[bv]++;
+      lum[lv]++;
+
+      if (r[rv] > maxCount) maxCount = r[rv];
+      if (g[gv] > maxCount) maxCount = g[gv];
+      if (b[bv] > maxCount) maxCount = b[bv];
+      if (lum[lv] > maxCount) maxCount = lum[lv];
+    }
+
+    return { r, g, b, lum, maxCount: Math.max(1, maxCount) };
   }
 
   /**

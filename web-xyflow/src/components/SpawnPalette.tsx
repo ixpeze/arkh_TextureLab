@@ -18,6 +18,7 @@ const PALETTE_ITEMS = [
   { cat: 'Adjustments', name: 'Levels / Remap', key: 'levels', shortcut: 'L', color: '#22c55e' },
   { cat: 'Filters', name: 'Normal Flip Green', key: 'normalFlip', shortcut: 'N', color: '#06b6d4' },
   { cat: 'Outputs', name: 'Texture Output', key: 'textureOutput', shortcut: 'O', color: '#4ade80' },
+  { cat: 'Organization', name: 'Comment Box', key: 'commentBox', shortcut: 'C', color: '#38bdf8' },
 ];
 
 export const SpawnPalette: React.FC<SpawnPaletteProps> = ({ x, y, onSelectNode, onClose }) => {
