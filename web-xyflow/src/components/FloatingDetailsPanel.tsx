@@ -56,20 +56,23 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
     return `T_${asset}_${slot}_${res}.png`;
   };
 
-  // Render 2D Viewport buffer to canvas
+  // Render 2D Viewport buffer to canvas (fast 512px proxy for 60fps instant switching)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !activeBuffer) return;
 
-    let displayBuf = activeBuffer;
+    // Use fast interactive proxy when in fitted viewport mode to guarantee zero lag when switching nodes
+    const sourceBuf = isPixelExact ? activeBuffer : (activeBuffer.proxy || activeBuffer);
+
+    let displayBuf = sourceBuf;
     if (isolatedChannel === 'R') {
-      displayBuf = PixelEngine.getIsolatedChannel(activeBuffer, 0);
+      displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 0);
     } else if (isolatedChannel === 'G') {
-      displayBuf = PixelEngine.getIsolatedChannel(activeBuffer, 1);
+      displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 1);
     } else if (isolatedChannel === 'B') {
-      displayBuf = PixelEngine.getIsolatedChannel(activeBuffer, 2);
+      displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 2);
     } else if (isolatedChannel === 'A') {
-      displayBuf = PixelEngine.getIsolatedChannel(activeBuffer, 3);
+      displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 3);
     }
 
     canvas.width = displayBuf.width;
@@ -80,13 +83,13 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
       imgData.data.set(displayBuf.data);
       ctx.putImageData(imgData, 0, 0);
     }
-  }, [activeBuffer, isolatedChannel]);
+  }, [activeBuffer, isolatedChannel, isPixelExact]);
 
-  // Compute and render Histogram
+  // Compute and render Histogram (only when activeTab is 'histogram' to avoid lag)
   const histogramData: HistogramData | null = useMemo(() => {
-    if (!activeBuffer) return null;
+    if (!activeBuffer || activeTab !== 'histogram') return null;
     return PixelEngine.computeHistogram(activeBuffer);
-  }, [activeBuffer]);
+  }, [activeBuffer, activeTab]);
 
   useEffect(() => {
     const canvas = histCanvasRef.current;
@@ -158,22 +161,25 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas || !activeBuffer) return;
+    if (!canvas || !activeBuffer || !activeBuffer.data || activeBuffer.data.length === 0) return;
     const rect = canvas.getBoundingClientRect();
-    const x = Math.floor(((e.clientX - rect.left) / rect.width) * activeBuffer.width);
-    const y = Math.floor(((e.clientY - rect.top) / rect.height) * activeBuffer.height);
+    if (rect.width <= 0 || rect.height <= 0) return;
 
-    if (x >= 0 && x < activeBuffer.width && y >= 0 && y < activeBuffer.height) {
-      const idx = (y * activeBuffer.width + x) * 4;
-      setHoverPixel({
-        x,
-        y,
-        r: activeBuffer.data[idx + 0],
-        g: activeBuffer.data[idx + 1],
-        b: activeBuffer.data[idx + 2],
-        a: activeBuffer.data[idx + 3],
-      });
-    }
+    const rawX = Math.floor(((e.clientX - rect.left) / rect.width) * activeBuffer.width);
+    const rawY = Math.floor(((e.clientY - rect.top) / rect.height) * activeBuffer.height);
+
+    const x = Math.min(activeBuffer.width - 1, Math.max(0, rawX));
+    const y = Math.min(activeBuffer.height - 1, Math.max(0, rawY));
+
+    const idx = (y * activeBuffer.width + x) * 4;
+    setHoverPixel({
+      x,
+      y,
+      r: activeBuffer.data[idx + 0] ?? 0,
+      g: activeBuffer.data[idx + 1] ?? 0,
+      b: activeBuffer.data[idx + 2] ?? 0,
+      a: activeBuffer.data[idx + 3] ?? 255,
+    });
   };
 
   const handleDownload = () => {

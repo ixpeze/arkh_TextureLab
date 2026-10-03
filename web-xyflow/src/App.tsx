@@ -199,10 +199,32 @@ function Workbench() {
     setSourceBuffers((prev) => ({ ...prev, [nodeId]: buffer }));
   }, []);
 
+  // Stable functional signature of nodes (independent of selection, position, dragging or measurements)
+  const graphStructureKey = useMemo(() => {
+    const nodeSig = nodes.map((n) => `${n.id}:${n.type}:${JSON.stringify(n.data || {})}`).join('|');
+    const edgeSig = edges.map((e) => `${e.id}:${e.source}:${e.sourceHandle}->${e.target}:${e.targetHandle}`).join('|');
+    return `${nodeSig}#${edgeSig}`;
+  }, [nodes, edges]);
+
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const edgesRef = useRef(edges);
+  edgesRef.current = edges;
+
   // Topologically evaluate the entire graph live in real-time
+  // Evaluates strictly when graph topology, node data parameters, or source buffers change
+  // Selecting or dragging nodes NEVER triggers topological re-evaluation!
   const evaluatedBuffers = useMemo(() => {
-    return GraphEvaluator.evaluate(nodes, edges, sourceBuffers);
-  }, [nodes, edges, sourceBuffers]);
+    return GraphEvaluator.evaluate(nodesRef.current, edgesRef.current, sourceBuffers);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [graphStructureKey, sourceBuffers]);
+
+  // Clean up selected node if it was removed from the graph
+  useEffect(() => {
+    if (activeNodeId && !nodes.some((n) => n.id === activeNodeId)) {
+      setActiveNodeId(null);
+    }
+  }, [nodes, activeNodeId]);
 
   const nodeTypes: NodeTypes = useMemo(
     () => ({
@@ -345,20 +367,31 @@ function Workbench() {
 
   const onConnect = useCallback(
     (params: Connection) => {
+      const validation = GraphEvaluator.validateConnection(params, edges);
+      if (!validation.isValid) {
+        setStatusMessage(`Wire rejected: ${validation.reason}`);
+        return;
+      }
+
       pushSnapshot();
       const cfg = getEdgeConfig(params.sourceHandle, params.targetHandle);
-      setEdges((eds) =>
-        addEdge(
+
+      // Single-input socket rule (DCC standard): replace existing wire connected to this target handle
+      setEdges((eds) => {
+        const filtered = eds.filter(
+          (e) => !(e.target === params.target && (e.targetHandle || null) === (params.targetHandle || null))
+        );
+        return addEdge(
           {
             ...params,
             ...cfg,
           },
-          eds
-        )
-      );
+          filtered
+        );
+      });
       setStatusMessage(`Connected wire from ${params.source} to ${params.target}`);
     },
-    [getEdgeConfig, pushSnapshot, setEdges]
+    [edges, getEdgeConfig, pushSnapshot, setEdges]
   );
 
   // Wire Reconnection & Drag-to-Disconnect handlers
@@ -370,13 +403,29 @@ function Workbench() {
 
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
+      const validation = GraphEvaluator.validateConnection(
+        newConnection,
+        edges.filter((e) => e.id !== oldEdge.id)
+      );
+      if (!validation.isValid) {
+        setStatusMessage(`Wire rejected: ${validation.reason}`);
+        return;
+      }
+
       edgeReconnectSuccessful.current = true;
       pushSnapshot();
       const cfg = getEdgeConfig(newConnection.sourceHandle, newConnection.targetHandle);
-      setEdges((els) => reconnectEdge(oldEdge, { ...newConnection, ...cfg }, els));
+      setEdges((els) => {
+        const filtered = els.filter(
+          (e) =>
+            e.id === oldEdge.id ||
+            !(e.target === newConnection.target && (e.targetHandle || null) === (newConnection.targetHandle || null))
+        );
+        return reconnectEdge(oldEdge, { ...newConnection, ...cfg }, filtered);
+      });
       setStatusMessage('Reconnected wire');
     },
-    [getEdgeConfig, pushSnapshot, setEdges]
+    [edges, getEdgeConfig, pushSnapshot, setEdges]
   );
 
   const onReconnectEnd = useCallback(
@@ -389,6 +438,20 @@ function Workbench() {
       edgeReconnectSuccessful.current = true;
     },
     [pushSnapshot, setEdges]
+  );
+
+  // Clean up connected edges when nodes are deleted
+  const onNodesDelete = useCallback(
+    (deletedNodes: Node[]) => {
+      pushSnapshot();
+      const deletedIds = new Set(deletedNodes.map((n) => n.id));
+      setEdges((eds) => eds.filter((e) => !deletedIds.has(e.source) && !deletedIds.has(e.target)));
+      if (activeNodeId && deletedIds.has(activeNodeId)) {
+        setActiveNodeId(null);
+      }
+      setStatusMessage(`Deleted ${deletedNodes.length} node(s)`);
+    },
+    [activeNodeId, pushSnapshot, setEdges]
   );
 
   // UE5 Alt + Click wire cutting
@@ -1020,6 +1083,8 @@ function Workbench() {
             }}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            isValidConnection={(conn) => GraphEvaluator.validateConnection(conn, edges).isValid}
+            onNodesDelete={onNodesDelete}
             fitView
             panOnScrollMode={PanOnScrollMode.Free}
             panOnDrag={[1, 2]} // Middle click or Right click pan (UE5)

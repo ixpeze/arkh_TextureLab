@@ -45,8 +45,10 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ id, data, select
     a: d.fallbacks?.a ?? 255,
   });
 
-  const updateFallback = (ch: 'r' | 'g' | 'b' | 'a', val: number) => {
-    const updated = { ...fallbacks, [ch]: val };
+  const updateFallback = (ch: 'r' | 'g' | 'b' | 'a', val: number | string) => {
+    const parsed = typeof val === 'number' ? val : parseInt(String(val), 10);
+    const clamped = isNaN(parsed) ? 0 : Math.min(255, Math.max(0, Math.round(parsed)));
+    const updated = { ...fallbacks, [ch]: clamped };
     setFallbacks(updated);
     d.onChange?.({ fallbacks: updated });
     onUpdateNodeData(id, { fallbacks: updated });

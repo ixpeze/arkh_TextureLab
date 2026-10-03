@@ -12,8 +12,10 @@ export const ConstantScalarNode: React.FC<NodeProps<any>> = ({ id, data, selecte
   const [val, setVal] = useState<number>(data?.value ?? 1.0);
 
   const handleChange = (newVal: number) => {
-    setVal(newVal);
-    onUpdateNodeData(id, { value: newVal });
+    const parsed = Number(newVal);
+    const safeVal = Math.max(0, Math.min(1, isNaN(parsed) ? 1.0 : parsed));
+    setVal(safeVal);
+    onUpdateNodeData(id, { value: safeVal });
   };
 
   return (

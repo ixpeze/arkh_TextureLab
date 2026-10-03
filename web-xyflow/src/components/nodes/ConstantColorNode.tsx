@@ -12,8 +12,9 @@ export const ConstantColorNode: React.FC<NodeProps<any>> = ({ id, data, selected
   const [color, setColor] = useState<string>(data?.color ?? '#f43f5e');
 
   const handleColorChange = (newColor: string) => {
-    setColor(newColor);
-    onUpdateNodeData(id, { color: newColor });
+    const safeColor = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(newColor) ? newColor : color;
+    setColor(safeColor);
+    onUpdateNodeData(id, { color: safeColor });
   };
 
   return (

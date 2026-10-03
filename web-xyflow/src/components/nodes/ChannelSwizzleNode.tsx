@@ -41,11 +41,17 @@ export const ChannelSwizzleNode: React.FC<NodeProps<any>> = ({ id, data, selecte
   const isBypassed = !!d.isBypassed;
 
   const updateRouting = (newR = rSrc, newG = gSrc, newB = bSrc, newA = aSrc) => {
-    setRSrc(newR);
-    setGSrc(newG);
-    setBSrc(newB);
-    setASrc(newA);
-    const patch = { rSrc: newR, gSrc: newG, bSrc: newB, aSrc: newA };
+    const validTokens = ['r', 'g', 'b', 'a', '1-r', '1-g', '1-b', '1-a', '0', '1'];
+    const safeR = validTokens.includes(newR) ? newR : 'r';
+    const safeG = validTokens.includes(newG) ? newG : 'g';
+    const safeB = validTokens.includes(newB) ? newB : 'b';
+    const safeA = validTokens.includes(newA) ? newA : 'a';
+
+    setRSrc(safeR);
+    setGSrc(safeG);
+    setBSrc(safeB);
+    setASrc(safeA);
+    const patch = { rSrc: safeR, gSrc: safeG, bSrc: safeB, aSrc: safeA };
     d.onChange?.(patch);
     onUpdateNodeData(id, patch);
   };

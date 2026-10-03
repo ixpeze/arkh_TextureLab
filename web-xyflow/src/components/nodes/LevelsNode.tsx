@@ -54,28 +54,37 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => 
   };
 
   const handleBlack = (val: number) => {
-    setBlack(val);
-    triggerChange(val, gamma, white, outBlack, outWhite);
+    const safeVal = Math.max(0, Math.min(255, Math.round(Number(val) || 0)));
+    setBlack(safeVal);
+    triggerChange(safeVal, gamma, white, outBlack, outWhite);
   };
 
   const handleGamma = (val: number) => {
-    setGamma(val);
-    triggerChange(black, val, white, outBlack, outWhite);
+    const parsed = Number(val);
+    const safeVal = Math.max(0.01, Math.min(5.0, isNaN(parsed) ? 1.0 : parsed));
+    setGamma(safeVal);
+    triggerChange(black, safeVal, white, outBlack, outWhite);
   };
 
   const handleWhite = (val: number) => {
-    setWhite(val);
-    triggerChange(black, gamma, val, outBlack, outWhite);
+    const num = Number(val);
+    const safeVal = Math.max(0, Math.min(255, Math.round(isNaN(num) ? 255 : num)));
+    setWhite(safeVal);
+    triggerChange(black, gamma, safeVal, outBlack, outWhite);
   };
 
   const handleOutBlack = (val: number) => {
-    setOutBlack(val);
-    triggerChange(black, gamma, white, val, outWhite);
+    const num = Number(val);
+    const safeVal = Math.max(0, Math.min(255, Math.round(isNaN(num) ? 0 : num)));
+    setOutBlack(safeVal);
+    triggerChange(black, gamma, white, safeVal, outWhite);
   };
 
   const handleOutWhite = (val: number) => {
-    setOutWhite(val);
-    triggerChange(black, gamma, white, outBlack, val);
+    const num = Number(val);
+    const safeVal = Math.max(0, Math.min(255, Math.round(isNaN(num) ? 255 : num)));
+    setOutWhite(safeVal);
+    triggerChange(black, gamma, white, outBlack, safeVal);
   };
 
   // Generate SVG points for dynamic transfer curve preview with in/out range remapping
@@ -85,12 +94,13 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => 
     const points: string[] = [];
     const inRange = Math.max(1, white - black);
     const outRange = outWhite - outBlack;
+    const safeGamma = Math.max(0.01, gamma || 1.0);
 
     for (let x = 0; x <= w; x += 4) {
       const inVal = (x / w) * 255;
       let norm = (inVal - black) / inRange;
       norm = Math.min(1.0, Math.max(0.0, norm));
-      const adjusted = Math.pow(norm, 1.0 / gamma);
+      const adjusted = Math.pow(norm, 1.0 / safeGamma);
       const remapped = outBlack + adjusted * outRange;
       const clamped = Math.min(255, Math.max(0, remapped));
 

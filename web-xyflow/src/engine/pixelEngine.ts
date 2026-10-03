@@ -239,20 +239,21 @@ export class PixelEngine {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
-        const { canvas, ctx } = this.getContext(img.width, img.height);
+        const { ctx } = this.getContext(img.width, img.height);
         ctx.clearRect(0, 0, img.width, img.height);
         ctx.drawImage(img, 0, 0);
         const imgData = ctx.getImageData(0, 0, img.width, img.height);
+
+        // Create interactive downsampled proxy buffer first for fast previews
+        const proxy = this.createDownsampledProxy({ width: img.width, height: img.height, data: imgData.data }, 512);
 
         const fullBuffer: TextureBuffer = {
           width: img.width,
           height: img.height,
           data: imgData.data,
-          dataUrl: canvas.toDataURL('image/png'),
+          dataUrl: proxy.dataUrl,
+          proxy,
         };
-
-        // Create interactive proxy
-        fullBuffer.proxy = this.createDownsampledProxy(fullBuffer, 512);
 
         resolve(fullBuffer);
       };
@@ -386,9 +387,9 @@ export class PixelEngine {
     const outData = new Uint8ClampedArray(w * h * 4);
 
     const sampleChannel = (buf: TextureBuffer | undefined, defaultVal: number, chIdx: number, x: number, y: number): number => {
-      if (!buf) return defaultVal;
-      const bx = Math.floor((x / w) * buf.width);
-      const by = Math.floor((y / h) * buf.height);
+      if (!buf || !buf.data || buf.data.length === 0) return defaultVal;
+      const bx = Math.min(buf.width - 1, Math.max(0, Math.floor((x / w) * buf.width)));
+      const by = Math.min(buf.height - 1, Math.max(0, Math.floor((y / h) * buf.height)));
       const idx = (by * buf.width + bx) * 4 + chIdx;
       return buf.data[idx] !== undefined ? buf.data[idx] : defaultVal;
     };
@@ -404,8 +405,9 @@ export class PixelEngine {
     }
 
     const buf: TextureBuffer = { width: w, height: h, data: outData };
-    buf.dataUrl = this.toDataUrl(buf);
-    buf.proxy = this.createDownsampledProxy(buf, 512);
+    const proxy = this.createDownsampledProxy(buf, 512);
+    buf.proxy = proxy;
+    buf.dataUrl = proxy.dataUrl;
     return buf;
   }
 
@@ -438,8 +440,9 @@ export class PixelEngine {
       outData[i + 3] = buffer.data[i + 3];
     }
     const buf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
-    buf.dataUrl = this.toDataUrl(buf);
-    buf.proxy = this.createDownsampledProxy(buf, 512);
+    const proxy = this.createDownsampledProxy(buf, 512);
+    buf.proxy = proxy;
+    buf.dataUrl = proxy.dataUrl;
     return buf;
   }
 
@@ -461,8 +464,9 @@ export class PixelEngine {
       }
     }
     const buf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
-    buf.dataUrl = this.toDataUrl(buf);
-    buf.proxy = this.createDownsampledProxy(buf, 512);
+    const proxy = this.createDownsampledProxy(buf, 512);
+    buf.proxy = proxy;
+    buf.dataUrl = proxy.dataUrl;
     return buf;
   }
 
@@ -480,13 +484,14 @@ export class PixelEngine {
     const outData = new Uint8ClampedArray(buffer.data.length);
     const inRange = Math.max(1, whitePoint - blackPoint);
     const outRange = outWhite - outBlack;
+    const safeGamma = Math.max(0.01, Math.min(5.0, gamma || 1.0));
 
     // Precompute LUT for instant execution
     const lut = new Uint8Array(256);
     for (let i = 0; i < 256; i++) {
       let normalized = (i - blackPoint) / inRange;
       normalized = Math.min(1.0, Math.max(0.0, normalized));
-      const adjusted = Math.pow(normalized, 1.0 / gamma);
+      const adjusted = Math.pow(normalized, 1.0 / safeGamma);
       const remapped = Math.round(outBlack + adjusted * outRange);
       lut[i] = Math.min(255, Math.max(0, remapped));
     }
@@ -499,8 +504,9 @@ export class PixelEngine {
     }
 
     const buf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
-    buf.dataUrl = this.toDataUrl(buf);
-    buf.proxy = this.createDownsampledProxy(buf, 512);
+    const proxy = this.createDownsampledProxy(buf, 512);
+    buf.proxy = proxy;
+    buf.dataUrl = proxy.dataUrl;
     return buf;
   }
 
@@ -534,27 +540,65 @@ export class PixelEngine {
       }
     };
 
-    for (let i = 0; i < dataA.length; i += 4) {
-      const aR = dataA[i + 0] / 255;
-      const aG = dataA[i + 1] / 255;
-      const aB = dataA[i + 2] / 255;
+    const safeOpacity = Math.max(0.0, Math.min(1.0, opacity ?? 1.0));
+    const sameDim = bufB.width === w && bufB.height === h && (!maskBuf || (maskBuf.width === w && maskBuf.height === h));
 
-      const bR = dataB[i + 0] / 255;
-      const bG = dataB[i + 1] / 255;
-      const bB = dataB[i + 2] / 255;
+    if (sameDim) {
+      for (let i = 0; i < dataA.length; i += 4) {
+        const aR = dataA[i + 0] / 255;
+        const aG = dataA[i + 1] / 255;
+        const aB = dataA[i + 2] / 255;
 
-      const m = (maskData ? maskData[i + 0] / 255 : 1.0) * opacity;
-      const invM = 1.0 - m;
+        const bR = (dataB[i + 0] ?? 0) / 255;
+        const bG = (dataB[i + 1] ?? 0) / 255;
+        const bB = (dataB[i + 2] ?? 0) / 255;
 
-      outData[i + 0] = Math.round((aR * invM + blendChannel(aR, bR) * m) * 255);
-      outData[i + 1] = Math.round((aG * invM + blendChannel(aG, bG) * m) * 255);
-      outData[i + 2] = Math.round((aB * invM + blendChannel(aB, bB) * m) * 255);
-      outData[i + 3] = dataA[i + 3];
+        const m = (maskData ? (maskData[i + 0] ?? 255) / 255 : 1.0) * safeOpacity;
+        const invM = 1.0 - m;
+
+        outData[i + 0] = Math.round((aR * invM + blendChannel(aR, bR) * m) * 255);
+        outData[i + 1] = Math.round((aG * invM + blendChannel(aG, bG) * m) * 255);
+        outData[i + 2] = Math.round((aB * invM + blendChannel(aB, bB) * m) * 255);
+        outData[i + 3] = dataA[i + 3] ?? 255;
+      }
+    } else {
+      // Resolution mismatch: sample B and Mask with normalized UV coordinates
+      for (let y = 0; y < h; y++) {
+        const by = Math.min(bufB.height - 1, Math.max(0, Math.floor((y / h) * bufB.height)));
+        const my = maskBuf ? Math.min(maskBuf.height - 1, Math.max(0, Math.floor((y / h) * maskBuf.height))) : 0;
+
+        for (let x = 0; x < w; x++) {
+          const outIdx = (y * w + x) * 4;
+          const aR = dataA[outIdx + 0] / 255;
+          const aG = dataA[outIdx + 1] / 255;
+          const aB = dataA[outIdx + 2] / 255;
+
+          const bx = Math.min(bufB.width - 1, Math.max(0, Math.floor((x / w) * bufB.width)));
+          const bIdx = (by * bufB.width + bx) * 4;
+          const bR = (dataB[bIdx + 0] ?? 0) / 255;
+          const bG = (dataB[bIdx + 1] ?? 0) / 255;
+          const bB = (dataB[bIdx + 2] ?? 0) / 255;
+
+          let m = safeOpacity;
+          if (maskBuf && maskData) {
+            const mx = Math.min(maskBuf.width - 1, Math.max(0, Math.floor((x / w) * maskBuf.width)));
+            const mIdx = (my * maskBuf.width + mx) * 4;
+            m *= (maskData[mIdx + 0] ?? 255) / 255;
+          }
+          const invM = 1.0 - m;
+
+          outData[outIdx + 0] = Math.round((aR * invM + blendChannel(aR, bR) * m) * 255);
+          outData[outIdx + 1] = Math.round((aG * invM + blendChannel(aG, bG) * m) * 255);
+          outData[outIdx + 2] = Math.round((aB * invM + blendChannel(aB, bB) * m) * 255);
+          outData[outIdx + 3] = dataA[outIdx + 3] ?? 255;
+        }
+      }
     }
 
     const buf: TextureBuffer = { width: w, height: h, data: outData };
-    buf.dataUrl = this.toDataUrl(buf);
-    buf.proxy = this.createDownsampledProxy(buf, 512);
+    const proxy = this.createDownsampledProxy(buf, 512);
+    buf.proxy = proxy;
+    buf.dataUrl = proxy.dataUrl;
     return buf;
   }
 
@@ -571,35 +615,73 @@ export class PixelEngine {
     const outData = new Uint8ClampedArray(w * h * 4);
     const baseData = baseBuf.data;
     const detailData = detailBuf.data;
+    const safeDetailStrength = Math.max(0.0, Math.min(5.0, detailStrength ?? 1.0));
+    const sameDim = detailBuf.width === w && detailBuf.height === h;
 
-    for (let i = 0; i < baseData.length; i += 4) {
-      const n1x = (baseData[i + 0] / 255) * 2.0 - 1.0;
-      const n1y = (baseData[i + 1] / 255) * 2.0 - 1.0;
-      const n1z = (baseData[i + 2] / 255) * 2.0 - 1.0;
+    if (sameDim) {
+      for (let i = 0; i < baseData.length; i += 4) {
+        const n1x = ((baseData[i + 0] ?? 128) / 255) * 2.0 - 1.0;
+        const n1y = ((baseData[i + 1] ?? 128) / 255) * 2.0 - 1.0;
+        const n1z = ((baseData[i + 2] ?? 255) / 255) * 2.0 - 1.0;
 
-      const n2x = ((detailData[i + 0] / 255) * 2.0 - 1.0) * detailStrength;
-      const n2y = ((detailData[i + 1] / 255) * 2.0 - 1.0) * detailStrength;
-      const rawZ = (detailData[i + 2] / 255) * 2.0 - 1.0;
-      const n2z = Math.max(0.001, rawZ);
+        const n2x = (((detailData[i + 0] ?? 128) / 255) * 2.0 - 1.0) * safeDetailStrength;
+        const n2y = (((detailData[i + 1] ?? 128) / 255) * 2.0 - 1.0) * safeDetailStrength;
+        const rawZ = ((detailData[i + 2] ?? 255) / 255) * 2.0 - 1.0;
+        const n2z = Math.max(0.001, rawZ);
 
-      const tx = n1x + n2x;
-      const ty = n1y + n2y;
-      const tz = n1z * n2z;
+        const tx = n1x + n2x;
+        const ty = n1y + n2y;
+        const tz = n1z * n2z;
 
-      const lenVec = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1.0;
-      const rx = tx / lenVec;
-      const ry = ty / lenVec;
-      const rz = tz / lenVec;
+        const lenVec = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1.0;
+        const rx = tx / lenVec;
+        const ry = ty / lenVec;
+        const rz = tz / lenVec;
 
-      outData[i + 0] = Math.min(255, Math.max(0, Math.round((rx * 0.5 + 0.5) * 255)));
-      outData[i + 1] = Math.min(255, Math.max(0, Math.round((ry * 0.5 + 0.5) * 255)));
-      outData[i + 2] = Math.min(255, Math.max(0, Math.round((rz * 0.5 + 0.5) * 255)));
-      outData[i + 3] = 255;
+        outData[i + 0] = Math.min(255, Math.max(0, Math.round((rx * 0.5 + 0.5) * 255)));
+        outData[i + 1] = Math.min(255, Math.max(0, Math.round((ry * 0.5 + 0.5) * 255)));
+        outData[i + 2] = Math.min(255, Math.max(0, Math.round((rz * 0.5 + 0.5) * 255)));
+        outData[i + 3] = 255;
+      }
+    } else {
+      // Resolution mismatch: sample detail normal with normalized coordinates
+      for (let y = 0; y < h; y++) {
+        const dy = Math.min(detailBuf.height - 1, Math.max(0, Math.floor((y / h) * detailBuf.height)));
+        for (let x = 0; x < w; x++) {
+          const outIdx = (y * w + x) * 4;
+          const n1x = ((baseData[outIdx + 0] ?? 128) / 255) * 2.0 - 1.0;
+          const n1y = ((baseData[outIdx + 1] ?? 128) / 255) * 2.0 - 1.0;
+          const n1z = ((baseData[outIdx + 2] ?? 255) / 255) * 2.0 - 1.0;
+
+          const dx = Math.min(detailBuf.width - 1, Math.max(0, Math.floor((x / w) * detailBuf.width)));
+          const dIdx = (dy * detailBuf.width + dx) * 4;
+
+          const n2x = (((detailData[dIdx + 0] ?? 128) / 255) * 2.0 - 1.0) * safeDetailStrength;
+          const n2y = (((detailData[dIdx + 1] ?? 128) / 255) * 2.0 - 1.0) * safeDetailStrength;
+          const rawZ = ((detailData[dIdx + 2] ?? 255) / 255) * 2.0 - 1.0;
+          const n2z = Math.max(0.001, rawZ);
+
+          const tx = n1x + n2x;
+          const ty = n1y + n2y;
+          const tz = n1z * n2z;
+
+          const lenVec = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1.0;
+          const rx = tx / lenVec;
+          const ry = ty / lenVec;
+          const rz = tz / lenVec;
+
+          outData[outIdx + 0] = Math.min(255, Math.max(0, Math.round((rx * 0.5 + 0.5) * 255)));
+          outData[outIdx + 1] = Math.min(255, Math.max(0, Math.round((ry * 0.5 + 0.5) * 255)));
+          outData[outIdx + 2] = Math.min(255, Math.max(0, Math.round((rz * 0.5 + 0.5) * 255)));
+          outData[outIdx + 3] = 255;
+        }
+      }
     }
 
     const buf: TextureBuffer = { width: w, height: h, data: outData };
-    buf.dataUrl = this.toDataUrl(buf);
-    buf.proxy = this.createDownsampledProxy(buf, 512);
+    const proxy = this.createDownsampledProxy(buf, 512);
+    buf.proxy = proxy;
+    buf.dataUrl = proxy.dataUrl;
     return buf;
   }
 
@@ -647,8 +729,9 @@ export class PixelEngine {
     }
 
     const buf: TextureBuffer = { width: w, height: h, data: outData };
-    buf.dataUrl = this.toDataUrl(buf);
-    buf.proxy = this.createDownsampledProxy(buf, 512);
+    const proxy = this.createDownsampledProxy(buf, 512);
+    buf.proxy = proxy;
+    buf.dataUrl = proxy.dataUrl;
     return buf;
   }
 

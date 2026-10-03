@@ -26,16 +26,19 @@ export const BlendNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const isBypassed = !!d.isBypassed;
 
   const handleModeChange = (val: string) => {
-    const newMode = val as BlendMode;
+    const validModes: BlendMode[] = ['lerp', 'multiply', 'screen', 'overlay', 'add', 'min', 'max'];
+    const newMode = validModes.includes(val as BlendMode) ? (val as BlendMode) : 'lerp';
     setMode(newMode);
     d.onChange?.({ mode: newMode, opacity });
     onUpdateNodeData(id, { mode: newMode, opacity });
   };
 
   const handleOpacityChange = (val: number) => {
-    setOpacity(val);
-    d.onChange?.({ mode, opacity: val });
-    onUpdateNodeData(id, { mode, opacity: val });
+    const parsed = Number(val);
+    const safeOpacity = Math.max(0.0, Math.min(1.0, isNaN(parsed) ? 1.0 : parsed));
+    setOpacity(safeOpacity);
+    d.onChange?.({ mode, opacity: safeOpacity });
+    onUpdateNodeData(id, { mode, opacity: safeOpacity });
   };
 
   return (

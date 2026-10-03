@@ -22,9 +22,11 @@ export const NormalBlendNode: React.FC<NodeProps<any>> = ({ id, data, selected }
   const isBypassed = !!d.isBypassed;
 
   const handleStrengthChange = (val: number) => {
-    setStrength(val);
-    d.onChange?.({ detailStrength: val });
-    onUpdateNodeData(id, { detailStrength: val });
+    const parsed = Number(val);
+    const safeStrength = Math.max(0.0, Math.min(5.0, isNaN(parsed) ? 1.0 : parsed));
+    setStrength(safeStrength);
+    d.onChange?.({ detailStrength: safeStrength });
+    onUpdateNodeData(id, { detailStrength: safeStrength });
   };
 
   return (
