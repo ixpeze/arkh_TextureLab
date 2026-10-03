@@ -127,13 +127,17 @@ export class ExportEngine {
 
   /**
    * Validate a naming template for edge cases (empty, missing slot, illegal characters).
+   * Note: '/' is allowed for organizing maps into subfolders.
    */
   public static validatePattern(pattern: string): { isValid: boolean; warning?: string; error?: string } {
     if (!pattern || pattern.trim().length === 0) {
       return { isValid: false, error: 'Output template cannot be empty' };
     }
     if (/[\\:*?"<>|]/.test(pattern)) {
-      return { isValid: false, error: 'Illegal filesystem characters (\\ : * ? " < > |) detected' };
+      return { isValid: false, error: 'Illegal characters (\\ : * ? " < > |) detected. Use / for subfolders.' };
+    }
+    if (/\/{2,}/.test(pattern)) {
+      return { isValid: false, error: 'Consecutive slashes (//) are not allowed in folder paths.' };
     }
     const hasSlot = /\{slot\}|\$slot/i.test(pattern);
     if (!hasSlot) {
@@ -143,7 +147,7 @@ export class ExportEngine {
   }
 
   /**
-   * Resolve an output template string (or legacy TokenItem array) into a sanitized filename.
+   * Resolve an output template string (or legacy TokenItem array) into a sanitized filename/subfolder path.
    */
   public static resolveFilename(
     patternOrTokens: string | TokenItem[],
@@ -194,10 +198,13 @@ export class ExportEngine {
       raw = raw.replace(/[._-]+$/, '') + `.${ext}`;
     }
 
-    // Clean up illegal filesystem characters
-    raw = raw.replace(/[\\/:*?"<>|]/g, '_');
+    // Split by '/' to preserve subfolder hierarchy while sanitizing each path segment
+    const segments = raw
+      .split('/')
+      .map((seg) => seg.replace(/[\\:*?"<>|]/g, '_').trim())
+      .filter(Boolean);
 
-    return raw;
+    return segments.join('/');
   }
 
   /* ========================================================================= */
@@ -483,7 +490,13 @@ export class ExportEngine {
     dirHandle: any
   ): Promise<void> {
     for (const f of files) {
-      const fileHandle = await dirHandle.getFileHandle(f.filename, { create: true });
+      const parts = f.filename.split('/').filter(Boolean);
+      let targetDir = dirHandle;
+      for (let i = 0; i < parts.length - 1; i++) {
+        targetDir = await targetDir.getDirectoryHandle(parts[i], { create: true });
+      }
+      const leafName = parts[parts.length - 1];
+      const fileHandle = await targetDir.getFileHandle(leafName, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(f.blob);
       await writable.close();

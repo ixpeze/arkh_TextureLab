@@ -60,18 +60,41 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const [selectedPresetId, setSelectedPresetId] = useState<string>('ue5');
   const [pattern, setPattern] = useState<string>('T_{asset}_{slot}');
 
-  // Preset management dialog state
+  // Save Preset Modal State (Save as new vs Update existing)
+  const [showSavePresetDialog, setShowSavePresetDialog] = useState(false);
+  const [savePresetMode, setSavePresetMode] = useState<'new' | 'update'>('new');
+  const [savePresetName, setSavePresetName] = useState('');
+  const [presetToUpdateId, setPresetToUpdateId] = useState('ue5');
+
+  // Inline Quick New Preset state
   const [showNewPresetInput, setShowNewPresetInput] = useState(false);
   const [newPresetName, setNewPresetName] = useState('');
   const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'info' | 'error' } | null>(null);
+
+  // Auto-detect source texture location from input nodes (default output destination)
+  const detectedSourceLocation = useMemo(() => {
+    const inputNodes = nodes.filter((n) => n.type === 'textureInput');
+    for (const inNode of inputNodes) {
+      const d = (inNode.data as any) || {};
+      if (d.sourceDirectory) return d.sourceDirectory;
+      if (d.previewUrl && typeof d.previewUrl === 'string' && d.previewUrl.startsWith('/')) {
+        const parts = d.previewUrl.split('/').filter(Boolean);
+        if (parts.length > 1) {
+          return parts.slice(0, parts.length - 1).join('/');
+        }
+      }
+    }
+    return 'sample_textures';
+  }, [nodes]);
 
   // Global settings state
   const [settings, setSettings] = useState<GlobalExportSettings>(() => ({
     ...DEFAULT_GLOBAL_SETTINGS,
     assetName: primaryAsset || 'AnthraciteConcrete',
+    directoryName: 'sample_textures',
   }));
 
-  // Direct disk handle
+  // Direct disk handle override
   const [directoryHandle, setDirectoryHandle] = useState<any | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ current: number; total: number; filename: string } | null>(null);
@@ -91,13 +114,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen && !isExporting) {
-        onClose();
+        if (showSavePresetDialog) {
+          setShowSavePresetDialog(false);
+        } else {
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isExporting, onClose]);
-
+  }, [isOpen, isExporting, showSavePresetDialog, onClose]);
 
   // Detect all textureOutput nodes in graph
   const outputNodes = useMemo(() => {
@@ -190,7 +216,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  // Create new preset from current pattern
+  // Create new preset from inline bar
   const handleCreatePreset = () => {
     const trimmed = newPresetName.trim();
     if (!trimmed) return;
@@ -210,20 +236,48 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     showFeedback(`Created preset "${trimmed}"`, 'success');
   };
 
-  // Save changes to currently selected preset
-  const handleSaveCurrentPreset = () => {
-    const current = presets.find((p) => p.id === selectedPresetId);
-    if (!current) return;
-    if (current.isBuiltIn) {
-      // Prompt user to save as a custom copy
-      setNewPresetName(`${current.name.split(' (')[0]} (Custom)`);
-      setShowNewPresetInput(true);
-      return;
+  // Confirm Save Preset from Save Dialog (Create new OR update existing)
+  const handleConfirmSavePreset = () => {
+    if (savePresetMode === 'new') {
+      const trimmed = savePresetName.trim();
+      if (!trimmed) return;
+      const newId = `custom_${Date.now()}_${nextPresetCounter.current++}`;
+      const newPreset: ExportPreset = {
+        id: newId,
+        name: trimmed,
+        pattern: pattern,
+        isBuiltIn: false,
+      };
+      const updated = [...presets, newPreset];
+      setPresets(updated);
+      ExportEngine.savePresets(updated);
+      setSelectedPresetId(newId);
+      setShowSavePresetDialog(false);
+      showFeedback(`Saved new preset "${trimmed}"!`, 'success');
+    } else {
+      // Update existing preset
+      const target = presets.find((p) => p.id === presetToUpdateId);
+      if (!target) return;
+
+      let updated: ExportPreset[];
+      if (target.isBuiltIn) {
+        // Built-ins saved as custom overrides
+        const updatedPreset: ExportPreset = {
+          ...target,
+          pattern: pattern,
+          isBuiltIn: false,
+        };
+        updated = presets.map((p) => (p.id === target.id ? updatedPreset : p));
+      } else {
+        updated = presets.map((p) => (p.id === target.id ? { ...p, pattern } : p));
+      }
+
+      setPresets(updated);
+      ExportEngine.savePresets(updated);
+      setSelectedPresetId(target.id);
+      setShowSavePresetDialog(false);
+      showFeedback(`Updated preset "${target.name}"!`, 'success');
     }
-    const updated = presets.map((p) => (p.id === current.id ? { ...p, pattern } : p));
-    setPresets(updated);
-    ExportEngine.savePresets(updated);
-    showFeedback(`Saved changes to "${current.name}"`, 'success');
   };
 
   // Delete currently selected custom preset
@@ -246,10 +300,10 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     ExportEngine.savePresets(defaults);
     setSelectedPresetId('ue5');
     setPattern(defaults[0].pattern);
-    showFeedback('Restored default industry presets', 'info');
+    showFeedback('Restored default presets', 'info');
   };
 
-  // Insert token at current text cursor position
+  // Insert token or subfolder separator at current text cursor position
   const handleInsertToken = (tokenString: string) => {
     const input = patternInputRef.current;
     if (input) {
@@ -275,7 +329,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     if (handle) {
       setDirectoryHandle(handle);
       setSettings((prev) => ({ ...prev, directoryName: handle.name }));
+      showFeedback(`Output folder set to disk: "${handle.name}"`, 'success');
     }
+  };
+
+  // Reset output destination to source texture location
+  const handleResetToSourceLocation = () => {
+    setDirectoryHandle(null);
+    setSettings((prev) => ({ ...prev, directoryName: detectedSourceLocation }));
+    showFeedback(`Restored default source location: "${detectedSourceLocation}"`, 'info');
   };
 
   // Select all / Deselect all
@@ -329,10 +391,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       // Output Destination: Direct Disk folder vs Packaged ZIP
       if (directoryHandle) {
         await ExportEngine.exportToDirectory(generatedFiles, directoryHandle);
-        onExportComplete?.(`Exported ${generatedFiles.length} textures directly to folder "${directoryHandle.name}"`);
+        onExportComplete?.(`Exported ${generatedFiles.length} textures directly to disk folder "${directoryHandle.name}"`);
       } else {
-        // Fallback: Generate clean single .zip archive
-        const zipName = `Textures_${settings.assetName || 'Asset'}_${Date.now()}.zip`;
+        // Fallback: Generate clean ZIP archive
+        const zipPrefix = settings.directoryName || detectedSourceLocation || 'Textures';
+        const zipName = `${zipPrefix}_${settings.assetName || 'Asset'}.zip`;
         const zipBlob = await ExportEngine.createZip(generatedFiles);
         ExportEngine.triggerDownload(zipBlob, zipName);
         onExportComplete?.(`Packaged and downloaded ${generatedFiles.length} textures as ${zipName}`);
@@ -353,6 +416,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const readyCount = preflightItems.filter((i) => i.enabled && i.isConnected).length;
   const currentPreset = presets.find((p) => p.id === selectedPresetId);
   const isCustomPreset = currentPreset && !currentPreset.isBuiltIn;
+  const activeDestinationLabel = directoryHandle
+    ? directoryHandle.name
+    : `${detectedSourceLocation} (Source)`;
 
   return (
     <div
@@ -369,11 +435,12 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         userSelect: 'none',
       }}
       onClick={(e) => {
-        if (e.target === e.currentTarget && !isExporting) onClose();
+        if (e.target === e.currentTarget && !isExporting && !showSavePresetDialog) onClose();
       }}
     >
       <div
         style={{
+          position: 'relative',
           width: '95%',
           maxWidth: 1040,
           maxHeight: '94vh',
@@ -432,7 +499,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         {feedback && (
           <div
             style={{
-              padding: '6px 20px',
+              padding: '6px 22px',
               backgroundColor:
                 feedback.type === 'success'
                   ? 'rgba(34, 197, 94, 0.15)'
@@ -487,7 +554,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   Presets
                 </span>
                 <span style={{ fontSize: 8.5, color: '#64748b' }}>
-                  Select, save, or customize export presets
+                  Select standard convention or load custom preset
                 </span>
               </div>
 
@@ -540,7 +607,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       setNewPresetName('');
                       setShowNewPresetInput((prev) => !prev);
                     }}
-                    title="Create a new preset from the current pattern"
+                    title="Quick create preset from the current pattern"
                     style={{
                       height: 28,
                       padding: '0 9px',
@@ -558,29 +625,6 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   >
                     <Plus size={11} />
                     <span>New</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleSaveCurrentPreset}
-                    title={isCustomPreset ? `Save changes to ${currentPreset?.name}` : 'Save current pattern as new custom preset'}
-                    style={{
-                      height: 28,
-                      padding: '0 9px',
-                      backgroundColor: 'rgba(74, 222, 128, 0.1)',
-                      border: '1px solid rgba(74, 222, 128, 0.3)',
-                      borderRadius: 4,
-                      color: '#4ade80',
-                      fontSize: 8.5,
-                      fontWeight: 600,
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    <Save size={11} />
-                    <span>Save</span>
                   </button>
 
                   {isCustomPreset && (
@@ -632,7 +676,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </div>
               </div>
 
-              {/* Inline Create New Preset Input Bar */}
+              {/* Inline Quick Preset Creation Bar */}
               {showNewPresetInput && (
                 <div
                   style={{
@@ -705,7 +749,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               )}
             </div>
 
-            {/* Global Properties: Asset Name, Master Resolution, Format, Folder Picker */}
+            {/* Global Properties: Asset Name, Resolution Selection, Format, Destination */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1.4fr', gap: 10, paddingTop: 4 }}>
               {/* Asset Name */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -734,9 +778,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 />
               </div>
 
-              {/* Master Resolution */}
+              {/* Resolution Selection */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 600 }}>Master Resolution</span>
+                <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 600 }}>Resolution</span>
                 <select
                   value={settings.masterResolution}
                   onChange={(e) => setSettings((prev) => ({ ...prev, masterResolution: e.target.value as ExportResolutionSetting }))}
@@ -757,13 +801,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <option value="1024">1024 × 1024 (1K)</option>
                   <option value="2048">2048 × 2048 (2K)</option>
                   <option value="4096">4096 × 4096 (4K)</option>
-                  <option value="8192">8192 × 8192 (8K)</option>
+                  <option value="8192">8192 × 8192 (8K Cinematic)</option>
                 </select>
               </div>
 
               {/* Default Global Format */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 600 }}>Global Default Format</span>
+                <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 600 }}>Global Format</span>
                 <select
                   value={settings.defaultFormat}
                   onChange={(e) => setSettings((prev) => ({ ...prev, defaultFormat: e.target.value as TextureExportFormat }))}
@@ -787,20 +831,42 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 </select>
               </div>
 
-              {/* Destination Folder Picker */}
+              {/* Output Destination (Default to Source Location with Override) */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 600 }}>Output Destination</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 8.5, color: '#94a3b8', fontWeight: 600 }}>Output Destination</span>
+                  {directoryHandle && (
+                    <button
+                      type="button"
+                      onClick={handleResetToSourceLocation}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#94a3b8',
+                        fontSize: 7.5,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 2,
+                      }}
+                      title="Reset output destination back to default source location"
+                    >
+                      <RotateCcw size={8} />
+                      <span>Reset to Source</span>
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={handlePickDirectory}
-                  title="Pick a directory on disk to write exported textures directly without browser popups"
+                  title="Default: Source Texture Location. Click to pick or override with a disk folder."
                   style={{
                     height: 28,
                     padding: '0 10px',
-                    backgroundColor: directoryHandle ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.05)',
-                    border: `1px solid ${directoryHandle ? '#22c55e' : 'rgba(255, 255, 255, 0.12)'}`,
+                    backgroundColor: directoryHandle ? 'rgba(34, 197, 94, 0.15)' : 'rgba(56, 189, 248, 0.1)',
+                    border: `1px solid ${directoryHandle ? '#22c55e' : 'rgba(56, 189, 248, 0.3)'}`,
                     borderRadius: 4,
-                    color: directoryHandle ? '#22c55e' : '#cbd5e1',
+                    color: directoryHandle ? '#22c55e' : '#38bdf8',
                     fontSize: 9,
                     fontWeight: 600,
                     display: 'flex',
@@ -814,20 +880,20 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, overflow: 'hidden' }}>
                     {directoryHandle ? <FolderCheck size={12} /> : <Folder size={12} />}
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {directoryHandle ? directoryHandle.name : 'Choose Folder on Disk...'}
+                      {activeDestinationLabel}
                     </span>
                   </div>
                   {directoryHandle ? (
-                    <span style={{ fontSize: 7.5, color: '#4ade80', fontWeight: 700 }}>DISK</span>
+                    <span style={{ fontSize: 7.5, color: '#4ade80', fontWeight: 700 }}>DISK (OVERRIDE)</span>
                   ) : (
-                    <span style={{ fontSize: 7.5, color: '#94a3b8' }}>ZIP FALLBACK</span>
+                    <span style={{ fontSize: 7.5, color: '#38bdf8', fontWeight: 700 }}>DEFAULT (SOURCE)</span>
                   )}
                 </button>
               </div>
             </div>
           </div>
 
-          {/* SECTION 2: OUTPUT NAME (CUSTOM INPUT + CURSOR TOKEN INSERTION + VALIDATION) */}
+          {/* SECTION 2: OUTPUT NAME (CUSTOM INPUT + CURSOR TOKEN INSERTION + SUBFOLDERS + SAVE PRESET) */}
           <div
             style={{
               backgroundColor: 'rgba(20, 24, 34, 0.45)',
@@ -846,7 +912,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   Output Name
                 </span>
                 <span style={{ fontSize: 8, color: '#64748b' }}>
-                  (Click any token pill to insert at text cursor position)
+                  (Use "/" to automatically organize exported maps into subfolders)
                 </span>
               </div>
               <button
@@ -871,15 +937,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </button>
             </div>
 
-            {/* Custom Pattern Input with Text Cursor Insertion */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Custom Pattern Input + Save as Preset Button directly beside it */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <input
                 ref={patternInputRef}
                 type="text"
                 value={pattern}
                 onChange={(e) => setPattern(e.target.value)}
-                placeholder="e.g. T_{asset}_{slot} or {project}_{asset}_{slot}_{res}"
+                placeholder="e.g. T_{asset}_{slot} or {asset}/{slot} (subfolder per asset)"
                 style={{
+                  flex: 1,
                   height: 32,
                   backgroundColor: '#0a0c12',
                   border: `1px solid ${
@@ -901,6 +968,37 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     : '0 0 8px rgba(56, 189, 248, 0.15)',
                 }}
               />
+
+              {/* Preset Save Button beside the Output Name bar */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSavePresetMode('new');
+                  setSavePresetName(`${settings.assetName || 'Custom'}_Preset`);
+                  setPresetToUpdateId(selectedPresetId);
+                  setShowSavePresetDialog(true);
+                }}
+                title="Save current naming template as a preset (new or update existing)"
+                style={{
+                  height: 32,
+                  padding: '0 12px',
+                  backgroundColor: 'rgba(74, 222, 128, 0.15)',
+                  border: '1px solid rgba(74, 222, 128, 0.35)',
+                  borderRadius: 5,
+                  color: '#4ade80',
+                  fontSize: 9.5,
+                  fontWeight: 700,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                  transition: 'all 120ms ease',
+                }}
+              >
+                <Save size={12} />
+                <span>Save as Preset</span>
+              </button>
             </div>
 
             {/* Edge Case Validation Alert Box */}
@@ -988,6 +1086,37 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               ))}
 
               <span style={{ color: 'rgba(255, 255, 255, 0.2)', margin: '0 2px' }}>|</span>
+
+              {/* Subfolder "/" Option Button */}
+              <button
+                type="button"
+                onClick={() => handleInsertToken('/')}
+                title="Create a subfolder structure (e.g. {asset}/{slot})"
+                style={{
+                  backgroundColor: 'rgba(168, 85, 247, 0.14)',
+                  border: '1px solid rgba(168, 85, 247, 0.35)',
+                  borderRadius: 4,
+                  padding: '3px 8px',
+                  color: '#c084fc',
+                  fontSize: 8.5,
+                  fontFamily: "'Geist Mono', monospace",
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  transition: 'all 100ms ease',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.26)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.14)';
+                }}
+              >
+                <Folder size={9} />
+                <span>+ / (Subfolder)</span>
+              </button>
 
               {/* Separators */}
               {['_', '-', '.'].map((sep) => (
@@ -1089,169 +1218,193 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                       <th style={{ padding: '7px 10px' }}>Format</th>
                       <th style={{ padding: '7px 10px' }}>Color Space</th>
                       <th style={{ padding: '7px 10px' }}>Resolution</th>
-                      <th style={{ padding: '7px 10px' }}>Resolved Filename</th>
+                      <th style={{ padding: '7px 10px' }}>Resolved Filename / Subfolder</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {preflightItems.map((item) => (
-                      <tr
-                        key={item.nodeId}
-                        style={{
-                          borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
-                          backgroundColor: item.enabled ? 'transparent' : 'rgba(255, 255, 255, 0.01)',
-                          opacity: item.enabled ? 1 : 0.45,
-                        }}
-                      >
-                        {/* Checkbox */}
-                        <td style={{ padding: '7px 10px', textAlign: 'center' }}>
-                          <input
-                            type="checkbox"
-                            checked={item.enabled}
-                            onChange={(e) => onUpdateNodeData?.(item.nodeId, { enabled: e.target.checked })}
-                            style={{ cursor: 'pointer' }}
-                          />
-                        </td>
+                    {preflightItems.map((item) => {
+                      const nodeData = (outputNodes.find((n) => n.id === item.nodeId)?.data as any) || {};
+                      return (
+                        <tr
+                          key={item.nodeId}
+                          style={{
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                            backgroundColor: item.enabled ? 'transparent' : 'rgba(255, 255, 255, 0.01)',
+                            opacity: item.enabled ? 1 : 0.45,
+                          }}
+                        >
+                          {/* Checkbox */}
+                          <td style={{ padding: '7px 10px', textAlign: 'center' }}>
+                            <input
+                              type="checkbox"
+                              checked={item.enabled}
+                              onChange={(e) => onUpdateNodeData?.(item.nodeId, { enabled: e.target.checked })}
+                              style={{ cursor: 'pointer' }}
+                            />
+                          </td>
 
-                        {/* Slot Name & Quick Edit */}
-                        <td style={{ padding: '7px 10px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            {item.previewUrl ? (
-                              <img
-                                src={item.previewUrl}
-                                alt={item.slot}
-                                style={{ width: 22, height: 22, borderRadius: 3, border: '1px solid rgba(255, 255, 255, 0.1)', objectFit: 'cover' }}
-                              />
-                            ) : (
-                              <div style={{ width: 22, height: 22, borderRadius: 3, backgroundColor: '#0c0e14', border: '1px solid rgba(255, 255, 255, 0.1)' }} />
-                            )}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <input
-                                type="text"
-                                value={item.slot}
-                                onChange={(e) =>
-                                  onUpdateNodeData?.(item.nodeId, {
-                                    slot: e.target.value,
-                                    isSlotOverridden: true,
-                                  })
-                                }
-                                style={{
-                                  width: 90,
-                                  height: 22,
-                                  backgroundColor: 'rgba(0, 0, 0, 0.3)',
-                                  border: `1px solid ${item.isSlotOverridden ? '#f59e0b' : 'rgba(255, 255, 255, 0.1)'}`,
-                                  borderRadius: 3,
-                                  color: item.isSlotOverridden ? '#f59e0b' : '#f8fafc',
-                                  fontWeight: 700,
-                                  fontFamily: "'Geist Mono', monospace",
-                                  fontSize: 9,
-                                  padding: '0 6px',
-                                }}
-                              />
-                              {item.isSlotOverridden ? (
-                                <span
-                                  style={{
-                                    fontSize: 7.5,
-                                    color: '#f59e0b',
-                                    fontWeight: 700,
-                                    fontFamily: "'Geist Mono', monospace",
-                                  }}
-                                  title="Overridden manually"
-                                >
-                                  OVR
-                                </span>
+                          {/* Slot Name & Quick Edit */}
+                          <td style={{ padding: '7px 10px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              {item.previewUrl ? (
+                                <img
+                                  src={item.previewUrl}
+                                  alt={item.slot}
+                                  style={{ width: 22, height: 22, borderRadius: 3, border: '1px solid rgba(255, 255, 255, 0.1)', objectFit: 'cover' }}
+                                />
                               ) : (
-                                <span
+                                <div style={{ width: 22, height: 22, borderRadius: 3, backgroundColor: '#0c0e14', border: '1px solid rgba(255, 255, 255, 0.1)' }} />
+                              )}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <input
+                                  type="text"
+                                  value={item.slot}
+                                  onChange={(e) =>
+                                    onUpdateNodeData?.(item.nodeId, {
+                                      slot: e.target.value,
+                                      isSlotOverridden: true,
+                                    })
+                                  }
                                   style={{
-                                    fontSize: 7.5,
-                                    color: '#4ade80',
+                                    width: 90,
+                                    height: 22,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.3)',
+                                    border: `1px solid ${item.isSlotOverridden ? '#f59e0b' : 'rgba(255, 255, 255, 0.1)'}`,
+                                    borderRadius: 3,
+                                    color: item.isSlotOverridden ? '#f59e0b' : '#f8fafc',
                                     fontWeight: 700,
                                     fontFamily: "'Geist Mono', monospace",
+                                    fontSize: 9,
+                                    padding: '0 6px',
                                   }}
-                                  title="Auto-detected from input"
-                                >
-                                  AUTO
-                                </span>
-                              )}
+                                />
+                                {item.isSlotOverridden ? (
+                                  <span
+                                    style={{
+                                      fontSize: 7.5,
+                                      color: '#f59e0b',
+                                      fontWeight: 700,
+                                      fontFamily: "'Geist Mono', monospace",
+                                    }}
+                                    title="Overridden manually"
+                                  >
+                                    OVR
+                                  </span>
+                                ) : (
+                                  <span
+                                    style={{
+                                      fontSize: 7.5,
+                                      color: '#4ade80',
+                                      fontWeight: 700,
+                                      fontFamily: "'Geist Mono', monospace",
+                                    }}
+                                    title="Auto-detected from input"
+                                  >
+                                    AUTO
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Wire Connection Status */}
-                        <td style={{ padding: '7px 10px' }}>
-                          {item.isConnected ? (
-                            <span style={{ color: '#4ade80', fontSize: 8, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <Check size={10} strokeWidth={3} />
-                              <span>READY</span>
-                            </span>
-                          ) : (
-                            <span style={{ color: '#f87171', fontSize: 8, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-                              <AlertCircle size={10} />
-                              <span>UNWIRED</span>
-                            </span>
-                          )}
-                        </td>
+                          {/* Wire Connection Status */}
+                          <td style={{ padding: '7px 10px' }}>
+                            {item.isConnected ? (
+                              <span style={{ color: '#4ade80', fontSize: 8, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <Check size={10} strokeWidth={3} />
+                                <span>READY</span>
+                              </span>
+                            ) : (
+                              <span style={{ color: '#f87171', fontSize: 8, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <AlertCircle size={10} />
+                                <span>UNWIRED</span>
+                              </span>
+                            )}
+                          </td>
 
-                        {/* Format Override Dropdown */}
-                        <td style={{ padding: '7px 10px' }}>
-                          <select
-                            value={(outputNodes.find((n) => n.id === item.nodeId)?.data as any)?.formatOverride || 'inherit'}
-                            onChange={(e) => onUpdateNodeData?.(item.nodeId, { formatOverride: e.target.value })}
-                            style={{
-                              backgroundColor: '#0c0e14',
-                              border: '1px solid rgba(255, 255, 255, 0.1)',
-                              borderRadius: 3,
-                              color: '#cbd5e1',
-                              fontSize: 8.5,
-                              padding: '2px 4px',
-                              outline: 'none',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <option value="inherit">Inherit ({settings.defaultFormat})</option>
-                            <option value="PNG">PNG</option>
-                            <option value="TGA">TGA</option>
-                            <option value="JPG">JPG</option>
-                            <option value="WEBP">WEBP</option>
-                          </select>
-                        </td>
+                          {/* Format Override Dropdown */}
+                          <td style={{ padding: '7px 10px' }}>
+                            <select
+                              value={nodeData.formatOverride || 'inherit'}
+                              onChange={(e) => onUpdateNodeData?.(item.nodeId, { formatOverride: e.target.value })}
+                              style={{
+                                backgroundColor: '#0c0e14',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                borderRadius: 3,
+                                color: '#cbd5e1',
+                                fontSize: 8.5,
+                                padding: '2px 4px',
+                                outline: 'none',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <option value="inherit">Inherit ({settings.defaultFormat})</option>
+                              <option value="PNG">PNG</option>
+                              <option value="TGA">TGA</option>
+                              <option value="JPG">JPG</option>
+                              <option value="WEBP">WEBP</option>
+                            </select>
+                          </td>
 
-                        {/* Color Space Pill */}
-                        <td style={{ padding: '7px 10px' }}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onUpdateNodeData?.(item.nodeId, {
-                                colorSpace: item.colorSpace === 'linear' ? 'sRGB' : 'linear',
-                                isColorSpaceOverridden: true,
-                              })
-                            }
-                            style={{
-                              padding: '2px 6px',
-                              borderRadius: 3,
-                              fontSize: 8,
-                              fontWeight: 700,
-                              fontFamily: "'Geist Mono', monospace",
-                              backgroundColor: item.colorSpace === 'sRGB' ? 'rgba(250, 204, 21, 0.15)' : 'rgba(56, 189, 248, 0.15)',
-                              border: `1px solid ${item.colorSpace === 'sRGB' ? '#facc15' : '#38bdf8'}`,
-                              color: item.colorSpace === 'sRGB' ? '#facc15' : '#38bdf8',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            {item.colorSpace.toUpperCase()}
-                          </button>
-                        </td>
+                          {/* Color Space Pill */}
+                          <td style={{ padding: '7px 10px' }}>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                onUpdateNodeData?.(item.nodeId, {
+                                  colorSpace: item.colorSpace === 'linear' ? 'sRGB' : 'linear',
+                                  isColorSpaceOverridden: true,
+                                })
+                              }
+                              style={{
+                                padding: '2px 6px',
+                                borderRadius: 3,
+                                fontSize: 8,
+                                fontWeight: 700,
+                                fontFamily: "'Geist Mono', monospace",
+                                backgroundColor: item.colorSpace === 'sRGB' ? 'rgba(250, 204, 21, 0.15)' : 'rgba(56, 189, 248, 0.15)',
+                                border: `1px solid ${item.colorSpace === 'sRGB' ? '#facc15' : '#38bdf8'}`,
+                                color: item.colorSpace === 'sRGB' ? '#facc15' : '#38bdf8',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {item.colorSpace.toUpperCase()}
+                            </button>
+                          </td>
 
-                        {/* Resolution */}
-                        <td style={{ padding: '7px 10px', fontFamily: "'Geist Mono', monospace", color: '#94a3b8' }}>
-                          {item.resolution}
-                        </td>
+                          {/* Resolution Selection Per Texture Row */}
+                          <td style={{ padding: '7px 10px' }}>
+                            <select
+                              value={nodeData.resolutionOverride || 'inherit'}
+                              onChange={(e) => onUpdateNodeData?.(item.nodeId, { resolutionOverride: e.target.value })}
+                              style={{
+                                backgroundColor: '#0c0e14',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                borderRadius: 3,
+                                color: nodeData.resolutionOverride && nodeData.resolutionOverride !== 'inherit' ? '#38bdf8' : '#cbd5e1',
+                                fontSize: 8.5,
+                                fontFamily: "'Geist Mono', monospace",
+                                padding: '2px 4px',
+                                outline: 'none',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <option value="inherit">Inherit ({item.resolution})</option>
+                              <option value="512">512</option>
+                              <option value="1024">1K (1024)</option>
+                              <option value="2048">2K (2048)</option>
+                              <option value="4096">4K (4096)</option>
+                              <option value="8192">8K (8192)</option>
+                            </select>
+                          </td>
 
-                        {/* Filename Preview */}
-                        <td style={{ padding: '7px 10px', fontFamily: "'Geist Mono', monospace", color: '#f8fafc', fontWeight: 600 }}>
-                          {item.resolvedFilename}
-                        </td>
-                      </tr>
-                    ))}
+                          {/* Filename / Subfolder Preview */}
+                          <td style={{ padding: '7px 10px', fontFamily: "'Geist Mono', monospace", color: '#f8fafc', fontWeight: 600 }}>
+                            {item.resolvedFilename}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1318,7 +1471,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <span>
                   Target:{' '}
                   <strong style={{ color: directoryHandle ? '#22c55e' : '#38bdf8' }}>
-                    {directoryHandle ? `Direct Disk (${directoryHandle.name})` : 'ZIP Package Download'}
+                    {directoryHandle ? `Direct Disk (${directoryHandle.name})` : `Source Location (${detectedSourceLocation})`}
                   </strong>
                 </span>
               </div>
@@ -1390,6 +1543,198 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           </div>
         </div>
+
+        {/* ============================================================ */}
+        {/* SAVE PRESET MODAL DIALOG (NEW OR UPDATE EXISTING)            */}
+        {/* ============================================================ */}
+        {showSavePresetDialog && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 110,
+              backgroundColor: 'rgba(0, 0, 0, 0.72)',
+              backdropFilter: 'blur(5px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 20,
+            }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowSavePresetDialog(false);
+            }}
+          >
+            <div
+              style={{
+                width: '100%',
+                maxWidth: 440,
+                backgroundColor: '#0f1219',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: 8,
+                padding: '18px 20px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 14,
+                boxShadow: '0 20px 50px rgba(0, 0, 0, 0.85)',
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>
+                  Save Preset
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowSavePresetDialog(false)}
+                  style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer' }}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div style={{ fontSize: 9, color: '#94a3b8', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <span>Pattern to save:</span>
+                <div
+                  style={{
+                    backgroundColor: '#0a0c12',
+                    padding: '6px 8px',
+                    borderRadius: 4,
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    fontFamily: "'Geist Mono', monospace",
+                    color: '#4ade80',
+                    fontWeight: 700,
+                    fontSize: 10,
+                  }}
+                >
+                  {pattern}
+                </div>
+              </div>
+
+              {/* Mode Switch: Save as New vs Update Existing */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => setSavePresetMode('new')}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 4,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    backgroundColor: savePresetMode === 'new' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                    border: `1px solid ${savePresetMode === 'new' ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
+                    color: savePresetMode === 'new' ? '#38bdf8' : '#94a3b8',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Create New Preset
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSavePresetMode('update')}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 4,
+                    fontSize: 9,
+                    fontWeight: 700,
+                    backgroundColor: savePresetMode === 'update' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.04)',
+                    border: `1px solid ${savePresetMode === 'update' ? '#38bdf8' : 'rgba(255, 255, 255, 0.08)'}`,
+                    color: savePresetMode === 'update' ? '#38bdf8' : '#94a3b8',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Update Existing
+                </button>
+              </div>
+
+              {savePresetMode === 'new' ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 8.5, color: '#94a3b8' }}>Preset Name</span>
+                  <input
+                    type="text"
+                    value={savePresetName}
+                    onChange={(e) => setSavePresetName(e.target.value)}
+                    placeholder="e.g. Unreal Folder Pipeline"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleConfirmSavePreset();
+                    }}
+                    style={{
+                      height: 30,
+                      backgroundColor: '#0c0e14',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: 4,
+                      padding: '0 8px',
+                      color: '#f8fafc',
+                      fontSize: 9.5,
+                      outline: 'none',
+                    }}
+                  />
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <span style={{ fontSize: 8.5, color: '#94a3b8' }}>Select Preset to Update</span>
+                  <select
+                    value={presetToUpdateId}
+                    onChange={(e) => setPresetToUpdateId(e.target.value)}
+                    style={{
+                      height: 30,
+                      backgroundColor: '#0c0e14',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: 4,
+                      padding: '0 8px',
+                      color: '#f8fafc',
+                      fontSize: 9.5,
+                      outline: 'none',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {presets.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.isBuiltIn ? '(Built-in)' : '(Custom)'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 4 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowSavePresetDialog(false)}
+                  style={{
+                    height: 28,
+                    padding: '0 12px',
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: 4,
+                    color: '#94a3b8',
+                    fontSize: 9,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmSavePreset}
+                  disabled={savePresetMode === 'new' && !savePresetName.trim()}
+                  style={{
+                    height: 28,
+                    padding: '0 16px',
+                    backgroundColor: '#4ade80',
+                    border: 'none',
+                    borderRadius: 4,
+                    color: '#080d14',
+                    fontSize: 9.5,
+                    fontWeight: 700,
+                    cursor: (savePresetMode === 'new' && !savePresetName.trim()) ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Save Preset
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
