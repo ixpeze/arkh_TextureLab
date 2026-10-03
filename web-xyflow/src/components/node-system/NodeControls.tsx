@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 
 /* ========================================================================= */
@@ -32,6 +32,11 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isResetFlashing, setIsResetFlashing] = useState(false);
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const valueRef = useRef(value);
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
 
   // Decimal precision derived from step
   const decimals = useMemo(() => {
@@ -158,15 +163,28 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
     window.addEventListener('pointerup', onPointerUp);
   };
 
-  // Wheel scrub over slider (nudge value up/down)
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    e.preventDefault();
-    const direction = e.deltaY < 0 ? 1 : -1;
-    const multiplier = e.shiftKey ? 0.1 : e.ctrlKey ? 5 : 1;
-    const delta = (step || 0.01) * multiplier * direction;
-    onChange(roundToStep(value + delta));
-  };
+  // Native non-passive Wheel listener to cleanly scrub without triggering React Flow canvas zoom
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onNativeWheel = (e: WheelEvent) => {
+      // Critical: preventDefault in non-passive listener and stop propagation so React Flow never zooms
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+
+      const direction = e.deltaY < 0 ? 1 : -1;
+      const multiplier = e.shiftKey ? 0.1 : e.ctrlKey ? 5 : 1;
+      const delta = (step || 0.01) * multiplier * direction;
+      onChange(roundToStep(valueRef.current + delta));
+    };
+
+    el.addEventListener('wheel', onNativeWheel, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onNativeWheel);
+    };
+  }, [step, onChange, roundToStep]);
 
   const handleStartEdit = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -218,7 +236,8 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
 
   return (
     <div
-      className="nodrag nopan"
+      ref={containerRef}
+      className="nodrag nopan nowheel"
       onPointerDown={(e) => {
         if (e.button === 1) {
           e.preventDefault();
@@ -250,9 +269,9 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
       <div
         ref={trackRef}
         tabIndex={0}
+        className="nowheel"
         onPointerDown={handlePointerDown}
         onDoubleClick={handleStartEdit}
-        onWheel={handleWheel}
         onKeyDown={handleTrackKeyDown}
         onAuxClick={(e) => {
           if (e.button === 1) {
