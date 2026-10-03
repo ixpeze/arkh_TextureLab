@@ -201,7 +201,13 @@ function Workbench() {
 
   // Stable functional signature of nodes (independent of selection, position, dragging or measurements)
   const graphStructureKey = useMemo(() => {
-    const nodeSig = nodes.map((n) => `${n.id}:${n.type}:${JSON.stringify(n.data || {})}`).join('|');
+    const nodeSig = nodes
+      .map((n) => {
+        const d = (n.data as any) || {};
+        const fallbacksStr = d.fallbacks ? `${d.fallbacks.r}_${d.fallbacks.g}_${d.fallbacks.b}_${d.fallbacks.a}` : '';
+        return `${n.id}:${n.type}:${d.isBypassed ? 1 : 0}:${d.blackPoint ?? ''}:${d.whitePoint ?? ''}:${d.gamma ?? ''}:${d.outBlack ?? ''}:${d.outWhite ?? ''}:${d.opacity ?? ''}:${d.mode || ''}:${d.detailStrength ?? ''}:${d.value ?? ''}:${d.color || ''}:${d.rSrc || ''}:${d.gSrc || ''}:${d.bSrc || ''}:${d.aSrc || ''}:${fallbacksStr}`;
+      })
+      .join('|');
     const edgeSig = edges.map((e) => `${e.id}:${e.source}:${e.sourceHandle}->${e.target}:${e.targetHandle}`).join('|');
     return `${nodeSig}#${edgeSig}`;
   }, [nodes, edges]);
@@ -218,6 +224,17 @@ function Workbench() {
     return GraphEvaluator.evaluate(nodesRef.current, edgesRef.current, sourceBuffers);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graphStructureKey, sourceBuffers]);
+
+  // Memoized context value to prevent unselected nodes from re-rendering on selection/deselection
+  const nodeBufferContextValue = useMemo(
+    () => ({
+      evaluatedBuffers,
+      sourceBuffers,
+      setSourceBuffer,
+      onUpdateNodeData: handleUpdateNodeData,
+    }),
+    [evaluatedBuffers, sourceBuffers, setSourceBuffer, handleUpdateNodeData]
+  );
 
   // Clean up selected node if it was removed from the graph
   useEffect(() => {
@@ -464,6 +481,25 @@ function Workbench() {
       }
     },
     [pushSnapshot, setEdges]
+  );
+
+  const handleNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setActiveNodeId(node.id);
+  }, []);
+
+  const handlePaneClick = useCallback(() => {
+    setActiveNodeId(null);
+    setPalettePos(null);
+  }, []);
+
+  const handlePaneContextMenu = useCallback((e: MouseEvent | React.MouseEvent) => {
+    e.preventDefault();
+    setPalettePos({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const isValidConnection = useCallback(
+    (conn: Edge | Connection) => GraphEvaluator.validateConnection(conn, edges).isValid,
+    [edges]
   );
 
   // Node spawning helper with Top-Center cursor alignment
@@ -1044,14 +1080,7 @@ function Workbench() {
       </header>
 
       {/* Main 100vw x 100vh Canvas Area with Floating HUD Panels */}
-      <NodeBufferContext.Provider
-        value={{
-          evaluatedBuffers,
-          sourceBuffers,
-          setSourceBuffer,
-          onUpdateNodeData: handleUpdateNodeData,
-        }}
-      >
+      <NodeBufferContext.Provider value={nodeBufferContextValue}>
         <div
           style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
           onMouseMove={(e) => {
@@ -1070,20 +1099,12 @@ function Workbench() {
             onReconnect={onReconnect}
             onReconnectEnd={onReconnectEnd}
             onEdgeClick={onEdgeClick}
-            onNodeClick={(_, node) => {
-              setActiveNodeId(node.id);
-            }}
-            onPaneClick={() => {
-              setActiveNodeId(null);
-              setPalettePos(null);
-            }}
-            onPaneContextMenu={(e) => {
-              e.preventDefault();
-              setPalettePos({ x: e.clientX, y: e.clientY });
-            }}
+            onNodeClick={handleNodeClick}
+            onPaneClick={handlePaneClick}
+            onPaneContextMenu={handlePaneContextMenu}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            isValidConnection={(conn) => GraphEvaluator.validateConnection(conn, edges).isValid}
+            isValidConnection={isValidConnection}
             onNodesDelete={onNodesDelete}
             fitView
             panOnScrollMode={PanOnScrollMode.Free}

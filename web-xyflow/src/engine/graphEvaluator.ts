@@ -113,23 +113,25 @@ export class GraphEvaluator {
           const bEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
           const aEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
 
-          const getChannelBuffer = (edge?: Edge): TextureBuffer | undefined => {
-            if (!edge) return undefined;
+          const getChannelSource = (edge?: Edge, defaultCh = 0): { buffer?: TextureBuffer; channel: number } => {
+            if (!edge) return { channel: defaultCh };
             const srcBuf = evaluateNode(edge.source);
-            if (!srcBuf) return undefined;
+            if (!srcBuf) return { channel: defaultCh };
 
             const sh = edge.sourceHandle || 'r';
-            if (sh === 'r') return PixelEngine.getIsolatedChannel(srcBuf, 0);
-            if (sh === 'g') return PixelEngine.getIsolatedChannel(srcBuf, 1);
-            if (sh === 'b') return PixelEngine.getIsolatedChannel(srcBuf, 2);
-            if (sh === 'a') return PixelEngine.getIsolatedChannel(srcBuf, 3);
-            return srcBuf;
+            let ch = defaultCh;
+            if (sh === 'r') ch = 0;
+            else if (sh === 'g') ch = 1;
+            else if (sh === 'b') ch = 2;
+            else if (sh === 'a') ch = 3;
+
+            return { buffer: srcBuf, channel: ch };
           };
 
-          const rBuf = getChannelBuffer(rEdge);
-          const gBuf = getChannelBuffer(gEdge);
-          const bBuf = getChannelBuffer(bEdge);
-          const aBuf = getChannelBuffer(aEdge);
+          const rSrc = getChannelSource(rEdge, 0);
+          const gSrc = getChannelSource(gEdge, 1);
+          const bSrc = getChannelSource(bEdge, 2);
+          const aSrc = getChannelSource(aEdge, 3);
 
           const rawFallbacks = (data.fallbacks as any) || {};
           const parseFallback = (val: any, def: number) => {
@@ -143,8 +145,8 @@ export class GraphEvaluator {
             a: parseFallback(rawFallbacks.a, 255),
           };
 
-          // Combine channels: missing / disconnected channels automatically use fallback values!
-          result = PixelEngine.combineChannels(rBuf, gBuf, bBuf, aBuf, undefined, fallbacks);
+          // Combine channels: zero intermediate buffer allocations, ultra-fast direct multiplexing!
+          result = PixelEngine.combineChannels(rSrc, gSrc, bSrc, aSrc, undefined, fallbacks);
         } else if (nodeType === 'channelSplitter') {
           const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || !e.targetHandle));
           if (inEdge) {

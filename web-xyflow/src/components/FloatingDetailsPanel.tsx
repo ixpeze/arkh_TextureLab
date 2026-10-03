@@ -62,7 +62,9 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
     if (!canvas || !activeBuffer) return;
 
     // Use fast interactive proxy when in fitted viewport mode to guarantee zero lag when switching nodes
-    const sourceBuf = isPixelExact ? activeBuffer : (activeBuffer.proxy || activeBuffer);
+    const sourceBuf = isPixelExact
+      ? activeBuffer
+      : (activeBuffer.proxy || (activeBuffer.width > 512 ? PixelEngine.createDownsampledProxy(activeBuffer, 512) : activeBuffer));
 
     let displayBuf = sourceBuf;
     if (isolatedChannel === 'R') {
@@ -75,8 +77,10 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
       displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 3);
     }
 
-    canvas.width = displayBuf.width;
-    canvas.height = displayBuf.height;
+    if (canvas.width !== displayBuf.width || canvas.height !== displayBuf.height) {
+      canvas.width = displayBuf.width;
+      canvas.height = displayBuf.height;
+    }
     const ctx = canvas.getContext('2d');
     if (ctx) {
       const imgData = ctx.createImageData(displayBuf.width, displayBuf.height);
