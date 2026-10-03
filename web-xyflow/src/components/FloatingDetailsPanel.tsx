@@ -521,13 +521,39 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     <span>White Point</span>
                     <span style={{ fontFamily: 'monospace' }}>{nodeData.whitePoint ?? 255}</span>
                   </div>
-                  <input
+                    <input
                     type="range"
                     min={1}
                     max={255}
                     value={nodeData.whitePoint ?? 255}
                     onChange={(e) => onUpdateNodeData?.(selectedNode.id, { whitePoint: Number(e.target.value) })}
                     style={{ accentColor: '#fbbf24', width: '100%', height: 4 }}
+                  />
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
+                    <span>Out Black (Min)</span>
+                    <span style={{ fontFamily: 'monospace' }}>{nodeData.outBlack ?? 0}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={255}
+                    value={nodeData.outBlack ?? 0}
+                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { outBlack: Number(e.target.value) })}
+                    style={{ accentColor: '#94a3b8', width: '100%', height: 4 }}
+                  />
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
+                    <span>Out White (Max)</span>
+                    <span style={{ fontFamily: 'monospace' }}>{nodeData.outWhite ?? 255}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={255}
+                    value={nodeData.outWhite ?? 255}
+                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { outWhite: Number(e.target.value) })}
+                    style={{ accentColor: '#e2e8f0', width: '100%', height: 4 }}
                   />
                 </div>
               )}
@@ -545,12 +571,117 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: '#94a3b8' }}>Color Space</span>
-                    <span style={{ color: '#f8fafc', fontWeight: 500 }}>Linear / Raw</span>
+                    <span style={{ color: '#f8fafc', fontWeight: 500 }}>{nodeData.colorSpace || 'Linear / Raw'}</span>
                   </div>
                 </div>
               )}
 
-              {/* 3. Channel Combiner (Pack) Controls */}
+              {/* 3. Texture Blend Controls */}
+              {nodeType === 'blend' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#94a3b8' }}>Mode</span>
+                    <select
+                      value={nodeData.mode || 'lerp'}
+                      onChange={(e) => onUpdateNodeData?.(selectedNode.id, { mode: e.target.value })}
+                      style={{
+                        background: '#14171d',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        color: '#f8fafc',
+                        borderRadius: 3,
+                        fontSize: 9,
+                        padding: '1px 4px',
+                      }}
+                    >
+                      <option value="lerp">Normal (Lerp)</option>
+                      <option value="multiply">Multiply</option>
+                      <option value="screen">Screen</option>
+                      <option value="overlay">Overlay</option>
+                      <option value="add">Add</option>
+                      <option value="min">Darken (Min)</option>
+                      <option value="max">Lighten (Max)</option>
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
+                    <span>Opacity</span>
+                    <span style={{ fontFamily: 'monospace' }}>{(nodeData.opacity ?? 1.0).toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.0}
+                    max={1.0}
+                    step={0.01}
+                    value={nodeData.opacity ?? 1.0}
+                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { opacity: Number(e.target.value) })}
+                    style={{ accentColor: '#f59e0b', width: '100%', height: 4 }}
+                  />
+                </div>
+              )}
+
+              {/* 4. Normal Green Flip Controls */}
+              {nodeType === 'normalFlip' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#94a3b8' }}>Orientation</span>
+                    <span style={{ color: 'var(--pbr-normal)', fontWeight: 600 }}>
+                      {nodeData.mode === 'gl_to_dx' ? 'OpenGL → DirectX' : 'DirectX → OpenGL'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
+                    <span>Strength</span>
+                    <span style={{ fontFamily: 'monospace' }}>{(nodeData.strength ?? 1.0).toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.0}
+                    max={2.0}
+                    step={0.05}
+                    value={nodeData.strength ?? 1.0}
+                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { strength: Number(e.target.value) })}
+                    style={{ accentColor: 'var(--pbr-normal)', width: '100%', height: 4 }}
+                  />
+                </div>
+              )}
+
+              {/* 5. Normal Blend (RNM) Controls */}
+              {nodeType === 'normalBlend' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#94a3b8' }}>Algorithm</span>
+                    <span style={{ color: 'var(--pbr-normal)', fontWeight: 600 }}>UE5 Reoriented (RNM)</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
+                    <span>Detail Intensity</span>
+                    <span style={{ fontFamily: 'monospace' }}>{(nodeData.detailStrength ?? 1.0).toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.0}
+                    max={2.0}
+                    step={0.05}
+                    value={nodeData.detailStrength ?? 1.0}
+                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { detailStrength: Number(e.target.value) })}
+                    style={{ accentColor: 'var(--pbr-normal)', width: '100%', height: 4 }}
+                  />
+                </div>
+              )}
+
+              {/* 6. Channel Swizzle Controls */}
+              {nodeType === 'channelSwizzle' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#94a3b8' }}>Routing Profile</span>
+                    <span style={{ color: '#818cf8', fontWeight: 600 }}>
+                      {`${nodeData.rSrc || 'r'}, ${nodeData.gSrc || 'g'}, ${nodeData.bSrc || 'b'}, ${nodeData.aSrc || 'a'}`.toUpperCase()}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 9, color: '#64748b' }}>
+                    Configure channel matrix mapping on the node card or use presets.
+                  </div>
+                </div>
+              )}
+
+              {/* 7. Channel Combiner (Pack) Controls */}
               {nodeType === 'channelCombiner' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -563,7 +694,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                 </div>
               )}
 
-              {/* 4. Channel Splitter (Unpack) Controls */}
+              {/* 8. Channel Splitter (Unpack) Controls */}
               {nodeType === 'channelSplitter' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>

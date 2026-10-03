@@ -21,9 +21,11 @@ const SHORTCUTS: ShortcutItem[] = [
   { keys: ['3'], description: 'Constant Color Node (Vector)', category: 'spawn', tag: 'Constant', tagColor: '#f43f5e' },
   { keys: ['M'], description: 'Channel Combiner (Pack)', category: 'spawn', tag: 'Routing', tagColor: '#a855f7' },
   { keys: ['S'], description: 'Channel Splitter (Unpack)', category: 'spawn', tag: 'Routing', tagColor: '#a855f7' },
+  { keys: ['B'], description: 'Texture Blend (Mix / Math)', category: 'spawn', tag: 'Blend', tagColor: '#f59e0b' },
   { keys: ['L'], description: 'Levels / Remap Node', category: 'spawn', tag: 'Adjust', tagColor: '#22c55e' },
   { keys: ['I'], description: 'Invert Node (1 - x)', category: 'spawn', tag: 'Adjust', tagColor: '#fb7185' },
   { keys: ['N'], description: 'Normal Flip Green (DirectX <=> OpenGL)', category: 'spawn', tag: 'Filter', tagColor: '#06b6d4' },
+  { keys: ['O'], description: 'Texture Output Target', category: 'spawn', tag: 'Output', tagColor: '#4ade80' },
   { keys: ['C'], description: 'Group selected nodes into Comment Box (UE5)', category: 'spawn', tag: 'Group', tagColor: '#38bdf8' },
 
   // Graph Productivity

@@ -32,6 +32,9 @@ import { TextureOutputNode } from './components/nodes/TextureOutputNode';
 import { ConstantScalarNode } from './components/nodes/ConstantScalarNode';
 import { ConstantColorNode } from './components/nodes/ConstantColorNode';
 import { CommentBoxNode } from './components/nodes/CommentBoxNode';
+import { BlendNode } from './components/nodes/BlendNode';
+import { NormalBlendNode } from './components/nodes/NormalBlendNode';
+import { ChannelSwizzleNode } from './components/nodes/ChannelSwizzleNode';
 
 import { DualMarchingAntsEdge, PulsingChannelEdge } from './components/edges/AnimatedEdge';
 import { FloatingNodeLibrary } from './components/FloatingNodeLibrary';
@@ -175,6 +178,9 @@ function Workbench() {
       constantScalar: ConstantScalarNode as any,
       constantColor: ConstantColorNode as any,
       commentBox: CommentBoxNode as any,
+      blend: BlendNode as any,
+      normalBlend: NormalBlendNode as any,
+      channelSwizzle: ChannelSwizzleNode as any,
     }),
     []
   );
@@ -242,6 +248,9 @@ function Workbench() {
     else if (sourceHandle === 'g') strokeColor = 'var(--pbr-rough)';
     else if (sourceHandle === 'b') strokeColor = 'var(--pbr-metal)';
     else if (sourceHandle === 'a') strokeColor = 'var(--pbr-height)';
+    else if (sourceHandle === 'base' || targetHandle === 'base' || sourceHandle === 'detail' || targetHandle === 'detail') strokeColor = 'var(--pbr-normal)';
+    else if (sourceHandle === 'mask' || targetHandle === 'mask') strokeColor = 'var(--pbr-scalar)';
+    else if (sourceHandle === 'output' || targetHandle === 'output') strokeColor = 'var(--pbr-rough)';
 
     return {
       type: 'pulsingChannel',
@@ -380,6 +389,12 @@ function Workbench() {
           style: { width: 340, height: 220, zIndex: -1 },
           data: { title: 'Comment Group', color: '#38bdf8' },
         };
+      } else if (typeKey === 'blend') {
+        newNode = { id, type: 'blend', position: pos, data: { mode: 'lerp', opacity: 1.0 } };
+      } else if (typeKey === 'normalBlend') {
+        newNode = { id, type: 'normalBlend', position: pos, data: { detailStrength: 1.0 } };
+      } else if (typeKey === 'channelSwizzle') {
+        newNode = { id, type: 'channelSwizzle', position: pos, data: { rSrc: 'r', gSrc: 'g', bSrc: 'b', aSrc: 'a' } };
       } else if (typeKey === 'textureOutput') {
         newNode = {
           id,
@@ -639,6 +654,8 @@ function Workbench() {
         spawnNode('normalFlip');
       } else if (e.key === 'o' || e.key === 'O') {
         spawnNode('textureOutput');
+      } else if (e.key === 'b' || e.key === 'B') {
+        spawnNode('blend');
       }
     };
 

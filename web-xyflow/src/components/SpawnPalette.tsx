@@ -14,9 +14,12 @@ const PALETTE_ITEMS = [
   { cat: 'Inputs', name: 'Constant Color', key: 'constantColor', shortcut: '3', color: '#f43f5e' },
   { cat: 'Routing', name: 'Channel Combiner', key: 'channelCombiner', shortcut: 'M', color: '#a855f7' },
   { cat: 'Routing', name: 'Channel Splitter', key: 'channelSplitter', shortcut: 'S', color: '#a855f7' },
+  { cat: 'Routing', name: 'Channel Swizzle', key: 'channelSwizzle', color: '#818cf8' },
+  { cat: 'Adjustments', name: 'Texture Blend', key: 'blend', shortcut: 'B', color: '#f59e0b' },
   { cat: 'Adjustments', name: 'Invert (1 - x)', key: 'invert', shortcut: 'I', color: '#fb7185' },
   { cat: 'Adjustments', name: 'Levels / Remap', key: 'levels', shortcut: 'L', color: '#22c55e' },
   { cat: 'Filters', name: 'Normal Flip Green', key: 'normalFlip', shortcut: 'N', color: '#06b6d4' },
+  { cat: 'Filters', name: 'Normal Blend (RNM)', key: 'normalBlend', color: '#06b6d4' },
   { cat: 'Outputs', name: 'Texture Output', key: 'textureOutput', shortcut: 'O', color: '#4ade80' },
   { cat: 'Organization', name: 'Comment Box', key: 'commentBox', shortcut: 'C', color: '#38bdf8' },
 ];

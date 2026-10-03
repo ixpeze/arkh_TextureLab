@@ -63,7 +63,9 @@ export class PixelEngine {
     buffer: TextureBuffer,
     blackPoint = 0,
     gamma = 1.0,
-    whitePoint = 255
+    whitePoint = 255,
+    outBlack = 0,
+    outWhite = 255
   ): Promise<TextureBuffer> {
     return new Promise((resolve) => {
       const worker = this.getWorker();
@@ -91,6 +93,138 @@ export class PixelEngine {
           blackPoint,
           gamma,
           whitePoint,
+          outBlack,
+          outWhite,
+        },
+        [dataCopy.buffer]
+      );
+    });
+  }
+
+  /**
+   * Run PBR Texture Blend on Web Worker
+   */
+  public static async applyBlendAsync(
+    bufA: TextureBuffer,
+    bufB: TextureBuffer,
+    maskBuf?: TextureBuffer,
+    mode: 'lerp' | 'multiply' | 'screen' | 'overlay' | 'add' | 'min' | 'max' = 'lerp',
+    opacity = 1.0
+  ): Promise<TextureBuffer> {
+    return new Promise((resolve) => {
+      const worker = this.getWorker();
+      const reqId = ++this.workerReqId;
+      this.workerCallbacks.set(reqId, (result) => {
+        const outBuf: TextureBuffer = {
+          width: result.width,
+          height: result.height,
+          data: result.data,
+        };
+        outBuf.dataUrl = this.toDataUrl(outBuf);
+        outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+        resolve(outBuf);
+      });
+
+      const copyA = new Uint8ClampedArray(bufA.data);
+      const copyB = new Uint8ClampedArray(bufB.data);
+      const copyMask = maskBuf ? new Uint8ClampedArray(maskBuf.data) : undefined;
+
+      const transfers: Transferable[] = [copyA.buffer, copyB.buffer];
+      if (copyMask) transfers.push(copyMask.buffer);
+
+      worker.postMessage(
+        {
+          reqId,
+          action: 'blend',
+          width: bufA.width,
+          height: bufA.height,
+          dataA: copyA,
+          dataB: copyB,
+          maskData: copyMask,
+          mode,
+          opacity,
+        },
+        transfers
+      );
+    });
+  }
+
+  /**
+   * Run Reoriented Normal Mapping (RNM) on Web Worker
+   */
+  public static async applyNormalBlendAsync(
+    baseBuf: TextureBuffer,
+    detailBuf: TextureBuffer,
+    detailStrength = 1.0
+  ): Promise<TextureBuffer> {
+    return new Promise((resolve) => {
+      const worker = this.getWorker();
+      const reqId = ++this.workerReqId;
+      this.workerCallbacks.set(reqId, (result) => {
+        const outBuf: TextureBuffer = {
+          width: result.width,
+          height: result.height,
+          data: result.data,
+        };
+        outBuf.dataUrl = this.toDataUrl(outBuf);
+        outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+        resolve(outBuf);
+      });
+
+      const copyBase = new Uint8ClampedArray(baseBuf.data);
+      const copyDetail = new Uint8ClampedArray(detailBuf.data);
+
+      worker.postMessage(
+        {
+          reqId,
+          action: 'normalBlend',
+          width: baseBuf.width,
+          height: baseBuf.height,
+          baseData: copyBase,
+          detailData: copyDetail,
+          detailStrength,
+        },
+        [copyBase.buffer, copyDetail.buffer]
+      );
+    });
+  }
+
+  /**
+   * Run Channel Swizzle on Web Worker
+   */
+  public static async applySwizzleAsync(
+    buffer: TextureBuffer,
+    rSrc = 'r',
+    gSrc = 'g',
+    bSrc = 'b',
+    aSrc = 'a'
+  ): Promise<TextureBuffer> {
+    return new Promise((resolve) => {
+      const worker = this.getWorker();
+      const reqId = ++this.workerReqId;
+      this.workerCallbacks.set(reqId, (result) => {
+        const outBuf: TextureBuffer = {
+          width: result.width,
+          height: result.height,
+          data: result.data,
+        };
+        outBuf.dataUrl = this.toDataUrl(outBuf);
+        outBuf.proxy = this.createDownsampledProxy(outBuf, 512);
+        resolve(outBuf);
+      });
+
+      const dataCopy = new Uint8ClampedArray(buffer.data);
+      worker.postMessage(
+        {
+          reqId,
+          action: 'swizzle',
+          width: buffer.width,
+          height: buffer.height,
+          data: dataCopy,
+          rSrc,
+          gSrc,
+          bSrc,
+          aSrc,
         },
         [dataCopy.buffer]
       );
@@ -238,10 +372,16 @@ export class PixelEngine {
     gBuf?: TextureBuffer,
     bBuf?: TextureBuffer,
     aBuf?: TextureBuffer,
-    targetDim?: number
+    targetDim?: number,
+    fallbacks?: { r?: number; g?: number; b?: number; a?: number }
   ): TextureBuffer {
     const w = targetDim || Math.max(rBuf?.width || 0, gBuf?.width || 0, bBuf?.width || 0, aBuf?.width || 0, 512);
     const h = targetDim || Math.max(rBuf?.height || 0, gBuf?.height || 0, bBuf?.height || 0, aBuf?.height || 0, 512);
+
+    const defR = fallbacks?.r ?? 255;
+    const defG = fallbacks?.g ?? 128;
+    const defB = fallbacks?.b ?? 0;
+    const defA = fallbacks?.a ?? 255;
 
     const outData = new Uint8ClampedArray(w * h * 4);
 
@@ -256,10 +396,10 @@ export class PixelEngine {
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const outIdx = (y * w + x) * 4;
-        outData[outIdx + 0] = sampleChannel(rBuf, 255, 0, x, y); // R: AO (default 255)
-        outData[outIdx + 1] = sampleChannel(gBuf, 128, 1, x, y); // G: Roughness (default 128)
-        outData[outIdx + 2] = sampleChannel(bBuf, 0, 2, x, y);   // B: Metallic (default 0)
-        outData[outIdx + 3] = sampleChannel(aBuf, 255, 3, x, y); // A: Height / Alpha (default 255)
+        outData[outIdx + 0] = sampleChannel(rBuf, defR, 0, x, y); // R (AO default 255)
+        outData[outIdx + 1] = sampleChannel(gBuf, defG, 1, x, y); // G (Roughness default 128)
+        outData[outIdx + 2] = sampleChannel(bBuf, defB, 2, x, y); // B (Metallic default 0)
+        outData[outIdx + 3] = sampleChannel(aBuf, defA, 3, x, y); // A (Height/Alpha default 255)
       }
     }
 
@@ -304,12 +444,21 @@ export class PixelEngine {
   }
 
   /**
-   * Flip green channel for normal map conversion (DirectX <=> OpenGL)
+   * Flip green channel for normal map conversion (DirectX <=> OpenGL) with optional normal strength
    */
-  public static flipGreenChannel(buffer: TextureBuffer): TextureBuffer {
+  public static flipGreenChannel(buffer: TextureBuffer, strength = 1.0): TextureBuffer {
     const outData = new Uint8ClampedArray(buffer.data);
-    for (let i = 1; i < buffer.data.length; i += 4) {
-      outData[i] = 255 - outData[i];
+    for (let i = 0; i < buffer.data.length; i += 4) {
+      const g = 255 - buffer.data[i + 1];
+      if (strength !== 1.0) {
+        const r = buffer.data[i + 0];
+        const nr = (r - 128) * strength + 128;
+        const ng = (g - 128) * strength + 128;
+        outData[i + 0] = Math.min(255, Math.max(0, Math.round(nr)));
+        outData[i + 1] = Math.min(255, Math.max(0, Math.round(ng)));
+      } else {
+        outData[i + 1] = g;
+      }
     }
     const buf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
     buf.dataUrl = this.toDataUrl(buf);
@@ -318,24 +467,28 @@ export class PixelEngine {
   }
 
   /**
-   * Apply Levels adjustment (Black Point, Midtone Gamma, White Point)
+   * Apply Levels adjustment with range remapping (Input Black/White -> Output Black/White)
    */
   public static applyLevels(
     buffer: TextureBuffer,
     blackPoint = 0, // 0..255
     gamma = 1.0,    // 0.1..5.0
-    whitePoint = 255 // 0..255
+    whitePoint = 255, // 0..255
+    outBlack = 0,   // 0..255
+    outWhite = 255  // 0..255
   ): TextureBuffer {
     const outData = new Uint8ClampedArray(buffer.data.length);
-    const range = Math.max(1, whitePoint - blackPoint);
+    const inRange = Math.max(1, whitePoint - blackPoint);
+    const outRange = outWhite - outBlack;
 
     // Precompute LUT for instant execution
     const lut = new Uint8Array(256);
     for (let i = 0; i < 256; i++) {
-      let normalized = (i - blackPoint) / range;
+      let normalized = (i - blackPoint) / inRange;
       normalized = Math.min(1.0, Math.max(0.0, normalized));
       const adjusted = Math.pow(normalized, 1.0 / gamma);
-      lut[i] = Math.round(adjusted * 255);
+      const remapped = Math.round(outBlack + adjusted * outRange);
+      lut[i] = Math.min(255, Math.max(0, remapped));
     }
 
     for (let i = 0; i < buffer.data.length; i += 4) {
@@ -346,6 +499,154 @@ export class PixelEngine {
     }
 
     const buf: TextureBuffer = { width: buffer.width, height: buffer.height, data: outData };
+    buf.dataUrl = this.toDataUrl(buf);
+    buf.proxy = this.createDownsampledProxy(buf, 512);
+    return buf;
+  }
+
+  /**
+   * PBR Blend / Mix Buffers
+   */
+  public static blendBuffers(
+    bufA: TextureBuffer,
+    bufB: TextureBuffer,
+    maskBuf?: TextureBuffer,
+    mode: 'lerp' | 'multiply' | 'screen' | 'overlay' | 'add' | 'min' | 'max' = 'lerp',
+    opacity = 1.0
+  ): TextureBuffer {
+    const w = bufA.width;
+    const h = bufA.height;
+    const outData = new Uint8ClampedArray(w * h * 4);
+    const dataA = bufA.data;
+    const dataB = bufB.data;
+    const maskData = maskBuf?.data;
+
+    const blendChannel = (a: number, b: number): number => {
+      switch (mode) {
+        case 'multiply': return a * b;
+        case 'screen': return 1 - (1 - a) * (1 - b);
+        case 'overlay': return a < 0.5 ? 2 * a * b : 1 - 2 * (1 - a) * (1 - b);
+        case 'add': return Math.min(1.0, a + b);
+        case 'min': return Math.min(a, b);
+        case 'max': return Math.max(a, b);
+        case 'lerp':
+        default: return b;
+      }
+    };
+
+    for (let i = 0; i < dataA.length; i += 4) {
+      const aR = dataA[i + 0] / 255;
+      const aG = dataA[i + 1] / 255;
+      const aB = dataA[i + 2] / 255;
+
+      const bR = dataB[i + 0] / 255;
+      const bG = dataB[i + 1] / 255;
+      const bB = dataB[i + 2] / 255;
+
+      const m = (maskData ? maskData[i + 0] / 255 : 1.0) * opacity;
+      const invM = 1.0 - m;
+
+      outData[i + 0] = Math.round((aR * invM + blendChannel(aR, bR) * m) * 255);
+      outData[i + 1] = Math.round((aG * invM + blendChannel(aG, bG) * m) * 255);
+      outData[i + 2] = Math.round((aB * invM + blendChannel(aB, bB) * m) * 255);
+      outData[i + 3] = dataA[i + 3];
+    }
+
+    const buf: TextureBuffer = { width: w, height: h, data: outData };
+    buf.dataUrl = this.toDataUrl(buf);
+    buf.proxy = this.createDownsampledProxy(buf, 512);
+    return buf;
+  }
+
+  /**
+   * Reoriented Normal Mapping (RNM)
+   */
+  public static blendNormalRNM(
+    baseBuf: TextureBuffer,
+    detailBuf: TextureBuffer,
+    detailStrength = 1.0
+  ): TextureBuffer {
+    const w = baseBuf.width;
+    const h = baseBuf.height;
+    const outData = new Uint8ClampedArray(w * h * 4);
+    const baseData = baseBuf.data;
+    const detailData = detailBuf.data;
+
+    for (let i = 0; i < baseData.length; i += 4) {
+      const n1x = (baseData[i + 0] / 255) * 2.0 - 1.0;
+      const n1y = (baseData[i + 1] / 255) * 2.0 - 1.0;
+      const n1z = (baseData[i + 2] / 255) * 2.0 - 1.0;
+
+      const n2x = ((detailData[i + 0] / 255) * 2.0 - 1.0) * detailStrength;
+      const n2y = ((detailData[i + 1] / 255) * 2.0 - 1.0) * detailStrength;
+      const rawZ = (detailData[i + 2] / 255) * 2.0 - 1.0;
+      const n2z = Math.max(0.001, rawZ);
+
+      const tx = n1x + n2x;
+      const ty = n1y + n2y;
+      const tz = n1z * n2z;
+
+      const lenVec = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1.0;
+      const rx = tx / lenVec;
+      const ry = ty / lenVec;
+      const rz = tz / lenVec;
+
+      outData[i + 0] = Math.min(255, Math.max(0, Math.round((rx * 0.5 + 0.5) * 255)));
+      outData[i + 1] = Math.min(255, Math.max(0, Math.round((ry * 0.5 + 0.5) * 255)));
+      outData[i + 2] = Math.min(255, Math.max(0, Math.round((rz * 0.5 + 0.5) * 255)));
+      outData[i + 3] = 255;
+    }
+
+    const buf: TextureBuffer = { width: w, height: h, data: outData };
+    buf.dataUrl = this.toDataUrl(buf);
+    buf.proxy = this.createDownsampledProxy(buf, 512);
+    return buf;
+  }
+
+  /**
+   * Channel Swizzle
+   */
+  public static swizzleBuffer(
+    buffer: TextureBuffer,
+    rSrc = 'r',
+    gSrc = 'g',
+    bSrc = 'b',
+    aSrc = 'a'
+  ): TextureBuffer {
+    const w = buffer.width;
+    const h = buffer.height;
+    const outData = new Uint8ClampedArray(w * h * 4);
+    const data = buffer.data;
+
+    const resolveChannel = (src: string, r: number, g: number, b: number, a: number): number => {
+      switch (src) {
+        case 'r': return r;
+        case 'g': return g;
+        case 'b': return b;
+        case 'a': return a;
+        case '1-r': return 255 - r;
+        case '1-g': return 255 - g;
+        case '1-b': return 255 - b;
+        case '1-a': return 255 - a;
+        case '0': return 0;
+        case '1': return 255;
+        default: return 0;
+      }
+    };
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i + 0];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+
+      outData[i + 0] = resolveChannel(rSrc, r, g, b, a);
+      outData[i + 1] = resolveChannel(gSrc, r, g, b, a);
+      outData[i + 2] = resolveChannel(bSrc, r, g, b, a);
+      outData[i + 3] = resolveChannel(aSrc, r, g, b, a);
+    }
+
+    const buf: TextureBuffer = { width: w, height: h, data: outData };
     buf.dataUrl = this.toDataUrl(buf);
     buf.proxy = this.createDownsampledProxy(buf, 512);
     return buf;

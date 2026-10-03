@@ -10,9 +10,17 @@ export interface LevelsNodeData {
   blackPoint?: number;
   gamma?: number;
   whitePoint?: number;
+  outBlack?: number;
+  outWhite?: number;
   isBypassed?: boolean;
   onToggleBypass?: () => void;
-  onChange?: (params: { blackPoint: number; gamma: number; whitePoint: number }) => void;
+  onChange?: (params: {
+    blackPoint: number;
+    gamma: number;
+    whitePoint: number;
+    outBlack: number;
+    outWhite: number;
+  }) => void;
 }
 
 export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
@@ -20,41 +28,74 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
   const [black, setBlack] = useState(d.blackPoint ?? 0);
   const [gamma, setGamma] = useState(d.gamma ?? 1.0);
   const [white, setWhite] = useState(d.whitePoint ?? 255);
+  const [outBlack, setOutBlack] = useState(d.outBlack ?? 0);
+  const [outWhite, setOutWhite] = useState(d.outWhite ?? 255);
   const isBypassed = !!d.isBypassed;
+
+  const triggerChange = (
+    newBlack = black,
+    newGamma = gamma,
+    newWhite = white,
+    newOutBlack = outBlack,
+    newOutWhite = outWhite
+  ) => {
+    d.onChange?.({
+      blackPoint: newBlack,
+      gamma: newGamma,
+      whitePoint: newWhite,
+      outBlack: newOutBlack,
+      outWhite: newOutWhite,
+    });
+  };
 
   const handleBlack = (val: number) => {
     setBlack(val);
-    d.onChange?.({ blackPoint: val, gamma, whitePoint: white });
+    triggerChange(val, gamma, white, outBlack, outWhite);
   };
 
   const handleGamma = (val: number) => {
     setGamma(val);
-    d.onChange?.({ blackPoint: black, gamma: val, whitePoint: white });
+    triggerChange(black, val, white, outBlack, outWhite);
   };
 
   const handleWhite = (val: number) => {
     setWhite(val);
-    d.onChange?.({ blackPoint: black, gamma: val, whitePoint: val });
+    triggerChange(black, gamma, val, outBlack, outWhite);
   };
 
-  // Generate SVG points for dynamic transfer curve preview (width 156 x height 32)
+  const handleOutBlack = (val: number) => {
+    setOutBlack(val);
+    triggerChange(black, gamma, white, val, outWhite);
+  };
+
+  const handleOutWhite = (val: number) => {
+    setOutWhite(val);
+    triggerChange(black, gamma, white, outBlack, val);
+  };
+
+  // Generate SVG points for dynamic transfer curve preview with in/out range remapping
   const curvePath = useMemo(() => {
     const w = 156;
-    const h = 32;
+    const h = 34;
     const points: string[] = [];
-    const range = Math.max(1, white - black);
+    const inRange = Math.max(1, white - black);
+    const outRange = outWhite - outBlack;
 
     for (let x = 0; x <= w; x += 4) {
       const inVal = (x / w) * 255;
-      let norm = (inVal - black) / range;
+      let norm = (inVal - black) / inRange;
       norm = Math.min(1.0, Math.max(0.0, norm));
-      const outVal = Math.pow(norm, 1.0 / gamma);
-      const y = h - outVal * (h - 4) - 2; // inverted for SVG coordinates
+      const adjusted = Math.pow(norm, 1.0 / gamma);
+      const remapped = outBlack + adjusted * outRange;
+      const clamped = Math.min(255, Math.max(0, remapped));
+
+      const normY = clamped / 255;
+      const y = h - normY * (h - 6) - 3;
       points.push(`${x},${y.toFixed(1)}`);
     }
 
     return `M ${points.join(' L ')}`;
-  }, [black, gamma, white]);
+  }, [black, gamma, white, outBlack, outWhite]);
 
   return (
     <NodeCard
@@ -64,22 +105,22 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
       accentColor="var(--pbr-rough)"
       headerAction={<NodeBadge color="var(--pbr-rough)">REMAP</NodeBadge>}
       isBypassed={isBypassed}
-      width={172}
+      width={176}
     >
       {/* Sockets Row with Dual Horizontal Hit-Zones */}
       <NodeDualSocket
         input={{ id: 'input', label: 'In', color: 'var(--pbr-rough)' }}
         output={{ id: 'output', label: 'Out', color: 'var(--pbr-rough)' }}
-        centerLabel="Remap"
+        centerLabel="Levels"
       />
 
       <NodeDivider />
 
-      {/* Dynamic Mini Transfer Curve Visualizer */}
+      {/* Dynamic Mini Transfer Curve Visualizer with Output Bounds */}
       <div
         style={{
           width: '100%',
-          height: 32,
+          height: 34,
           backgroundColor: '#0c0e14',
           borderRadius: 4,
           border: '1px solid rgba(255, 255, 255, 0.06)',
@@ -90,12 +131,34 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
           justifyContent: 'center',
         }}
       >
-        <svg width="156" height="32" style={{ display: 'block' }}>
+        <svg width="156" height="34" style={{ display: 'block' }}>
           {/* Subtle grid lines */}
-          <line x1="39" y1="0" x2="39" y2="32" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
-          <line x1="78" y1="0" x2="78" y2="32" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
-          <line x1="117" y1="0" x2="117" y2="32" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
-          <line x1="0" y1="16" x2="156" y2="16" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+          <line x1="39" y1="0" x2="39" y2="34" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+          <line x1="78" y1="0" x2="78" y2="34" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+          <line x1="117" y1="0" x2="117" y2="34" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+          <line x1="0" y1="17" x2="156" y2="17" stroke="rgba(255,255,255,0.04)" strokeDasharray="2 2" />
+
+          {/* Out Black and Out White horizontal guide bounds */}
+          {outBlack > 0 && (
+            <line
+              x1="0"
+              y1={34 - (outBlack / 255) * 28 - 3}
+              x2="156"
+              y2={34 - (outBlack / 255) * 28 - 3}
+              stroke="rgba(56, 189, 248, 0.3)"
+              strokeDasharray="1 3"
+            />
+          )}
+          {outWhite < 255 && (
+            <line
+              x1="0"
+              y1={34 - (outWhite / 255) * 28 - 3}
+              x2="156"
+              y2={34 - (outWhite / 255) * 28 - 3}
+              stroke="rgba(250, 204, 21, 0.3)"
+              strokeDasharray="1 3"
+            />
+          )}
 
           {/* Transfer curve */}
           <path
@@ -107,7 +170,7 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
           />
         </svg>
 
-        {/* Dynamic Black/White markers */}
+        {/* Dynamic metadata overlay */}
         <div
           style={{
             position: 'absolute',
@@ -118,16 +181,16 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
             color: '#64748b',
           }}
         >
-          γ {gamma.toFixed(2)}
+          γ {gamma.toFixed(2)} | [{outBlack}..{outWhite}]
         </div>
       </div>
 
       <NodeDivider />
 
-      {/* Compact Sliders */}
+      {/* Input Clamping Sliders */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <NodeSlider
-          label="Black Point"
+          label="In Black"
           min={0}
           max={254}
           step={1}
@@ -145,13 +208,37 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
           onChange={handleGamma}
         />
         <NodeSlider
-          label="White Point"
+          label="In White"
           min={1}
           max={255}
           step={1}
           value={white}
           accentColor="#facc15"
           onChange={handleWhite}
+        />
+      </div>
+
+      <NodeDivider />
+
+      {/* Output Range Remapping Sliders (Essential for PBR roughness clamping) */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <NodeSlider
+          label="Out Min (Black)"
+          min={0}
+          max={255}
+          step={1}
+          value={outBlack}
+          accentColor="#94a3b8"
+          onChange={handleOutBlack}
+        />
+        <NodeSlider
+          label="Out Max (White)"
+          min={0}
+          max={255}
+          step={1}
+          value={outWhite}
+          accentColor="#e2e8f0"
+          onChange={handleOutWhite}
         />
       </div>
     </NodeCard>

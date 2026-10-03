@@ -14,6 +14,8 @@ import {
   Palette,
   Binary,
   MessageSquare,
+  Shuffle,
+  Blend,
 } from 'lucide-react';
 
 export interface NodeCategory {
@@ -77,16 +79,31 @@ const CATEGORIES: NodeCategory[] = [
         icon: <UnfoldHorizontal size={13} />,
         color: 'var(--pbr-packed)',
       },
+      {
+        key: 'channelSwizzle',
+        label: 'Channel Swizzle',
+        description: 'Arbitrary 4-channel matrix routing',
+        icon: <Shuffle size={13} />,
+        color: '#818cf8',
+      },
     ],
   },
   {
     name: 'Adjustments & Math',
     items: [
       {
+        key: 'blend',
+        label: 'Texture Blend',
+        shortcut: 'B',
+        description: 'Mix, multiply, screen, overlay with mask',
+        icon: <Blend size={13} />,
+        color: '#f59e0b',
+      },
+      {
         key: 'levels',
         label: 'Levels (Remap)',
         shortcut: 'L',
-        description: 'Black point, gamma, and white point',
+        description: 'In/Out range remapping & gamma curve',
         icon: <SlidersHorizontal size={13} />,
         color: 'var(--pbr-rough)',
       },
@@ -107,8 +124,15 @@ const CATEGORIES: NodeCategory[] = [
         key: 'normalFlip',
         label: 'Normal Green Flip',
         shortcut: 'N',
-        description: 'DirectX (-Y) <=> OpenGL (+Y)',
+        description: 'DirectX (-Y) <=> OpenGL (+Y) & strength',
         icon: <ArrowUpDown size={13} />,
+        color: 'var(--pbr-normal)',
+      },
+      {
+        key: 'normalBlend',
+        label: 'Normal Blend (RNM)',
+        description: 'UE5 Reoriented Normal Mapping algorithm',
+        icon: <Layers size={13} />,
         color: 'var(--pbr-normal)',
       },
     ],
