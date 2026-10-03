@@ -11,7 +11,6 @@ import {
   Crosshair,
   Maximize,
   Minimize,
-  Sliders,
 } from 'lucide-react';
 import { PixelEngine, type TextureBuffer, type HistogramData } from '../engine/pixelEngine';
 import { TokenEngine, type CasingType } from '../engine/tokenizer';
@@ -25,7 +24,6 @@ export interface FloatingDetailsPanelProps {
   onExportTarget?: (filename: string) => void;
   onLoadBenchmark?: () => void;
   onAutoWireORMH?: () => void;
-  onApplyPreset?: (presetKey: string) => void;
   nodeCount: number;
   edgeCount: number;
 }
@@ -39,7 +37,6 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
   onExportTarget,
   onLoadBenchmark,
   onAutoWireORMH,
-  onApplyPreset,
   nodeCount,
   edgeCount,
 }) => {
@@ -749,90 +746,6 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                   <span style={{ color: '#64748b', fontSize: 8, display: 'block' }}>CONNECTIONS</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--pbr-packed)' }}>{edgeCount}</span>
                 </div>
-              </div>
-            </div>
-
-            {/* Industry Preset Templates */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                <Sliders size={11} color="var(--accent-amber)" />
-                <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 0.5 }}>
-                  INDUSTRY PRESETS
-                </span>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 5 }}>
-                <button
-                  onClick={() => onApplyPreset?.('ue5_ormh')}
-                  style={{
-                    padding: '6px',
-                    backgroundColor: 'rgba(168, 85, 247, 0.08)',
-                    border: '1px solid rgba(168, 85, 247, 0.25)',
-                    borderRadius: 4,
-                    color: '#d8b4fe',
-                    fontSize: 9,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, color: '#f8fafc' }}>UE5 ORMH</div>
-                  <div style={{ fontSize: 7.5, color: '#94a3b8' }}>AO, R, M, Height</div>
-                </button>
-
-                <button
-                  onClick={() => onApplyPreset?.('ue5_orm')}
-                  style={{
-                    padding: '6px',
-                    backgroundColor: 'rgba(56, 189, 248, 0.08)',
-                    border: '1px solid rgba(56, 189, 248, 0.25)',
-                    borderRadius: 4,
-                    color: '#7dd3fc',
-                    fontSize: 9,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, color: '#f8fafc' }}>UE5 Standard ORM</div>
-                  <div style={{ fontSize: 7.5, color: '#94a3b8' }}>AO, Rough, Metal</div>
-                </button>
-
-                <button
-                  onClick={() => onApplyPreset?.('unity_hdrp')}
-                  style={{
-                    padding: '6px',
-                    backgroundColor: 'rgba(34, 197, 94, 0.08)',
-                    border: '1px solid rgba(34, 197, 94, 0.25)',
-                    borderRadius: 4,
-                    color: '#86efac',
-                    fontSize: 9,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, color: '#f8fafc' }}>Unity HDRP Mask</div>
-                  <div style={{ fontSize: 7.5, color: '#94a3b8' }}>M, AO, Detail, Smooth</div>
-                </button>
-
-                <button
-                  onClick={() => onApplyPreset?.('godot_pbr')}
-                  style={{
-                    padding: '6px',
-                    backgroundColor: 'rgba(251, 113, 133, 0.08)',
-                    border: '1px solid rgba(251, 113, 133, 0.25)',
-                    borderRadius: 4,
-                    color: '#fda4af',
-                    fontSize: 9,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  <div style={{ fontWeight: 700, color: '#f8fafc' }}>Godot / Blender</div>
-                  <div style={{ fontSize: 7.5, color: '#94a3b8' }}>AO, Rough, Metal</div>
-                </button>
               </div>
             </div>
 

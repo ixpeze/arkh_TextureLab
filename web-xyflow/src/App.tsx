@@ -21,7 +21,6 @@ import {
   Undo2,
   Redo2,
   MessageSquare,
-  Sliders,
 } from 'lucide-react';
 
 import { TextureInputNode } from './components/nodes/TextureInputNode';
@@ -155,7 +154,7 @@ function Workbench() {
 
   // Live in-memory buffers
   const [buffers, setBuffers] = useState<Record<string, TextureBuffer>>({});
-  const [statusMessage, setStatusMessage] = useState('Ready | Tactical DCC Workstation online');
+  const [, setStatusMessage] = useState('Ready | Tactical DCC Workstation online');
 
   // History stack for Undo/Redo
   const historyRef = useRef<{ nodes: Node[]; edges: Edge[] }[]>([]);
@@ -505,33 +504,7 @@ function Workbench() {
     setStatusMessage('Auto-wired PBR channels into ORMH Combiner');
   }, [nodes, pushSnapshot, setEdges]);
 
-  // Apply Industry Preset Templates
-  const handleApplyPreset = useCallback((presetKey: string) => {
-    pushSnapshot();
-    if (presetKey === 'ue5_ormh') {
-      autoWireORMH();
-      setStatusMessage('Applied Preset: Unreal Engine ORMH (AO/Rough/Metal/Height)');
-    } else if (presetKey === 'ue5_orm') {
-      const inputAo = nodes.find((n) => n.data?.role === 'Ambient Occlusion');
-      const inputRough = nodes.find((n) => n.data?.role === 'Roughness');
-      const inputMetal = nodes.find((n) => n.data?.role === 'Metallic');
-      const combiner = nodes.find((n) => n.type === 'channelCombiner');
-      const output = nodes.find((n) => n.type === 'textureOutput');
-      if (combiner) {
-        const newEdges: Edge[] = [];
-        if (inputAo) newEdges.push({ id: `e_${inputAo.id}_r`, source: inputAo.id, sourceHandle: 'r', target: combiner.id, targetHandle: 'r', type: 'pulsingChannel', style: { stroke: 'var(--pbr-ao)' } });
-        if (inputRough) newEdges.push({ id: `e_${inputRough.id}_g`, source: inputRough.id, sourceHandle: 'g', target: combiner.id, targetHandle: 'g', type: 'pulsingChannel', style: { stroke: 'var(--pbr-rough)' } });
-        if (inputMetal) newEdges.push({ id: `e_${inputMetal.id}_b`, source: inputMetal.id, sourceHandle: 'b', target: combiner.id, targetHandle: 'b', type: 'pulsingChannel', style: { stroke: 'var(--pbr-metal)' } });
-        if (output) newEdges.push({ id: `e_${combiner.id}_out`, source: combiner.id, sourceHandle: 'rgba', target: output.id, targetHandle: 'rgba', type: 'dualMarching', style: { stroke: 'var(--pbr-packed)' } });
-        setEdges((prev) => [...prev.filter((e) => e.target !== combiner.id && e.source !== combiner.id), ...newEdges]);
-      }
-      setStatusMessage('Applied Preset: Unreal Engine Standard ORM (AO/Rough/Metal)');
-    } else if (presetKey === 'unity_hdrp') {
-      setStatusMessage('Configured for Unity HDRP Mask (Metallic -> R, AO -> G, Detail -> B, Smoothness -> A)');
-    } else if (presetKey === 'godot_pbr') {
-      setStatusMessage('Configured for Godot / Blender standard PBR packing');
-    }
-  }, [nodes, autoWireORMH, pushSnapshot, setEdges]);
+
 
   // Keyboard navigation & hotkeys
   useEffect(() => {
@@ -822,14 +795,14 @@ function Workbench() {
           userSelect: 'none',
         }}
       >
-        {/* Left Branding & Quick Preset Selector */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {/* Left Branding: Strictly Minimalist Name */}
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <span
             style={{
               fontFamily: "'Geist', sans-serif",
               fontWeight: 800,
               fontSize: 13,
-              letterSpacing: '0.06em',
+              letterSpacing: '0.08em',
               background: 'linear-gradient(135deg, #38bdf8 0%, #a855f7 100%)',
               WebkitBackgroundClip: 'text',
               WebkitTextFillColor: 'transparent',
@@ -837,217 +810,121 @@ function Workbench() {
           >
             TextureLAB
           </span>
-          <span
-            style={{
-              fontSize: 8.5,
-              fontWeight: 700,
-              letterSpacing: '0.05em',
-              color: '#38bdf8',
-              backgroundColor: 'rgba(56, 189, 248, 0.1)',
-              border: '1px solid rgba(56, 189, 248, 0.25)',
-              padding: '2px 5px',
-              borderRadius: 3,
-            }}
-          >
-            DCC STUDIO
-          </span>
-
-          <div style={{ width: 1, height: 16, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
-
-          {/* Quick Preset Selector */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <Sliders size={11} color="var(--accent-amber)" />
-            <select
-              defaultValue=""
-              onChange={(e) => {
-                if (e.target.value) {
-                  handleApplyPreset(e.target.value);
-                  e.target.value = '';
-                }
-              }}
-              style={{
-                backgroundColor: 'rgba(255, 255, 255, 0.04)',
-                border: '1px solid var(--border-subtle)',
-                color: '#cbd5e1',
-                borderRadius: 4,
-                padding: '3px 6px',
-                fontSize: 10,
-                fontWeight: 500,
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="" disabled>Load Preset...</option>
-              <option value="ue5_ormh">Unreal Engine ORMH (Pack)</option>
-              <option value="ue5_orm">Unreal Engine Standard ORM</option>
-              <option value="unity_hdrp">Unity HDRP Mask Map</option>
-              <option value="godot_pbr">Godot / Blender PBR</option>
-            </select>
-          </div>
         </div>
 
-        {/* Center Telemetry Readout */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748b' }}>
-            <span>NODES:</span>
-            <span style={{ color: '#f8fafc', fontWeight: 700 }}>{nodes.length}</span>
-          </div>
-          <div style={{ width: 1, height: 12, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#64748b' }}>
-            <span>WIRES:</span>
-            <span style={{ color: 'var(--pbr-packed)', fontWeight: 700 }}>{edges.length}</span>
-          </div>
-          <div style={{ width: 1, height: 12, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
-          <span style={{ color: '#94a3b8', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {statusMessage}
-          </span>
-        </div>
-
-        {/* Right Toolbar Controls */}
+        {/* Right Toolbar Controls: 1:1 Square Icon-Only Buttons with Rich Hover Tooltip */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          {/* Undo Button */}
-          <button
-            onClick={handleUndo}
-            disabled={!canUndo}
-            title="Undo Last Action (Ctrl+Z)"
-            style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--border-subtle)',
-              color: canUndo ? '#f8fafc' : '#475569',
-              borderRadius: 4,
-              padding: '4px 7px',
-              fontSize: 10,
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: canUndo ? 'pointer' : 'default',
-              opacity: canUndo ? 1 : 0.4,
-              transition: 'all 120ms ease',
-            }}
-          >
-            <Undo2 size={11} />
-            <span>Undo</span>
-          </button>
+          {/* Undo */}
+          <div className="tactical-btn-wrapper">
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              className="tactical-tool-btn"
+              title="Undo (Ctrl+Z)"
+            >
+              <Undo2 size={13} />
+            </button>
+            <div className="tactical-tooltip">
+              <div className="tactical-tooltip-header">
+                <span className="tactical-tooltip-title">Undo</span>
+                <span className="tactical-tooltip-badge">Ctrl+Z</span>
+              </div>
+              <span className="tactical-tooltip-desc">Revert last graph change</span>
+            </div>
+          </div>
 
-          {/* Redo Button */}
-          <button
-            onClick={handleRedo}
-            disabled={!canRedo}
-            title="Redo Action (Ctrl+Y)"
-            style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--border-subtle)',
-              color: canRedo ? '#f8fafc' : '#475569',
-              borderRadius: 4,
-              padding: '4px 7px',
-              fontSize: 10,
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: canRedo ? 'pointer' : 'default',
-              opacity: canRedo ? 1 : 0.4,
-              transition: 'all 120ms ease',
-            }}
-          >
-            <Redo2 size={11} />
-            <span>Redo</span>
-          </button>
+          {/* Redo */}
+          <div className="tactical-btn-wrapper">
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              className="tactical-tool-btn"
+              title="Redo (Ctrl+Y)"
+            >
+              <Redo2 size={13} />
+            </button>
+            <div className="tactical-tooltip">
+              <div className="tactical-tooltip-header">
+                <span className="tactical-tooltip-title">Redo</span>
+                <span className="tactical-tooltip-badge">Ctrl+Y</span>
+              </div>
+              <span className="tactical-tooltip-desc">Reapply undone change</span>
+            </div>
+          </div>
 
-          {/* Comment Box Button */}
-          <button
-            onClick={spawnCommentBox}
-            title="Group Selected Nodes into Comment Box (C)"
-            style={{
-              background: 'rgba(56, 189, 248, 0.08)',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
-              color: '#38bdf8',
-              borderRadius: 4,
-              padding: '4px 7px',
-              fontSize: 10,
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: 'pointer',
-              transition: 'all 120ms ease',
-            }}
-          >
-            <MessageSquare size={11} />
-            <span>Group (C)</span>
-          </button>
+          {/* Comment Box */}
+          <div className="tactical-btn-wrapper">
+            <button
+              onClick={spawnCommentBox}
+              className="tactical-tool-btn"
+              title="Comment Box (C)"
+            >
+              <MessageSquare size={13} color="#38bdf8" />
+            </button>
+            <div className="tactical-tooltip">
+              <div className="tactical-tooltip-header">
+                <span className="tactical-tooltip-title">Comment Box</span>
+                <span className="tactical-tooltip-badge">C</span>
+              </div>
+              <span className="tactical-tooltip-desc">Enclose selected nodes in comment frame</span>
+            </div>
+          </div>
 
           <div style={{ width: 1, height: 16, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
 
-          {/* Shortcuts Modal Button */}
-          <button
-            onClick={() => setIsShortcutsOpen(true)}
-            title="Keyboard Shortcuts Cheatsheet (?)"
-            style={{
-              background: 'rgba(168, 85, 247, 0.1)',
-              border: '1px solid rgba(168, 85, 247, 0.3)',
-              color: '#d8b4fe',
-              borderRadius: 4,
-              padding: '4px 8px',
-              fontSize: 10,
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: 'pointer',
-              transition: 'all 120ms ease',
-            }}
-          >
-            <Keyboard size={11} color="#a855f7" />
-            <span>Shortcuts (?)</span>
-          </button>
+          {/* Shortcuts */}
+          <div className="tactical-btn-wrapper">
+            <button
+              onClick={() => setIsShortcutsOpen(true)}
+              className="tactical-tool-btn"
+              title="Shortcuts (?)"
+            >
+              <Keyboard size={13} color="#a855f7" />
+            </button>
+            <div className="tactical-tooltip">
+              <div className="tactical-tooltip-header">
+                <span className="tactical-tooltip-title">Keybindings</span>
+                <span className="tactical-tooltip-badge">?</span>
+              </div>
+              <span className="tactical-tooltip-desc">View keyboard shortcut cheatsheet</span>
+            </div>
+          </div>
 
-          {/* Focus Extents */}
-          <button
-            onClick={() => fitView({ duration: 300 })}
-            title="Focus Extents (F)"
-            style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              border: '1px solid var(--border-subtle)',
-              color: '#cbd5e1',
-              borderRadius: 4,
-              padding: '4px 8px',
-              fontSize: 10,
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: 'pointer',
-              transition: 'all 120ms ease',
-            }}
-          >
-            <Maximize2 size={11} color="#38bdf8" />
-            <span>Focus (F)</span>
-          </button>
+          {/* Focus */}
+          <div className="tactical-btn-wrapper">
+            <button
+              onClick={() => fitView({ duration: 300 })}
+              className="tactical-tool-btn"
+              title="Focus Extents (F)"
+            >
+              <Maximize2 size={13} color="#38bdf8" />
+            </button>
+            <div className="tactical-tooltip">
+              <div className="tactical-tooltip-header">
+                <span className="tactical-tooltip-title">Focus View</span>
+                <span className="tactical-tooltip-badge">F</span>
+              </div>
+              <span className="tactical-tooltip-desc">Fit all nodes to screen</span>
+            </div>
+          </div>
 
-          {/* Clear Graph */}
-          <button
-            onClick={handleClearGraph}
-            title="Clear All Nodes and Edges"
-            style={{
-              background: 'rgba(239, 68, 68, 0.08)',
-              border: '1px solid rgba(239, 68, 68, 0.25)',
-              color: '#f87171',
-              borderRadius: 4,
-              padding: '4px 8px',
-              fontSize: 10,
-              fontWeight: 500,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              cursor: 'pointer',
-              transition: 'background 120ms ease',
-            }}
-          >
-            <Trash2 size={11} />
-            <span>Clear</span>
-          </button>
+          {/* Clear */}
+          <div className="tactical-btn-wrapper">
+            <button
+              onClick={handleClearGraph}
+              className="tactical-tool-btn danger"
+              title="Clear Canvas (Del)"
+            >
+              <Trash2 size={13} color="#f87171" />
+            </button>
+            <div className="tactical-tooltip">
+              <div className="tactical-tooltip-header">
+                <span className="tactical-tooltip-title">Clear Graph</span>
+                <span className="tactical-tooltip-badge">Delete</span>
+              </div>
+              <span className="tactical-tooltip-desc">Remove all nodes and connections</span>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -1085,12 +962,17 @@ function Workbench() {
           panOnDrag={[1, 2]} // Middle click or Right click pan (UE5)
           selectionOnDrag={true}
           connectionRadius={40}
+          proOptions={{ hideAttribution: true }}
         >
           <Background variant={BackgroundVariant.Dots} gap={24} size={1.5} color="rgba(255, 255, 255, 0.08)" />
-          <Controls style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 6 }} />
+          <Controls position="bottom-left" showInteractive={false} />
           <MiniMap
-            style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 6 }}
+            position="bottom-right"
+            maskColor="rgba(9, 10, 15, 0.85)"
             nodeColor={() => '#38bdf8'}
+            nodeStrokeColor="#0284c7"
+            zoomable
+            pannable
           />
         </ReactFlow>
 
@@ -1107,7 +989,6 @@ function Workbench() {
           onExportTarget={handleExport}
           onLoadBenchmark={loadBenchmarkTextures}
           onAutoWireORMH={autoWireORMH}
-          onApplyPreset={handleApplyPreset}
           nodeCount={nodes.length}
           edgeCount={edges.length}
         />

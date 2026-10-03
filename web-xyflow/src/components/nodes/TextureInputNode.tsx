@@ -1,6 +1,6 @@
 import React from 'react';
 import type { NodeProps } from '@xyflow/react';
-import { Eye, Layers } from 'lucide-react';
+import { Layers } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
@@ -25,29 +25,9 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
   const d = data as TextureInputData;
 
   const headerAction = (
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        d.onPinToggle?.();
-      }}
-      style={{
-        background: d.isPinned ? 'rgba(6, 182, 212, 0.2)' : 'rgba(255, 255, 255, 0.05)',
-        border: d.isPinned ? '1px solid #06b6d4' : '1px solid var(--border-subtle)',
-        borderRadius: 3,
-        color: d.isPinned ? '#06b6d4' : 'var(--text-muted)',
-        padding: '1px 4px',
-        fontSize: 8,
-        fontWeight: 700,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 3,
-        transition: 'all 120ms ease',
-      }}
-    >
-      <Eye size={9} />
-      <span>{d.isPinned ? 'PIN' : 'VIEW'}</span>
-    </button>
+    <NodeBadge color={d.roleColor || '#38bdf8'}>
+      {d.res || '4K'}
+    </NodeBadge>
   );
 
   return (
