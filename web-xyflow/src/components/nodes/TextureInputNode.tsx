@@ -54,6 +54,10 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
   const headerAction = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
       <button
+        type="button"
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={toggleColorSpace}
         title={`Color Space: ${colorSpace} (Click to toggle sRGB / Linear)`}
         style={{
@@ -96,6 +100,9 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ data, selected }) =
 
       {/* Interactive Thumbnail & Meta Section with File Browse Click */}
       <div
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={() => fileInputRef.current?.click()}
         title="Click to browse & load local texture from disk"
         style={{

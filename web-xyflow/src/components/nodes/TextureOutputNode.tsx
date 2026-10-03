@@ -30,6 +30,10 @@ export const TextureOutputNode: React.FC<NodeProps<any>> = ({ data, selected }) 
   const headerBadges = (
     <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
       <button
+        type="button"
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={toggleFormat}
         title="Click to switch export format (PNG / TGA / JPG)"
         style={{
@@ -106,6 +110,10 @@ export const TextureOutputNode: React.FC<NodeProps<any>> = ({ data, selected }) 
 
       {/* Card Direct Export Button */}
       <button
+        type="button"
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
           d.onExport?.();

@@ -52,6 +52,10 @@ export const NormalFlipNode: React.FC<NodeProps<any>> = ({ data, selected }) => 
 
       {/* 1-Click Interactive Format Toggle Chip */}
       <button
+        type="button"
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={toggleMode}
         title="Click to toggle DirectX (-Y) and OpenGL (+Y)"
         style={{

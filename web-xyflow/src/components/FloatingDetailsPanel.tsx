@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { PixelEngine, type TextureBuffer, type HistogramData } from '../engine/pixelEngine';
 import { TokenEngine, type CasingType } from '../engine/tokenizer';
+import { NodeSlider } from './node-system/NodeControls';
 
 export interface FloatingDetailsPanelProps {
   selectedNode: any | null;
@@ -490,70 +491,50 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
               {/* 1. Levels Node Controls */}
               {nodeType === 'levels' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 10 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1' }}>
-                    <span>Black Point</span>
-                    <span style={{ fontFamily: 'monospace' }}>{nodeData.blackPoint ?? 0}</span>
-                  </div>
-                  <input
-                    type="range"
+                  <NodeSlider
+                    label="In Black"
                     min={0}
                     max={254}
+                    step={1}
                     value={nodeData.blackPoint ?? 0}
-                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { blackPoint: Number(e.target.value) })}
-                    style={{ accentColor: '#38bdf8', width: '100%', height: 4 }}
+                    accentColor="#38bdf8"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { blackPoint: val })}
                   />
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
-                    <span>Midtone Gamma</span>
-                    <span style={{ fontFamily: 'monospace' }}>{(nodeData.gamma ?? 1.0).toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
+                  <NodeSlider
+                    label="Gamma"
                     min={0.1}
                     max={3.0}
                     step={0.05}
                     value={nodeData.gamma ?? 1.0}
-                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { gamma: Number(e.target.value) })}
-                    style={{ accentColor: 'var(--pbr-rough)', width: '100%', height: 4 }}
+                    accentColor="var(--pbr-rough)"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { gamma: val })}
                   />
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
-                    <span>White Point</span>
-                    <span style={{ fontFamily: 'monospace' }}>{nodeData.whitePoint ?? 255}</span>
-                  </div>
-                    <input
-                    type="range"
+                  <NodeSlider
+                    label="In White"
                     min={1}
                     max={255}
+                    step={1}
                     value={nodeData.whitePoint ?? 255}
-                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { whitePoint: Number(e.target.value) })}
-                    style={{ accentColor: '#fbbf24', width: '100%', height: 4 }}
+                    accentColor="#fbbf24"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { whitePoint: val })}
                   />
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
-                    <span>Out Black (Min)</span>
-                    <span style={{ fontFamily: 'monospace' }}>{nodeData.outBlack ?? 0}</span>
-                  </div>
-                  <input
-                    type="range"
+                  <NodeSlider
+                    label="Out Black (Min)"
                     min={0}
                     max={255}
+                    step={1}
                     value={nodeData.outBlack ?? 0}
-                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { outBlack: Number(e.target.value) })}
-                    style={{ accentColor: '#94a3b8', width: '100%', height: 4 }}
+                    accentColor="#94a3b8"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { outBlack: val })}
                   />
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
-                    <span>Out White (Max)</span>
-                    <span style={{ fontFamily: 'monospace' }}>{nodeData.outWhite ?? 255}</span>
-                  </div>
-                  <input
-                    type="range"
+                  <NodeSlider
+                    label="Out White (Max)"
                     min={0}
                     max={255}
+                    step={1}
                     value={nodeData.outWhite ?? 255}
-                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { outWhite: Number(e.target.value) })}
-                    style={{ accentColor: '#e2e8f0', width: '100%', height: 4 }}
+                    accentColor="#e2e8f0"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { outWhite: val })}
                   />
                 </div>
               )}
@@ -602,18 +583,14 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                       <option value="max">Lighten (Max)</option>
                     </select>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
-                    <span>Opacity</span>
-                    <span style={{ fontFamily: 'monospace' }}>{(nodeData.opacity ?? 1.0).toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
+                  <NodeSlider
+                    label="Opacity"
                     min={0.0}
                     max={1.0}
                     step={0.01}
                     value={nodeData.opacity ?? 1.0}
-                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { opacity: Number(e.target.value) })}
-                    style={{ accentColor: '#f59e0b', width: '100%', height: 4 }}
+                    accentColor="#f59e0b"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { opacity: val })}
                   />
                 </div>
               )}
@@ -627,18 +604,14 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                       {nodeData.mode === 'gl_to_dx' ? 'OpenGL → DirectX' : 'DirectX → OpenGL'}
                     </span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
-                    <span>Strength</span>
-                    <span style={{ fontFamily: 'monospace' }}>{(nodeData.strength ?? 1.0).toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
+                  <NodeSlider
+                    label="Strength"
                     min={0.0}
                     max={2.0}
                     step={0.05}
                     value={nodeData.strength ?? 1.0}
-                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { strength: Number(e.target.value) })}
-                    style={{ accentColor: 'var(--pbr-normal)', width: '100%', height: 4 }}
+                    accentColor="var(--pbr-normal)"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { strength: val })}
                   />
                 </div>
               )}
@@ -650,18 +623,14 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
                     <span style={{ color: '#94a3b8' }}>Algorithm</span>
                     <span style={{ color: 'var(--pbr-normal)', fontWeight: 600 }}>UE5 Reoriented (RNM)</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#cbd5e1', marginTop: 4 }}>
-                    <span>Detail Intensity</span>
-                    <span style={{ fontFamily: 'monospace' }}>{(nodeData.detailStrength ?? 1.0).toFixed(2)}</span>
-                  </div>
-                  <input
-                    type="range"
+                  <NodeSlider
+                    label="Detail Intensity"
                     min={0.0}
                     max={2.0}
                     step={0.05}
                     value={nodeData.detailStrength ?? 1.0}
-                    onChange={(e) => onUpdateNodeData?.(selectedNode.id, { detailStrength: Number(e.target.value) })}
-                    style={{ accentColor: 'var(--pbr-normal)', width: '100%', height: 4 }}
+                    accentColor="var(--pbr-normal)"
+                    onChange={(val) => onUpdateNodeData?.(selectedNode.id, { detailStrength: val })}
                   />
                 </div>
               )}

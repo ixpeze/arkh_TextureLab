@@ -18,7 +18,12 @@ export const ConstantColorNode: React.FC<NodeProps<any>> = ({ data, selected }) 
       width={168}
     >
       {/* Color preview and native picker */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <div
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+      >
         <label
           style={{
             width: 22,

@@ -85,7 +85,12 @@ export const ChannelSwizzleNode: React.FC<NodeProps<any>> = ({ data, selected })
       <NodeDivider />
 
       {/* 4-Channel Remapping Matrix */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+      >
         <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr', alignItems: 'center', gap: 4 }}>
           <span style={{ fontSize: 8.5, color: 'var(--pbr-ao)', fontWeight: 700 }}>R →</span>
           <select
@@ -186,7 +191,12 @@ export const ChannelSwizzleNode: React.FC<NodeProps<any>> = ({ data, selected })
       <NodeDivider />
 
       {/* Preset Buttons */}
-      <div style={{ display: 'flex', gap: 3 }}>
+      <div
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        style={{ display: 'flex', gap: 3 }}
+      >
         <button
           onClick={() => applyPreset('identity')}
           style={{

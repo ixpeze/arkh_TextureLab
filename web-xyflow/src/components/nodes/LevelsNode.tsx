@@ -118,6 +118,9 @@ export const LevelsNode: React.FC<NodeProps<any>> = ({ data, selected }) => {
 
       {/* Dynamic Mini Transfer Curve Visualizer with Output Bounds */}
       <div
+        className="nodrag nopan"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
         style={{
           width: '100%',
           height: 34,

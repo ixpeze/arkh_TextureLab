@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState, useRef, useMemo, useCallback } from 'react';
 import { ChevronDown, Check } from 'lucide-react';
 
 /* ========================================================================= */
-/* 1. NODE SLIDER                                                            */
+/* 1. NODE SLIDER (Filled, Scrubbable, Inline-Editable DCC Slider)           */
 /* ========================================================================= */
 export interface NodeSliderProps {
   label: string;
@@ -22,49 +22,252 @@ export const NodeSlider: React.FC<NodeSliderProps> = ({
   max = 1,
   step = 0.01,
   unit = '',
-  accentColor = '#a855f7',
+  accentColor = '#38bdf8',
   onChange,
 }) => {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 500 }}>
-          {label}
-        </span>
-        <span
-          style={{
-            fontSize: 8.5,
-            fontFamily: "'Geist Mono', monospace",
-            color: '#f8fafc',
-            fontWeight: 600,
-            backgroundColor: 'rgba(0, 0, 0, 0.35)',
-            border: '1px solid var(--border-subtle)',
-            padding: '0 4px',
-            borderRadius: 2,
-            lineHeight: '13px',
-          }}
-        >
-          {typeof value === 'number' ? (Number.isInteger(step) ? value : value.toFixed(2)) : value}
-          {unit}
-        </span>
-      </div>
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(String(value));
+  const [isDragging, setIsDragging] = useState(false);
+  const trackRef = useRef<HTMLDivElement | null>(null);
 
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
+  // Decimal precision derived from step
+  const decimals = useMemo(() => {
+    if (Number.isInteger(step)) return 0;
+    const s = step.toString();
+    const idx = s.indexOf('.');
+    return idx >= 0 ? Math.min(4, s.length - idx - 1) : 2;
+  }, [step]);
+
+  // Round value safely to step
+  const roundToStep = useCallback(
+    (val: number): number => {
+      const clamped = Math.max(min, Math.min(max, val));
+      const inv = 1 / step;
+      const rounded = Math.round(clamped * inv) / inv;
+      return parseFloat(rounded.toFixed(decimals));
+    },
+    [min, max, step, decimals]
+  );
+
+  // Format value for display
+  const displayValue = useMemo(() => {
+    if (typeof value !== 'number' || isNaN(value)) return '0';
+    return decimals === 0 ? Math.round(value).toString() : value.toFixed(decimals);
+  }, [value, decimals]);
+
+  // Fill percentage
+  const safeRange = Math.max(0.0001, max - min);
+  const pct = Math.max(0, Math.min(100, ((value - min) / safeRange) * 100));
+
+  // Pointer scrub handler
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isEditing) return;
+
+    // CRITICAL: Stop propagation so React Flow never moves the node!
+    e.stopPropagation();
+    e.preventDefault();
+
+    const track = trackRef.current;
+    if (!track) return;
+
+    const updateFromPointer = (clientX: number) => {
+      const rect = track.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      const rawVal = min + ratio * safeRange;
+      onChange(roundToStep(rawVal));
+    };
+
+    updateFromPointer(e.clientX);
+    setIsDragging(true);
+
+    const onPointerMove = (moveEvt: PointerEvent) => {
+      moveEvt.stopPropagation();
+      moveEvt.preventDefault();
+      updateFromPointer(moveEvt.clientX);
+    };
+
+    const onPointerUp = (upEvt: PointerEvent) => {
+      upEvt.stopPropagation();
+      upEvt.preventDefault();
+      setIsDragging(false);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+  };
+
+  const handleStartEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setEditValue(displayValue);
+    setIsEditing(true);
+  };
+
+  const handleCommitEdit = () => {
+    setIsEditing(false);
+    const parsed = parseFloat(editValue);
+    if (!isNaN(parsed)) {
+      onChange(roundToStep(parsed));
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      handleCommitEdit();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+    }
+  };
+
+  return (
+    <div
+      className="nodrag nopan"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{
+        position: 'relative',
+        width: '100%',
+        userSelect: 'none',
+      }}
+    >
+      {/* Slider Track with Filled Progress Bar & Overlaid Text */}
+      <div
+        ref={trackRef}
+        onPointerDown={handlePointerDown}
+        onDoubleClick={handleStartEdit}
+        title="Click & drag to scrub. Double-click to type exact value."
         style={{
-          width: '100%',
-          height: 3,
-          accentColor,
-          cursor: 'pointer',
-          borderRadius: 2,
-          margin: '2px 0 0 0',
+          position: 'relative',
+          height: 20,
+          backgroundColor: '#0c0e15',
+          border: isDragging ? `1px solid ${accentColor}` : '1px solid rgba(255, 255, 255, 0.09)',
+          borderRadius: 3,
+          overflow: 'hidden',
+          cursor: isEditing ? 'default' : 'ew-resize',
+          boxShadow: isDragging ? `0 0 8px ${accentColor}40` : 'inset 0 1px 3px rgba(0, 0, 0, 0.4)',
+          transition: 'border-color 100ms ease, box-shadow 100ms ease',
         }}
-      />
+      >
+        {/* Filled bar spanning 0 to pct% */}
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: `${pct}%`,
+            background: `linear-gradient(90deg, ${accentColor}30 0%, ${accentColor}60 100%)`,
+            borderRight: pct > 0 && pct < 100 ? `1.5px solid ${accentColor}` : 'none',
+            borderRadius: '2px 0 0 2px',
+            pointerEvents: 'none',
+            transition: isDragging ? 'none' : 'width 60ms ease-out',
+          }}
+        />
+
+        {/* Text Overlaid Directly on the Filled Slider */}
+        {isEditing ? (
+          <div
+            className="nodrag nopan"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              padding: '0 4px',
+              backgroundColor: '#0a0c12',
+              zIndex: 3,
+            }}
+          >
+            <span style={{ fontSize: 8, color: '#94a3b8', marginRight: 4, flexShrink: 0 }}>
+              {label}:
+            </span>
+            <input
+              autoFocus
+              type="number"
+              step={step}
+              min={min}
+              max={max}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleCommitEdit}
+              onKeyDown={handleKeyDown}
+              className="nodrag nopan"
+              onPointerDown={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              style={{
+                flex: 1,
+                height: 16,
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: `1px solid ${accentColor}`,
+                borderRadius: 2,
+                color: '#f8fafc',
+                fontSize: 8.5,
+                fontFamily: "'Geist Mono', monospace",
+                fontWeight: 600,
+                padding: '0 4px',
+                outline: 'none',
+              }}
+            />
+          </div>
+        ) : (
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              height: '100%',
+              padding: '0 6px',
+              pointerEvents: 'none', // lets pointer events hit the track for scrub
+            }}
+          >
+            {/* Label on Left */}
+            <span
+              style={{
+                fontSize: 8,
+                fontWeight: 600,
+                color: '#cbd5e1',
+                letterSpacing: '0.02em',
+                textShadow: '0 1px 2px rgba(0, 0, 0, 0.85)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: '65%',
+              }}
+            >
+              {label}
+            </span>
+
+            {/* Value on Right */}
+            <span
+              onClick={handleStartEdit}
+              title="Click or double-click to type"
+              style={{
+                fontSize: 8.5,
+                fontFamily: "'Geist Mono', monospace",
+                fontWeight: 700,
+                color: '#f8fafc',
+                textShadow: '0 1px 2px rgba(0, 0, 0, 0.9)',
+                pointerEvents: 'auto', // allows clicking directly on value to edit
+                cursor: 'text',
+                padding: '0 3px',
+                borderRadius: 2,
+                backgroundColor: 'rgba(0, 0, 0, 0.35)',
+                border: '1px solid rgba(255, 255, 255, 0.06)',
+              }}
+            >
+              {displayValue}
+              {unit}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -98,7 +301,12 @@ export const NodeInput: React.FC<NodeInputProps> = ({
   onChange,
 }) => {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div
+      className="nodrag nopan"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+    >
       {label && (
         <span style={{ fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 500 }}>
           {label}
@@ -129,6 +337,9 @@ export const NodeInput: React.FC<NodeInputProps> = ({
           value={value}
           placeholder={placeholder}
           onChange={(e) => onChange(type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)}
+          className="nodrag nopan"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             width: '100%',
             background: 'transparent',
@@ -168,6 +379,9 @@ export const NodeToggle: React.FC<NodeToggleProps> = ({
 }) => {
   return (
     <div
+      className="nodrag nopan"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
       onClick={() => onChange(!checked)}
       style={{
         display: 'flex',
@@ -224,6 +438,9 @@ export const NodeCheckbox: React.FC<NodeCheckboxProps> = ({
 }) => {
   return (
     <div
+      className="nodrag nopan"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
       onClick={() => onChange(!checked)}
       style={{
         display: 'flex',
@@ -270,7 +487,12 @@ export const NodeSelect: React.FC<NodeSelectProps> = ({
   onChange,
 }) => {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+    <div
+      className="nodrag nopan"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      style={{ display: 'flex', flexDirection: 'column', gap: 2 }}
+    >
       {label && (
         <span style={{ fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 500 }}>
           {label}
@@ -289,6 +511,9 @@ export const NodeSelect: React.FC<NodeSelectProps> = ({
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          className="nodrag nopan"
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
           style={{
             width: '100%',
             background: 'transparent',

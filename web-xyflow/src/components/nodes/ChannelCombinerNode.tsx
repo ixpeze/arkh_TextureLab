@@ -44,6 +44,10 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
       headerAction={
         <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
           <button
+            type="button"
+            className="nodrag nopan"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
               setShowFallbacks(!showFallbacks);
@@ -120,7 +124,7 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
               </span>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+            <div className="nodrag nopan" onPointerDown={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: 'var(--pbr-ao)' }}>
                 R:
                 <input
@@ -129,6 +133,9 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
                   max={255}
                   value={fallbacks.r}
                   onChange={(e) => updateFallback('r', Math.min(255, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="nodrag nopan"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{
                     width: '100%',
                     background: '#12151e',
@@ -151,6 +158,9 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
                   max={255}
                   value={fallbacks.g}
                   onChange={(e) => updateFallback('g', Math.min(255, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="nodrag nopan"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{
                     width: '100%',
                     background: '#12151e',
@@ -173,6 +183,9 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
                   max={255}
                   value={fallbacks.b}
                   onChange={(e) => updateFallback('b', Math.min(255, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="nodrag nopan"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{
                     width: '100%',
                     background: '#12151e',
@@ -195,6 +208,9 @@ export const ChannelCombinerNode: React.FC<NodeProps<any>> = ({ data, selected }
                   max={255}
                   value={fallbacks.a}
                   onChange={(e) => updateFallback('a', Math.min(255, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="nodrag nopan"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
                   style={{
                     width: '100%',
                     background: '#12151e',
