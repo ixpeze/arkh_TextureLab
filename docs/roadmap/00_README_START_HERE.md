@@ -80,7 +80,7 @@ Supporting documents:
 | Phase | Status | Date | Agent / Notes |
 |---|---|---|---|
 | 0 | COMPLETED | 2026-10-04 | Hygiene, asset diet (-99.26%), F-01 proof, 59 golden tests, git history purged to 5.97 MB |
-| 1 | NOT STARTED | | |
+| 1 | COMPLETED | 2026-10-04 | All Part A bugs fixed with failing-test-first commits (F-02, F-09, F-10, F-05, F-04, F-06, F-03); nodeRegistry + 12 node families (P1-B1); evaluator dispatch (P1-B2); typed node data (F-21); local-state dup removed (F-23); App.tsx, ExportModal.tsx, FloatingDetailsPanel.tsx, NodeControls.tsx, NodeSocket.tsx, ChannelMixerNode.tsx, FloatingNodeLibrary.tsx, exportEngine.ts, normalizer.ts modularized; max-lines 400 enforced as error; 117 tests passing, lint 0, build green |
 | 2 | NOT STARTED | | |
 | 3 | NOT STARTED | | |
 | 4 | NOT STARTED | | |
@@ -136,3 +136,4 @@ macOS/Linux installers, cloud sync, accounts, telemetry/analytics, AI upscaling,
 - 2026-10-04 (later) - Owner answers recorded: Electron + GPU-first confirmed; git history purge + force-push APPROVED (D-07, Phase 0 P0-T12); auto-update and EXR/TIFF deferred to v1.1 (D-08, D-09); code signing (OD-2) still open - cost facts in Phase 6 P6-T7.
 - 2026-10-04 (final) - Owner decided: NO code signing, ship free/unsigned (D-10). All open owner decisions are resolved except OD-5 (final icon/name; default = placeholder). Phase 0 is ready to start.
 - 2026-10-04 (Phase 0 Complete) - All Phase 0 tasks (P0-T1 through P0-T12) finished and verified. dist/ reduced from 208.6 MB to 1.55 MB; repo clone size purged from 363 MB to 5.97 MB (backup mirror preserved at ..\arkh_TextureLab_backup.git); benchmark auto-load removed (idle JS heap 8.58 MB); F-01 Canvas2D alpha destruction empirically proven (74.7% corrupted pixels); 58 CPU golden fixtures created (76/76 unit/golden tests green); oxlint & build green. Ready for Phase 1.
+- 2026-10-04 (Phase 1 Complete) - All Phase 1 tasks (P1-A1 through P1-A7, and P1-B1 through P1-B9) finished and verified. All Part A bugs resolved with failing-test-first commits (117 total tests pass). NodeRegistry created with all 12 node families modularized in `src/nodes/defs/`; evaluator dispatches via registry; `src/graph/introspect.ts` decoupled UI from engine; `no-explicit-any` count eliminated in core; local-state duplication in `TextureInputNode` removed; `App.tsx`, `ExportModal.tsx`, `FloatingDetailsPanel.tsx`, `ChannelMixerNode.tsx`, `FloatingNodeLibrary.tsx`, `NodeControls.tsx`, `NodeSocket.tsx`, `exportEngine.ts`, and `normalizer.ts` all modularized to <= 400 lines; `max-lines: ["error", 400]` enforced across `src` in `.oxlintrc.json` (with documented override for legacy CPU oracle pending Phase 4). Zero files > 400 lines remain outside CPU oracle. Ready for Phase 2.

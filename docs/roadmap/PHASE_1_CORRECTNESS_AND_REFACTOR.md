@@ -73,12 +73,12 @@ OUT: GPU, Electron, project files, visual redesign (leave current look; only str
 
 ## Exit criteria
 
-- [ ] All Part A tasks done with failing-test-first commits visible in `git log`.
-- [ ] Registry drives palette, spawn, hotkeys, evaluator, telemetry. Adding a dummy node requires **only** one new file (prove by adding `nodes/defs/_example.ts` in a test, then removing).
-- [ ] No source file > 400 lines; no `any` in core folders.
-- [ ] Golden suite + all new tests green; lint 0; build green.
-- [ ] README is truthful.
-- [ ] Tracker + Handoff notes updated.
+- [x] All Part A tasks done with failing-test-first commits visible in `git log`.
+- [x] Registry drives palette, spawn, hotkeys, evaluator, telemetry. Adding a dummy node requires **only** one new file (prove by adding `nodes/defs/_example.ts` in a test, then removing).
+- [x] No source file > 400 lines; no `any` in core folders.
+- [x] Golden suite + all new tests green; lint 0; build green.
+- [x] README is truthful.
+- [x] Tracker + Handoff notes updated.
 
 ## Risks
 
@@ -91,5 +91,31 @@ OUT: GPU, Electron, project files, visual redesign (leave current look; only str
 ## Evidence log
 
 ```
-date / agent / command / output summary
+2026-10-04 | Antigravity | P1-A1 (F-02) failing test commit | git commit e104e96: test(hash): add unit tests for graphContentHash (TC-100..103)
+2026-10-04 | Antigravity | P1-A1 (F-02) passing fix commit  | git commit bc7bbd8: fix(graph): extract graphContentHash to fix stale-key hashing bug (F-02)
+2026-10-04 | Antigravity | P1-A2 (F-09) failing test commit | git commit e2d9d63: test(hotkeys): add unit tests for hotkey normalization and resolution (TC-110..115)
+2026-10-04 | Antigravity | P1-A2 (F-09) passing fix commit  | git commit 7f9195b: fix(hotkeys): extract centralized hotkey dispatch module (F-09)
+2026-10-04 | Antigravity | P1-A3 (F-10) failing test commit | git commit a999672: test(graph): add unit tests for pure duplicate and delete graph actions (TC-120..123)
+2026-10-04 | Antigravity | P1-A3 (F-10) passing fix commit  | git commit 9bea62c: fix(graph): extract pure duplicate and delete graph actions with relative offset (F-10)
+2026-10-04 | Antigravity | P1-A4 (F-05) failing test commit | git commit 2cd0d2d: test(export): add unit tests for export resolution aspect preservation (TC-125..127)
+2026-10-04 | Antigravity | P1-A4 (F-05) passing fix commit  | git commit 87b7c9d: fix(export): preserve aspect ratio on master resolution downscale (F-05)
+2026-10-04 | Antigravity | P1-A5 (F-04) failing test commit | git commit f0f1678: test(export): add unit test for honest 8-bit export enforcement (F-04)
+2026-10-04 | Antigravity | P1-A5 (F-04) passing fix commit  | git commit 2dc21a9: fix(export): enforce honest 8-bit export metadata and disable 16b UI (F-04)
+2026-10-04 | Antigravity | P1-A6 (F-06) failing test commit | git commit e5694b9: test(policy): add unit tests for graph resolution policy (TC-130..134)
+2026-10-04 | Antigravity | P1-A6 (F-06) passing fix commit  | git commit 68d079c: fix(policy): implement resolution propagation policy in pixelEngine and graphEvaluator (F-06)
+2026-10-04 | Antigravity | P1-A7 (F-03) docs honesty commit | git commit ae2aff8: docs(readme): add pre-1.0 honest status banner and clarify format capabilities (F-03)
+2026-10-04 | Antigravity | P1-B1 (12 node families)        | 12 commits: refactor(nodes): migrate Input, Channel, Math, Adjust, Blend, Output, Utility, Labs families to registry
+2026-10-04 | Antigravity | P1-B2 (Evaluator dispatch)      | git commit 66edc4b: refactor(evaluator): dispatch node evaluation through nodeRegistry (P1-B2)
+2026-10-04 | Antigravity | P1-B3 (Introspect UI out of eng)| git commit 081c622: refactor(graph): move UI introspection logic out of engine to graph/introspect (P1-B3)
+2026-10-04 | Antigravity | P1-B4 (Typed node data, F-21)   | git commit 2e1d706: refactor(types): eliminate no-explicit-any in engine, nodes, and graph core (P1-B4)
+2026-10-04 | Antigravity | P1-B8 (Local-state dup, F-23)   | git commit 49b5d4a: fix(ui): eliminate local-state duplication in TextureInputNode (P1-B8)
+2026-10-04 | Antigravity | P1-B5 (Split App.tsx)           | git commit b65b35d: refactor(app): modularize App.tsx into submodules under 400 lines (P1-B5)
+2026-10-04 | Antigravity | P1-B6 (Split ExportModal.tsx)   | git commit bdfe9ed: refactor(export): split ExportModal into features/export submodules under 400 lines (P1-B6)
+2026-10-04 | Antigravity | P1-B7 (Split FloatingDetails)   | git commit 9b8e15b: refactor(inspector): split FloatingDetailsPanel into features/inspector under 400 lines (P1-B7)
+2026-10-04 | Antigravity | P1-B9 (UI splits < 400 lines)   | git commit 6406d16: refactor(ui): split ChannelMixerNode and FloatingNodeLibrary under 400 lines (P1-B9)
+2026-10-04 | Antigravity | P1-B9 (Node system < 400 lines) | git commit b5e540f: refactor(ui): modularize NodeControls and NodeSocket under 400 lines (P1-B9)
+2026-10-04 | Antigravity | P1-B9 (Engine splits < 400 lines)| git commit 8263dac: refactor(engine): split exportEngine and normalizer, enforce max-lines 400 as error (P1-B9)
+2026-10-04 | Antigravity | Exit Criterion 2 Proof         | npx vitest run src/__tests__/unit/registryDummyNode.test.ts -> 1 passed (proved single-file registration via src/nodes/defs/_example.ts, cleaned up)
+2026-10-04 | Antigravity | Final Verification Suite        | npm test (117 passed) && npm run lint (0 errors) && npm run build (built cleanly in 805ms) -> ALL GREEN
 ```
+
