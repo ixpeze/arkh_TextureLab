@@ -170,38 +170,6 @@ export class GraphEvaluator {
               result = routes ? PixelEngine.mixChannels(combined, routes, scalarValues, rSrc, gSrc, bSrc, aSrc) : combined;
             }
           }
-        } else if (
-          nodeType === 'lerp' ||
-          nodeType === 'multiply' ||
-          nodeType === 'add' ||
-          nodeType === 'subtract' ||
-          nodeType === 'divide' ||
-          nodeType === 'clamp' ||
-          nodeType === 'saturate' ||
-          nodeType === 'power' ||
-          nodeType === 'oneMinus' ||
-          nodeType === 'min' ||
-          nodeType === 'max' ||
-          nodeType === 'abs' ||
-          nodeType === 'math'
-        ) {
-          const op = (nodeType === 'math' ? data.op || 'multiply' : nodeType) as any;
-          const edgeA = edges.find((e) => e.target === nodeId && (e.targetHandle === 'a' || e.targetHandle === 'base' || e.targetHandle === 'input' || !e.targetHandle));
-          const edgeB = edges.find((e) => e.target === nodeId && (e.targetHandle === 'b' || e.targetHandle === 'exp'));
-          const edgeAlpha = edges.find((e) => e.target === nodeId && (e.targetHandle === 'alpha' || e.targetHandle === 'mask'));
-
-          const bufA = edgeA ? evaluateNode(edgeA.source) : null;
-          const bufB = edgeB ? evaluateNode(edgeB.source) : null;
-          const bufAlpha = edgeAlpha ? evaluateNode(edgeAlpha.source) : null;
-
-          const scalarA = typeof data.valA === 'number' ? data.valA : (typeof data.a === 'number' ? data.a : undefined);
-          const scalarB = typeof data.valB === 'number' ? data.valB : (typeof data.b === 'number' ? data.b : undefined);
-          const param1 = typeof data.param1 === 'number' ? data.param1 : (typeof data.min === 'number' ? data.min : (typeof data.exp === 'number' ? data.exp : (typeof data.alpha === 'number' ? data.alpha : undefined)));
-          const param2 = typeof data.param2 === 'number' ? data.param2 : (typeof data.max === 'number' ? data.max : undefined);
-
-          result = data.isBypassed && bufA
-            ? bufA
-            : PixelEngine.applyMath(op, bufA, bufB, bufAlpha, scalarA, scalarB, param1, param2);
         } else if (nodeType === 'resize') {
           const inEdge = edges.find((e) => e.target === nodeId);
           if (inEdge) {
