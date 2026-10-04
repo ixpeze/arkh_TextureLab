@@ -1,17 +1,13 @@
 import React, { useState } from 'react';
 import type { NodeProps } from '@xyflow/react';
-import { SlidersHorizontal, Plus, Trash2, Download } from 'lucide-react';
+import { SlidersHorizontal, Plus, Trash2 } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 import { useNodeBuffers } from '../../context/NodeBufferContext';
+import { ChannelMixerRouting, type ChannelRouteConfig } from './ChannelMixerRouting';
 
-export interface ChannelRouteConfig {
-  sources: string[]; // e.g. ['r'], ['r', 'g'], ['s1']
-  combineOp?: 'add' | 'multiply' | 'min' | 'max';
-  modifier?: 'none' | 'oneMinus' | 'add' | 'multiply' | 'clamp' | 'saturate';
-  modifierVal?: number;
-}
+export type { ChannelRouteConfig };
 
 export interface ChannelMixerData {
   title?: string;
@@ -30,27 +26,10 @@ export interface ChannelMixerData {
   exportOutputs?: string[]; // e.g. ['rgba', 'r', 'g']
 }
 
-const MODIFIERS = [
-  { label: 'None', value: 'none' },
-  { label: '1 - X', value: 'oneMinus' },
-  { label: '+ Add', value: 'add' },
-  { label: '× Mult', value: 'multiply' },
-  { label: 'Clamp', value: 'clamp' },
-  { label: 'Sat', value: 'saturate' },
-];
-
-const COMBINE_OPS = [
-  { label: '+ Add', value: 'add' },
-  { label: '× Mul', value: 'multiply' },
-  { label: 'Min', value: 'min' },
-  { label: 'Max', value: 'max' },
-];
-
 export const ChannelMixerNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
   const d = (data as ChannelMixerData) || {};
   const isBypassed = !!d.isBypassed;
   const { onUpdateNodeData } = useNodeBuffers();
-  void COMBINE_OPS;
 
   const [routes, setRoutes] = useState<{
     r: ChannelRouteConfig;
@@ -255,165 +234,13 @@ export const ChannelMixerNode: React.FC<NodeProps<any>> = ({ id, data, selected 
       <NodeDivider />
 
       {/* Straight-Wire Routing Editor (Visually Distinct SVG Schematic Canvas) */}
-      <div
-        className="nodrag nopan"
-        style={{
-          background: 'rgba(6, 8, 12, 0.95)',
-          border: '1px solid rgba(129, 140, 248, 0.25)',
-          borderRadius: 4,
-          padding: '4px',
-          margin: '3px 0',
-        }}
-      >
-        {/* Schematic straight wire display */}
-        <div style={{ position: 'relative', height: 42, width: '100%', marginBottom: 4 }}>
-          <svg style={{ width: '100%', height: '100%', overflow: 'visible' }}>
-            {/* Draw straight lines representing active routing from left inputs to right outputs */}
-            {(['r', 'g', 'b', 'a'] as const).map((ch, outIdx) => {
-              const y2 = 6 + outIdx * 10;
-              const route = routes[ch];
-              const outColors = { r: '#ef4444', g: '#22c55e', b: '#3b82f6', a: '#94a3b8' };
-              const inPositions: Record<string, number> = { r: 6, g: 16, b: 26, a: 36 };
-
-              return route.sources.map((src, srcIdx) => {
-                const y1 = inPositions[src] ?? 20;
-                return (
-                  <line
-                    key={`${ch}-${src}-${srcIdx}`}
-                    x1="12"
-                    y1={y1}
-                    x2="190"
-                    y2={y2}
-                    stroke={outColors[ch]}
-                    strokeWidth="1.2"
-                    strokeDasharray={route.modifier !== 'none' ? '3,2' : undefined}
-                    opacity="0.85"
-                  />
-                );
-              });
-            })}
-            {/* Straight wire connector pins */}
-            {[6, 16, 26, 36].map((y, i) => (
-              <circle key={`in-${i}`} cx="12" cy={y} r="2.5" fill="#818cf8" />
-            ))}
-            {[6, 16, 26, 36].map((y, i) => (
-              <circle key={`out-${i}`} cx="190" cy={y} r="2.5" fill="#38bdf8" />
-            ))}
-          </svg>
-          <div style={{ position: 'absolute', top: 1, left: 16, fontSize: 6.5, color: '#64748b' }}>IN</div>
-          <div style={{ position: 'absolute', top: 1, right: 16, fontSize: 6.5, color: '#64748b' }}>OUT</div>
-        </div>
-
-        {/* Per-Channel Routing & Modifier Controls */}
-        {(['r', 'g', 'b', 'a'] as const).map((ch) => {
-          const route = routes[ch];
-          const chColor = ch === 'r' ? '#ef4444' : ch === 'g' ? '#22c55e' : ch === 'b' ? '#3b82f6' : '#94a3b8';
-          const isExported = exportOutputs.includes(ch);
-
-          return (
-            <div
-              key={ch}
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '18px 52px 42px 1fr 18px',
-                alignItems: 'center',
-                gap: 3,
-                marginBottom: 3,
-                padding: '1px 2px',
-                background: 'rgba(255, 255, 255, 0.02)',
-                borderRadius: 2,
-              }}
-            >
-              {/* Channel Label */}
-              <span style={{ fontSize: 8.5, color: chColor, fontWeight: 700 }}>{ch.toUpperCase()}</span>
-
-              {/* Source Selection (Fan-out supported) */}
-              <select
-                value={route.sources[0] || ch}
-                onChange={(e) => updateRoute(ch, { sources: [e.target.value] })}
-                style={{
-                  background: '#0c0e14',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 2,
-                  color: '#f8fafc',
-                  fontSize: 7.5,
-                  padding: '1px',
-                  fontFamily: 'monospace',
-                }}
-              >
-                {availableSources.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-
-              {/* Inline Modifier */}
-              <select
-                value={route.modifier || 'none'}
-                onChange={(e) => updateRoute(ch, { modifier: e.target.value as any })}
-                style={{
-                  background: '#0c0e14',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 2,
-                  color: route.modifier && route.modifier !== 'none' ? '#38bdf8' : '#94a3b8',
-                  fontSize: 7.5,
-                  padding: '1px',
-                }}
-              >
-                {MODIFIERS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-
-              {/* Modifier Value or Combine Op */}
-              {route.modifier === 'add' || route.modifier === 'multiply' ? (
-                <input
-                  type="number"
-                  step="0.1"
-                  value={route.modifierVal ?? (route.modifier === 'add' ? 0.2 : 1.5)}
-                  onChange={(e) => updateRoute(ch, { modifierVal: parseFloat(e.target.value) || 0 })}
-                  style={{
-                    width: '100%',
-                    background: '#0c0e14',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                    borderRadius: 2,
-                    color: '#fff',
-                    fontSize: 7.5,
-                    padding: '1px 2px',
-                  }}
-                />
-              ) : (
-                <span style={{ fontSize: 7, color: '#475569', fontStyle: 'italic' }}>direct</span>
-              )}
-
-              {/* Export Checkbox */}
-              <button
-                type="button"
-                onClick={() => toggleExportOutput(ch)}
-                title={isExported ? `Export ${ch.toUpperCase()} output` : `Exclude ${ch.toUpperCase()} from export`}
-                style={{
-                  background: isExported ? 'rgba(56, 189, 248, 0.2)' : 'transparent',
-                  border: `1px solid ${isExported ? '#38bdf8' : 'rgba(255, 255, 255, 0.1)'}`,
-                  color: isExported ? '#38bdf8' : '#64748b',
-                  borderRadius: 2,
-                  width: 14,
-                  height: 14,
-                  padding: 0,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                }}
-              >
-                <Download size={7} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
+      <ChannelMixerRouting
+        routes={routes}
+        exportOutputs={exportOutputs}
+        availableSources={availableSources}
+        updateRoute={updateRoute}
+        toggleExportOutput={toggleExportOutput}
+      />
 
       {/* Export Telemetry & Composite Export Toggle */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '2px 4px', fontSize: 7.5, color: '#94a3b8' }}>
