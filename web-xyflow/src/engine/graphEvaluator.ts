@@ -100,12 +100,12 @@ export class GraphEvaluator {
           const rawVal = typeof data.value === 'number' && !isNaN(data.value) ? data.value : 1.0;
           const val = Math.max(0, Math.min(1, rawVal));
           const byteVal = Math.min(255, Math.max(0, Math.round(val * 255)));
-          result = PixelEngine.createSolid(512, 512, byteVal, byteVal, byteVal, 255);
+          result = PixelEngine.createSolid(1, 1, byteVal, byteVal, byteVal, 255);
         } else if (nodeType === 'constantColor' || nodeType === 'color') {
           const rawHex = typeof data.color === 'string' ? data.color : '#ffffff';
           const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(rawHex) ? rawHex : '#ffffff';
           const rgb = this.hexToRgb(hex);
-          result = PixelEngine.createSolid(512, 512, rgb.r, rgb.g, rgb.b, 255);
+          result = PixelEngine.createSolid(1, 1, rgb.r, rgb.g, rgb.b, 255);
         } else if (nodeType === 'channelCombiner' || nodeType === 'channelPack') {
           // Inputs: r, g, b, a; each defaults to 0 (UE5 standard)
           const rEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
@@ -379,7 +379,12 @@ export class GraphEvaluator {
             const inBuf = evaluateNode(inEdge.source);
             if (inBuf) {
               const srcHandle = inEdge.sourceHandle || 'rgba';
-              result = this.coerceUE5(inBuf, srcHandle, 'rgba');
+              let coerced = this.coerceUE5(inBuf, srcHandle, 'rgba');
+              if (coerced && coerced.width === 1 && coerced.height === 1) {
+                // If alone at output: expand lazily to 512
+                coerced = PixelEngine.createSolid(512, 512, coerced.data[0], coerced.data[1], coerced.data[2], coerced.data[3]);
+              }
+              result = coerced;
             }
           }
         }

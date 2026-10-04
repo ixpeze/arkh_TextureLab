@@ -247,7 +247,7 @@ export function generateAllFixtures(): GoldenFixture[] {
   return fixtures;
 }
 
-if (process.argv[1] && process.argv[1].includes('generate_golden')) {
+if (process.argv.some((arg) => arg.includes('generate_golden'))) {
   const fixtures = generateAllFixtures();
   const goldenDir = path.resolve(import.meta.dirname, 'golden');
   fs.mkdirSync(goldenDir, { recursive: true });

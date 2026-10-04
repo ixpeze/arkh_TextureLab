@@ -343,6 +343,58 @@ export class PixelEngine {
   }
 
   /**
+   * Bilinear resampling for TextureBuffer
+   */
+  public static resampleBuffer(buffer: TextureBuffer, newWidth: number, newHeight: number): TextureBuffer {
+    if (buffer.width === newWidth && buffer.height === newHeight) {
+      return buffer;
+    }
+    if (buffer.width === 1 && buffer.height === 1) {
+      return this.createSolid(newWidth, newHeight, buffer.data[0], buffer.data[1], buffer.data[2], buffer.data[3]);
+    }
+
+    const srcData = buffer.data;
+    const srcW = buffer.width;
+    const srcH = buffer.height;
+    const dstData = new Uint8ClampedArray(newWidth * newHeight * 4);
+
+    const xRatio = srcW > 1 ? (srcW - 1) / (newWidth > 1 ? newWidth - 1 : 1) : 0;
+    const yRatio = srcH > 1 ? (srcH - 1) / (newHeight > 1 ? newHeight - 1 : 1) : 0;
+
+    for (let y = 0; y < newHeight; y++) {
+      const srcY = y * yRatio;
+      const yLow = Math.floor(srcY);
+      const yHigh = Math.min(yLow + 1, srcH - 1);
+      const yWeight = srcY - yLow;
+
+      for (let x = 0; x < newWidth; x++) {
+        const srcX = x * xRatio;
+        const xLow = Math.floor(srcX);
+        const xHigh = Math.min(xLow + 1, srcW - 1);
+        const xWeight = srcX - xLow;
+
+        const dstIdx = (y * newWidth + x) * 4;
+
+        const idx00 = (yLow * srcW + xLow) * 4;
+        const idx10 = (yLow * srcW + xHigh) * 4;
+        const idx01 = (yHigh * srcW + xLow) * 4;
+        const idx11 = (yHigh * srcW + xHigh) * 4;
+
+        for (let c = 0; c < 4; c++) {
+          const top = srcData[idx00 + c] * (1 - xWeight) + srcData[idx10 + c] * xWeight;
+          const bottom = srcData[idx01 + c] * (1 - xWeight) + srcData[idx11 + c] * xWeight;
+          dstData[dstIdx + c] = Math.round(top * (1 - yWeight) + bottom * yWeight);
+        }
+      }
+    }
+
+    const res: TextureBuffer = { width: newWidth, height: newHeight, data: dstData };
+    res.proxy = this.createDownsampledProxy(res, 512);
+    res.dataUrl = res.proxy.dataUrl;
+    return res;
+  }
+
+  /**
    * Create solid color buffer
    */
   public static createSolid(width: number, height: number, r: number, g: number, b: number, a = 255): TextureBuffer {
@@ -415,8 +467,33 @@ export class PixelEngine {
     const b = unpack(bInput, 2);
     const a = unpack(aInput, 3);
 
-    const w = targetDim || Math.max(r.buf?.width || 0, g.buf?.width || 0, b.buf?.width || 0, a.buf?.width || 0, 512);
-    const h = targetDim || Math.max(r.buf?.height || 0, g.buf?.height || 0, b.buf?.height || 0, a.buf?.height || 0, 512);
+    const bufs = [r.buf, g.buf, b.buf, a.buf].filter((b): b is TextureBuffer => !!b);
+    let w = targetDim;
+    let h = targetDim;
+
+    if (!w || !h) {
+      if (bufs.length > 0) {
+        let maxArea = 0;
+        let maxBuf: TextureBuffer | null = null;
+        for (const b of bufs) {
+          const area = b.width * b.height;
+          if (area > maxArea) {
+            maxArea = area;
+            maxBuf = b;
+          }
+        }
+        if (maxBuf && maxArea > 1) {
+          w = maxBuf.width;
+          h = maxBuf.height;
+        } else {
+          w = 512;
+          h = 512;
+        }
+      } else {
+        w = 512;
+        h = 512;
+      }
+    }
 
     const defR = fallbacks?.r ?? 255;
     const defG = fallbacks?.g ?? 128;
@@ -450,13 +527,32 @@ export class PixelEngine {
         outData[i + 3] = aData ? (aData[srcOffset + aCh] ?? defA) : defA;
       }
     } else {
-      // Resolution mismatch path: normalized UV sampling with bounds safety
+      // Resolution mismatch path: normalized UV sampling with bilinear interpolation
       const sampleChannel = (buf: TextureBuffer | undefined, defaultVal: number, chIdx: number, x: number, y: number): number => {
         if (!buf || !buf.data || buf.data.length === 0) return defaultVal;
-        const bx = Math.min(buf.width - 1, Math.max(0, Math.floor((x / w) * buf.width)));
-        const by = Math.min(buf.height - 1, Math.max(0, Math.floor((y / h) * buf.height)));
-        const idx = (by * buf.width + bx) * 4 + chIdx;
-        return buf.data[idx] !== undefined ? buf.data[idx] : defaultVal;
+        if (buf.width === 1 && buf.height === 1) {
+          return buf.data[chIdx] !== undefined ? buf.data[chIdx] : defaultVal;
+        }
+
+        const u = (x + 0.5) / w;
+        const v = (y + 0.5) / h;
+        const srcX = Math.max(0, Math.min(buf.width - 1, u * buf.width - 0.5));
+        const srcY = Math.max(0, Math.min(buf.height - 1, v * buf.height - 0.5));
+        const x0 = Math.floor(srcX);
+        const y0 = Math.floor(srcY);
+        const x1 = Math.min(buf.width - 1, x0 + 1);
+        const y1 = Math.min(buf.height - 1, y0 + 1);
+        const fx = srcX - x0;
+        const fy = srcY - y0;
+
+        const d00 = buf.data[(y0 * buf.width + x0) * 4 + chIdx];
+        const d10 = buf.data[(y0 * buf.width + x1) * 4 + chIdx];
+        const d01 = buf.data[(y1 * buf.width + x0) * 4 + chIdx];
+        const d11 = buf.data[(y1 * buf.width + x1) * 4 + chIdx];
+
+        const top = d00 * (1 - fx) + d10 * fx;
+        const bot = d01 * (1 - fx) + d11 * fx;
+        return Math.round(top * (1 - fy) + bot * fy);
       };
 
       for (let y = 0; y < h; y++) {
@@ -970,17 +1066,42 @@ export class PixelEngine {
     param1?: number,
     param2?: number
   ): TextureBuffer {
-    const width = bufA?.width || bufB?.width || 512;
-    const height = bufA?.height || bufB?.height || 512;
+    const bufs = [bufA, bufB, bufAlpha].filter((b): b is TextureBuffer => !!b);
+    let width = 512;
+    let height = 512;
+
+    if (bufs.length > 0) {
+      let maxArea = 0;
+      let maxBuf: TextureBuffer | null = null;
+      for (const b of bufs) {
+        const area = b.width * b.height;
+        if (area > maxArea) {
+          maxArea = area;
+          maxBuf = b;
+        }
+      }
+      if (maxBuf && maxArea > 1) {
+        width = maxBuf.width;
+        height = maxBuf.height;
+      } else {
+        width = 512;
+        height = 512;
+      }
+    }
+
+    const effectiveBufA = bufA && (bufA.width !== width || bufA.height !== height) ? this.resampleBuffer(bufA, width, height) : bufA;
+    const effectiveBufB = bufB && (bufB.width !== width || bufB.height !== height) ? this.resampleBuffer(bufB, width, height) : bufB;
+    const effectiveBufAlpha = bufAlpha && (bufAlpha.width !== width || bufAlpha.height !== height) ? this.resampleBuffer(bufAlpha, width, height) : bufAlpha;
+
     const outData = new Uint8ClampedArray(width * height * 4);
 
     const sA = scalarA ?? 0;
     const sB = scalarB ?? (op === 'multiply' || op === 'divide' ? 1.0 : 0.0);
     const alphaVal = param1 ?? 0.5;
 
-    const dataA = bufA?.data;
-    const dataB = bufB?.data;
-    const dataAlpha = bufAlpha?.data;
+    const dataA = effectiveBufA?.data;
+    const dataB = effectiveBufB?.data;
+    const dataAlpha = effectiveBufAlpha?.data;
 
     for (let i = 0; i < outData.length; i += 4) {
       const rA = dataA ? dataA[i] : sA;
