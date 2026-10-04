@@ -19,6 +19,50 @@ import type {
 import { BatchEngine } from './batchEngine';
 import { GraphEvaluator } from './graphEvaluator';
 
+export type ExportTargetResolution =
+  | { mode: 'inherit' }
+  | { mode: 'longEdge'; px: number }
+  | { mode: 'stretch'; w: number; h: number };
+
+export function calculateTargetDimensions(
+  srcWidth: number,
+  srcHeight: number,
+  target?: ExportTargetResolution | number
+): { width: number; height: number } {
+  if (!target) {
+    return { width: srcWidth, height: srcHeight };
+  }
+
+  if (typeof target === 'number') {
+    return calculateTargetDimensions(srcWidth, srcHeight, { mode: 'longEdge', px: target });
+  }
+
+  if (target.mode === 'inherit') {
+    return { width: srcWidth, height: srcHeight };
+  }
+
+  if (target.mode === 'stretch') {
+    return { width: Math.max(1, Math.round(target.w)), height: Math.max(1, Math.round(target.h)) };
+  }
+
+  if (target.mode === 'longEdge') {
+    const px = target.px;
+    if (px <= 0) return { width: srcWidth, height: srcHeight };
+
+    if (srcWidth >= srcHeight) {
+      const outWidth = px;
+      const outHeight = Math.max(1, Math.round((srcHeight * px) / srcWidth));
+      return { width: outWidth, height: outHeight };
+    } else {
+      const outHeight = px;
+      const outWidth = Math.max(1, Math.round((srcWidth * px) / srcHeight));
+      return { width: outWidth, height: outHeight };
+    }
+  }
+
+  return { width: srcWidth, height: srcHeight };
+}
+
 /* ========================================================================= */
 /* 1. INDUSTRY STANDARD PRESETS & TOKENS                                     */
 /* ========================================================================= */
@@ -598,19 +642,19 @@ export class ExportEngine {
   public static async encodeImageBlob(
     buffer: TextureBuffer,
     format: TextureExportFormat,
-    targetResolution?: number
+    target?: ExportTargetResolution | number
   ): Promise<Blob> {
+    const { width: outWidth, height: outHeight } = calculateTargetDimensions(buffer.width, buffer.height, target);
+
     if (format === 'TGA') {
       let targetBuf = buffer;
-      if (targetResolution && targetResolution !== buffer.width) {
-        targetBuf = this.resizeBuffer(buffer, targetResolution, targetResolution);
+      if (outWidth !== buffer.width || outHeight !== buffer.height) {
+        targetBuf = this.resizeBuffer(buffer, outWidth, outHeight);
       }
       return this.encodeTGA(targetBuf);
     }
 
     const canvas = document.createElement('canvas');
-    const outWidth = targetResolution || buffer.width;
-    const outHeight = targetResolution || buffer.height;
     canvas.width = outWidth;
     canvas.height = outHeight;
 
@@ -658,29 +702,51 @@ export class ExportEngine {
     });
   }
 
-  private static resizeBuffer(buffer: TextureBuffer, newWidth: number, newHeight: number): TextureBuffer {
-    const canvas = document.createElement('canvas');
-    canvas.width = newWidth;
-    canvas.height = newHeight;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  public static resizeBuffer(buffer: TextureBuffer, newWidth: number, newHeight: number): TextureBuffer {
+    if (buffer.width === newWidth && buffer.height === newHeight) {
+      return buffer;
+    }
 
-    const srcCanvas = document.createElement('canvas');
-    srcCanvas.width = buffer.width;
-    srcCanvas.height = buffer.height;
-    const srcCtx = srcCanvas.getContext('2d')!;
-    const srcData = srcCtx.createImageData(buffer.width, buffer.height);
-    srcData.data.set(buffer.data);
-    srcCtx.putImageData(srcData, 0, 0);
+    // Pure CPU bilinear resample (works in both Node test env and browser without Canvas2D premultiplication)
+    const srcData = buffer.data;
+    const srcW = buffer.width;
+    const srcH = buffer.height;
+    const dstData = new Uint8ClampedArray(newWidth * newHeight * 4);
 
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(srcCanvas, 0, 0, newWidth, newHeight);
+    const xRatio = srcW > 1 ? (srcW - 1) / (newWidth > 1 ? newWidth - 1 : 1) : 0;
+    const yRatio = srcH > 1 ? (srcH - 1) / (newHeight > 1 ? newHeight - 1 : 1) : 0;
 
-    const outData = ctx.getImageData(0, 0, newWidth, newHeight);
+    for (let y = 0; y < newHeight; y++) {
+      const srcY = y * yRatio;
+      const yLow = Math.floor(srcY);
+      const yHigh = Math.min(yLow + 1, srcH - 1);
+      const yWeight = srcY - yLow;
+
+      for (let x = 0; x < newWidth; x++) {
+        const srcX = x * xRatio;
+        const xLow = Math.floor(srcX);
+        const xHigh = Math.min(xLow + 1, srcW - 1);
+        const xWeight = srcX - xLow;
+
+        const dstIdx = (y * newWidth + x) * 4;
+
+        const idx00 = (yLow * srcW + xLow) * 4;
+        const idx10 = (yLow * srcW + xHigh) * 4;
+        const idx01 = (yHigh * srcW + xLow) * 4;
+        const idx11 = (yHigh * srcW + xHigh) * 4;
+
+        for (let c = 0; c < 4; c++) {
+          const top = srcData[idx00 + c] * (1 - xWeight) + srcData[idx10 + c] * xWeight;
+          const bottom = srcData[idx01 + c] * (1 - xWeight) + srcData[idx11 + c] * xWeight;
+          dstData[dstIdx + c] = Math.round(top * (1 - yWeight) + bottom * yWeight);
+        }
+      }
+    }
+
     return {
       width: newWidth,
       height: newHeight,
-      data: outData.data,
+      data: dstData,
     };
   }
 

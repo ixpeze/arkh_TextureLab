@@ -21,6 +21,7 @@ import {
   ExportEngine,
   DEFAULT_PRESETS,
   DEFAULT_GLOBAL_SETTINGS,
+  type ExportTargetResolution,
 } from '../engine/exportEngine';
 import type {
   ExportPreset,
@@ -368,17 +369,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           filename: item.resolvedFilename,
         });
 
-        // Determine resolution
-        let targetRes: number | undefined;
+        // Determine resolution target preserving aspect ratio (F-05)
+        let target: ExportTargetResolution = { mode: 'inherit' };
         const node = outputNodes.find((n) => n.id === item.nodeId);
         const nodeResOverride = (node?.data as any)?.resolutionOverride;
-        if (nodeResOverride && nodeResOverride !== 'inherit') {
-          targetRes = parseInt(nodeResOverride);
-        } else if (settings.masterResolution !== 'inherit') {
-          targetRes = parseInt(settings.masterResolution);
+        const resSetting = (nodeResOverride && nodeResOverride !== 'inherit') ? nodeResOverride : settings.masterResolution;
+        if (resSetting && resSetting !== 'inherit') {
+          const px = parseInt(resSetting, 10);
+          if (!Number.isNaN(px)) {
+            target = { mode: 'longEdge', px };
+          }
         }
 
-        const blob = await ExportEngine.encodeImageBlob(buf, item.format, targetRes);
+        const blob = await ExportEngine.encodeImageBlob(buf, item.format, target);
         generatedFiles.push({
           filename: item.resolvedFilename,
           blob,
