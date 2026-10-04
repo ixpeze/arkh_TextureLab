@@ -30,3 +30,11 @@ test-results/
 **/test-results/**
 playwright-report/
 **/playwright-report/**
+
+# Local secrets & tokens (never track or commit)
+.env
+.env.*
+*.token
+git_token.txt
+.git_credentials
+
