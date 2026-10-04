@@ -1,5 +1,6 @@
 import type { Edge, Node, Connection } from '@xyflow/react';
 import { PixelEngine, type TextureBuffer } from './pixelEngine';
+import { nodeRegistry, type NodeEvalContext } from '../nodes/registry';
 
 export interface HandleConnectionInfo {
   handleId: string;
@@ -93,19 +94,43 @@ export class GraphEvaluator {
         const nodeType = node.type || '';
         const data = node.data || {};
 
-        if (nodeType === 'textureInput') {
+        const regDef = nodeRegistry.get(nodeType);
+        if (regDef?.cpuRef) {
+          const ctx: NodeEvalContext = {
+            nodeId,
+            nodes,
+            edges,
+            sourceBuffers,
+            evaluateNode,
+            getInputBuffer: (handle?: string) => {
+              const edge = edges.find((e) => e.target === nodeId && (handle ? e.targetHandle === handle : true));
+              return edge ? evaluateNode(edge.source) : null;
+            },
+            getInputConnection: (handle?: string) => {
+              const edge = edges.find((e) => e.target === nodeId && (handle ? e.targetHandle === handle : true));
+              if (!edge) return null;
+              const buf = evaluateNode(edge.source);
+              return buf ? { buffer: buf, sourceHandle: edge.sourceHandle || 'rgba' } : null;
+            },
+            coerceUE5: (buf, srcHandle, dstHandle) =>
+              this.coerceUE5(buf, srcHandle, (dstHandle as any) || 'rgba'),
+          };
+
+          const inputs: Record<string, TextureBuffer | undefined> = {};
+          for (const port of regDef.inputs) {
+            const edge = edges.find(
+              (e) => e.target === nodeId && (e.targetHandle === port.id || (!e.targetHandle && regDef.inputs.length === 1))
+            );
+            if (edge) {
+              const b = evaluateNode(edge.source);
+              if (b) inputs[port.id] = b;
+            }
+          }
+
+          result = regDef.cpuRef(ctx, inputs, data);
+        } else if (nodeType === 'textureInput') {
           // Source buffer from upload or benchmark load
           result = sourceBuffers[nodeId] || null;
-        } else if (nodeType === 'constantScalar') {
-          const rawVal = typeof data.value === 'number' && !isNaN(data.value) ? data.value : 1.0;
-          const val = Math.max(0, Math.min(1, rawVal));
-          const byteVal = Math.min(255, Math.max(0, Math.round(val * 255)));
-          result = PixelEngine.createSolid(1, 1, byteVal, byteVal, byteVal, 255);
-        } else if (nodeType === 'constantColor' || nodeType === 'color') {
-          const rawHex = typeof data.color === 'string' ? data.color : '#ffffff';
-          const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(rawHex) ? rawHex : '#ffffff';
-          const rgb = this.hexToRgb(hex);
-          result = PixelEngine.createSolid(1, 1, rgb.r, rgb.g, rgb.b, 255);
         } else if (nodeType === 'channelCombiner' || nodeType === 'channelPack') {
           // Inputs: r, g, b, a; each defaults to 0 (UE5 standard)
           const rEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
@@ -726,18 +751,5 @@ export class GraphEvaluator {
     };
 
     return traceNode(inEdge.source);
-  }
-
-  private static hexToRgb(hex: string): { r: number; g: number; b: number } {
-    let clean = hex.replace('#', '');
-    if (clean.length === 3) {
-      clean = clean.split('').map((c) => c + c).join('');
-    }
-    const num = parseInt(clean, 16);
-    return {
-      r: (num >> 16) & 255,
-      g: (num >> 8) & 255,
-      b: num & 255,
-    };
   }
 }

@@ -71,6 +71,7 @@ import { ShortcutsModal } from './components/ShortcutsModal';
 import { ExportModal } from './components/ExportModal';
 
 import { PixelEngine, type TextureBuffer } from './engine/pixelEngine';
+import { nodeRegistry } from './nodes/registry';
 import { LexicalNormalizer } from './engine/normalizer';
 import { NodeBufferContext } from './context/NodeBufferContext';
 import { GraphEvaluator } from './engine/graphEvaluator';
@@ -573,7 +574,10 @@ function Workbench() {
       }
 
       let newNode: Node;
-      if (typeKey === 'channelPack' || typeKey === 'channelCombiner') {
+      if (nodeRegistry.has(typeKey)) {
+        const { type: canonicalType, data: defaultData } = nodeRegistry.createNodeData(typeKey);
+        newNode = { id, type: canonicalType, position: pos, data: defaultData };
+      } else if (typeKey === 'channelPack' || typeKey === 'channelCombiner') {
         newNode = { id, type: 'channelPack', position: pos, data: { slot: 'ORM' } };
       } else if (typeKey === 'channelUnpack' || typeKey === 'channelSplitter') {
         newNode = { id, type: 'channelUnpack', position: pos, data: { channels: { r: 'R', g: 'G', b: 'B', a: 'A' } } };
