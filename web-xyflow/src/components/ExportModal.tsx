@@ -150,10 +150,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           ? d.formatOverride
           : settings.defaultFormat;
 
-      const bitDepth: TextureBitDepth =
-        d.bitDepthOverride && d.bitDepthOverride !== 'inherit'
-          ? d.bitDepthOverride
-          : settings.defaultBitDepth;
+      // Honest 16-bit (F-04, P1-A5): Force '8b' at export until true 16-bit engine is implemented
+      const bitDepth: TextureBitDepth = '8b';
 
       const colorSpace: TextureColorSpace =
         d.isColorSpaceOverridden && d.colorSpace

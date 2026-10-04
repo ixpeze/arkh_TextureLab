@@ -645,10 +645,17 @@ export const NodeCheckbox: React.FC<NodeCheckboxProps> = ({
 /* ========================================================================= */
 /* 5. NODE SELECT / DROPDOWN                                                */
 /* ========================================================================= */
+export interface NodeSelectOption {
+  label: string;
+  value: string;
+  disabled?: boolean;
+  title?: string;
+}
+
 export interface NodeSelectProps {
   label?: string;
   value: string;
-  options: { label: string; value: string }[];
+  options: (NodeSelectOption | { label: string; value: string })[];
   onChange: (value: string) => void;
 }
 
@@ -699,15 +706,24 @@ export const NodeSelect: React.FC<NodeSelectProps> = ({
             cursor: 'pointer',
           }}
         >
-          {options.map((opt) => (
-            <option
-              key={opt.value}
-              value={opt.value}
-              style={{ backgroundColor: '#151822', color: '#f8fafc' }}
-            >
-              {opt.label}
-            </option>
-          ))}
+          {options.map((opt) => {
+            const isOptionDisabled = 'disabled' in opt ? !!opt.disabled : false;
+            const optionTitle = 'title' in opt ? opt.title : undefined;
+            return (
+              <option
+                key={opt.value}
+                value={opt.value}
+                disabled={isOptionDisabled}
+                title={optionTitle}
+                style={{
+                  backgroundColor: '#151822',
+                  color: isOptionDisabled ? '#64748b' : '#f8fafc',
+                }}
+              >
+                {opt.label}
+              </option>
+            );
+          })}
         </select>
         <ChevronDown
           size={10}

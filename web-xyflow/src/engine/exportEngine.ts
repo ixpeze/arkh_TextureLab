@@ -294,8 +294,8 @@ export class ExportEngine {
     // Helper to resolve standard item attributes
     const formatFromNode = (d: any): TextureExportFormat =>
       d.formatOverride && d.formatOverride !== 'inherit' ? d.formatOverride : settings.defaultFormat;
-    const bitDepthFromNode = (d: any): TextureBitDepth =>
-      d.bitDepthOverride && d.bitDepthOverride !== 'inherit' ? d.bitDepthOverride : settings.defaultBitDepth;
+    // Honest 16-bit (F-04, P1-A5): Force '8b' at export until true 16-bit pipeline arrives in Phase 4
+    const bitDepthFromNode = (_d: any): TextureBitDepth => '8b';
     const colorSpaceFromNode = (d: any, autoCs: TextureColorSpace = 'linear'): TextureColorSpace =>
       d.isColorSpaceOverridden && d.colorSpace ? d.colorSpace : (d.autoDetectedColorSpace || d.colorSpace || autoCs);
     const resFromNode = (d: any, buf?: TextureBuffer): string => {
@@ -510,7 +510,7 @@ export class ExportEngine {
           if (texItem.isExcluded) continue;
           const slot = texItem.canonicalSuffix || texItem.mapType.toUpperCase();
           const format = (d.format as TextureExportFormat) || settings.defaultFormat;
-          const bitDepth = (d.bitDepth as TextureBitDepth) || settings.defaultBitDepth;
+          const bitDepth: TextureBitDepth = '8b';
           const colorSpace = texItem.mapType === 'base_color' ? 'sRGB' : 'linear';
           const resLabel = settings.masterResolution !== 'inherit' ? `${Math.round(parseInt(settings.masterResolution) / 1024)}K` : '4K';
 
