@@ -75,6 +75,7 @@ import { LexicalNormalizer } from './engine/normalizer';
 import { NodeBufferContext } from './context/NodeBufferContext';
 import { GraphEvaluator } from './engine/graphEvaluator';
 import { graphContentHash } from './graph/hash';
+import { useHotkeys, type KeyBinding } from './features/hotkeys/hotkeys';
 
 const SAMPLE_BASE = import.meta.env.DEV ? '/samples/4k' : '/samples/1k';
 
@@ -889,167 +890,181 @@ function Workbench() {
 
 
 
-  // Keyboard navigation & hotkeys
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore typing in inputs, textareas, or selects
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-        return;
-      }
+  // Declarative hotkey table with modifier and modal guards (F-09)
+  const hotkeyBindings: KeyBinding[] = useMemo(
+    () => [
+      {
+        id: 'undo',
+        chord: 'ctrl+z',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleUndo();
+        },
+      },
+      {
+        id: 'redo-y',
+        chord: 'ctrl+y',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleRedo();
+        },
+      },
+      {
+        id: 'redo-shift-z',
+        chord: 'ctrl+shift+z',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleRedo();
+        },
+      },
+      {
+        id: 'tab-palette',
+        chord: 'tab',
+        handler: (e) => {
+          e.preventDefault?.();
+          setPalettePos((prev) => {
+            if (prev) return null;
+            const mouseX = canvasMousePosRef.current?.x ?? window.innerWidth / 2;
+            const mouseY = canvasMousePosRef.current?.y ?? window.innerHeight / 2;
+            return { x: mouseX, y: mouseY };
+          });
+        },
+      },
+      {
+        id: 'fit-view',
+        chord: 'f',
+        handler: () => {
+          fitView({ duration: 300 });
+        },
+      },
+      {
+        id: 'shortcuts-modal',
+        chord: '?',
+        handler: (e) => {
+          e.preventDefault?.();
+          setIsShortcutsOpen((prev) => !prev);
+        },
+      },
+      {
+        id: 'export-modal',
+        chord: 'ctrl+e',
+        handler: (e) => {
+          e.preventDefault?.();
+          setIsExportModalOpen((prev) => !prev);
+        },
+      },
+      {
+        id: 'autowire',
+        chord: 'w',
+        handler: () => {
+          autoWireORMH();
+        },
+      },
+      {
+        id: 'comment-box',
+        chord: 'c',
+        handler: () => {
+          spawnCommentBox();
+        },
+      },
+      {
+        id: 'toggle-bypass',
+        chord: 'd',
+        handler: () => {
+          toggleBypassSelected();
+        },
+      },
+      {
+        id: 'duplicate-nodes',
+        chord: 'ctrl+d',
+        handler: (e) => {
+          e.preventDefault?.();
+          pushSnapshot();
+          setNodes((nds) => {
+            const selectedNodes = nds.filter((n) => n.selected || n.id === activeNodeId);
+            if (selectedNodes.length === 0) return nds;
+            const duplicates = selectedNodes.map((n, i) => ({
+              ...n,
+              id: `node_${Date.now()}_${i}`,
+              selected: true,
+              position: { x: n.position.x + 40, y: n.position.y + 40 },
+            }));
+            setStatusMessage(`Duplicated ${duplicates.length} node(s)`);
+            return [...nds.map((n) => ({ ...n, selected: false })), ...duplicates];
+          });
+        },
+      },
+      {
+        id: 'select-all',
+        chord: 'ctrl+a',
+        handler: (e) => {
+          e.preventDefault?.();
+          setNodes((nds) => {
+            setStatusMessage(`Selected all ${nds.length} nodes`);
+            return nds.map((n) => ({ ...n, selected: true }));
+          });
+        },
+      },
+      {
+        id: 'delete',
+        chord: 'delete',
+        handler: () => {
+          pushSnapshot();
+          setNodes((nds) => {
+            const toDelete = nds.filter((n) => n.selected || n.id === activeNodeId);
+            if (toDelete.length === 0) return nds;
+            const idsToDelete = new Set(toDelete.map((n) => n.id));
+            setEdges((eds) => eds.filter((ed) => !idsToDelete.has(ed.source) && !idsToDelete.has(ed.target)));
+            setStatusMessage(`Deleted ${toDelete.length} node(s)`);
+            return nds.filter((n) => !idsToDelete.has(n.id));
+          });
+          setActiveNodeId(null);
+        },
+      },
+      {
+        id: 'backspace',
+        chord: 'backspace',
+        handler: () => {
+          pushSnapshot();
+          setNodes((nds) => {
+            const toDelete = nds.filter((n) => n.selected || n.id === activeNodeId);
+            if (toDelete.length === 0) return nds;
+            const idsToDelete = new Set(toDelete.map((n) => n.id));
+            setEdges((eds) => eds.filter((ed) => !idsToDelete.has(ed.source) && !idsToDelete.has(ed.target)));
+            setStatusMessage(`Deleted ${toDelete.length} node(s)`);
+            return nds.filter((n) => !idsToDelete.has(n.id));
+          });
+          setActiveNodeId(null);
+        },
+      },
+      // Spawn hotkeys: fire strictly without modifiers
+      { id: 'spawn-tex-input', chord: 't', handler: () => spawnNode('textureInput') },
+      { id: 'spawn-scalar', chord: '1', handler: () => spawnNode('constantScalar') },
+      { id: 'spawn-color', chord: '3', handler: () => spawnNode('constantColor') },
+      { id: 'spawn-combiner', chord: 'm', handler: () => spawnNode('channelCombiner') },
+      { id: 'spawn-splitter', chord: 's', handler: () => spawnNode('channelSplitter') },
+      { id: 'spawn-invert', chord: 'i', handler: () => spawnNode('invert') },
+      { id: 'spawn-levels', chord: 'l', handler: () => spawnNode('levels') },
+      { id: 'spawn-normal-flip', chord: 'n', handler: () => spawnNode('normalFlip') },
+      { id: 'spawn-output', chord: 'o', handler: () => spawnNode('textureOutput') },
+      { id: 'spawn-blend', chord: 'b', handler: () => spawnNode('blend') },
+    ],
+    [
+      handleUndo,
+      handleRedo,
+      fitView,
+      autoWireORMH,
+      spawnCommentBox,
+      toggleBypassSelected,
+      pushSnapshot,
+      setNodes,
+      setEdges,
+      activeNodeId,
+      spawnNode,
+    ]
+  );
 
-      // Ctrl + Z: Undo
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z') && !e.shiftKey) {
-        e.preventDefault();
-        handleUndo();
-        return;
-      }
-
-      // Ctrl + Y or Ctrl + Shift + Z: Redo
-      if (
-        ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) ||
-        ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'z' || e.key === 'Z'))
-      ) {
-        e.preventDefault();
-        handleRedo();
-        return;
-      }
-
-      // Tab: Toggle Quick Spawn Palette at mouse cursor
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        setPalettePos((prev) => {
-          if (prev) return null;
-          const mouseX = canvasMousePosRef.current?.x ?? window.innerWidth / 2;
-          const mouseY = canvasMousePosRef.current?.y ?? window.innerHeight / 2;
-          return { x: mouseX, y: mouseY };
-        });
-        return;
-      }
-
-      // 'F' Key: Focus Extents
-      if (e.key === 'f' || e.key === 'F') {
-        fitView({ duration: 300 });
-        return;
-      }
-
-      // '?' or Shift + '/': Toggle Shortcuts Cheatsheet Modal
-      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
-        e.preventDefault();
-        setIsShortcutsOpen((prev) => !prev);
-        return;
-      }
-
-      // Ctrl + E: Toggle Export Textures Hub Modal
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'e' || e.key === 'E')) {
-        e.preventDefault();
-        setIsExportModalOpen((prev) => !prev);
-        return;
-      }
-
-      // 'W': Auto-wire PBR channels to ORMH Combiner
-      if (e.key === 'w' || e.key === 'W') {
-        autoWireORMH();
-        return;
-      }
-
-      // 'C': Group selected nodes into Comment Box (or spawn at cursor)
-      if ((e.key === 'c' || e.key === 'C') && !e.ctrlKey && !e.metaKey) {
-        spawnCommentBox();
-        return;
-      }
-
-      // 'D': Toggle Bypass / Mute on selected node (without Ctrl)
-      if ((e.key === 'd' || e.key === 'D') && !e.ctrlKey && !e.metaKey) {
-        toggleBypassSelected();
-        return;
-      }
-
-      // Ctrl + D: Duplicate selected node(s)
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'd' || e.key === 'D')) {
-        e.preventDefault();
-        pushSnapshot();
-        setNodes((nds) => {
-          const selectedNodes = nds.filter((n) => n.selected || n.id === activeNodeId);
-          if (selectedNodes.length === 0) return nds;
-          const duplicates = selectedNodes.map((n, i) => ({
-            ...n,
-            id: `node_${Date.now()}_${i}`,
-            selected: true,
-            position: { x: n.position.x + 40, y: n.position.y + 40 },
-          }));
-          setStatusMessage(`Duplicated ${duplicates.length} node(s)`);
-          return [
-            ...nds.map((n) => ({ ...n, selected: false })),
-            ...duplicates,
-          ];
-        });
-        return;
-      }
-
-      // Ctrl + A: Select all nodes
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) {
-        e.preventDefault();
-        setNodes((nds) => {
-          setStatusMessage(`Selected all ${nds.length} nodes`);
-          return nds.map((n) => ({ ...n, selected: true }));
-        });
-        return;
-      }
-
-      // Delete / Backspace: Delete selected node(s) and connected wires
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        pushSnapshot();
-        setNodes((nds) => {
-          const toDelete = nds.filter((n) => n.selected || n.id === activeNodeId);
-          if (toDelete.length === 0) return nds;
-          const idsToDelete = new Set(toDelete.map((n) => n.id));
-          setEdges((eds) => eds.filter((ed) => !idsToDelete.has(ed.source) && !idsToDelete.has(ed.target)));
-          setStatusMessage(`Deleted ${toDelete.length} node(s)`);
-          return nds.filter((n) => !idsToDelete.has(n.id));
-        });
-        setActiveNodeId(null);
-        return;
-      }
-
-      // Hotkey spawning (relative to mouse pointer via spawnNode)
-      if (e.key === 't' || e.key === 'T') {
-        spawnNode('textureInput');
-      } else if (e.key === '1') {
-        spawnNode('constantScalar');
-      } else if (e.key === '3') {
-        spawnNode('constantColor');
-      } else if (e.key === 'm' || e.key === 'M') {
-        spawnNode('channelCombiner');
-      } else if (e.key === 's' || e.key === 'S') {
-        spawnNode('channelSplitter');
-      } else if (e.key === 'i' || e.key === 'I') {
-        spawnNode('invert');
-      } else if (e.key === 'l' || e.key === 'L') {
-        spawnNode('levels');
-      } else if (e.key === 'n' || e.key === 'N') {
-        spawnNode('normalFlip');
-      } else if (e.key === 'o' || e.key === 'O') {
-        spawnNode('textureOutput');
-      } else if (e.key === 'b' || e.key === 'B') {
-        spawnNode('blend');
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    fitView,
-    spawnNode,
-    spawnCommentBox,
-    toggleBypassSelected,
-    handleUndo,
-    handleRedo,
-    activeNodeId,
-    autoWireORMH,
-    pushSnapshot,
-    setEdges,
-    setNodes,
-  ]);
+  useHotkeys(hotkeyBindings, { isModalOpen: isShortcutsOpen || isExportModalOpen });
 
   // Drag over handler for canvas
   const handleDragOver = useCallback((e: React.DragEvent) => {
