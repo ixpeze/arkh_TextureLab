@@ -202,23 +202,6 @@ export class GraphEvaluator {
           result = data.isBypassed && bufA
             ? bufA
             : PixelEngine.applyMath(op, bufA, bufB, bufAlpha, scalarA, scalarB, param1, param2);
-        } else if (nodeType === 'levels') {
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              const ch = (data.channel as 'all' | 'r' | 'g' | 'b' | 'a') || 'all';
-              const bp = typeof data.blackPoint === 'number' && !isNaN(data.blackPoint) ? Math.max(0, Math.min(255, data.blackPoint)) : 0;
-              const wp = typeof data.whitePoint === 'number' && !isNaN(data.whitePoint) ? Math.max(0, Math.min(255, data.whitePoint)) : 255;
-              const gm = typeof data.gamma === 'number' && !isNaN(data.gamma) ? Math.max(0.01, Math.min(5.0, data.gamma)) : 1.0;
-              const ob = typeof data.outBlack === 'number' && !isNaN(data.outBlack) ? Math.max(0, Math.min(255, data.outBlack)) : 0;
-              const ow = typeof data.outWhite === 'number' && !isNaN(data.outWhite) ? Math.max(0, Math.min(255, data.outWhite)) : 255;
-
-              result = data.isBypassed
-                ? inBuf
-                : PixelEngine.applyLevelsChannel(inBuf, ch, bp, gm, wp, ob, ow);
-            }
-          }
         } else if (nodeType === 'resize') {
           const inEdge = edges.find((e) => e.target === nodeId);
           if (inEdge) {
