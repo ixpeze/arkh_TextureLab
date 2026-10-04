@@ -76,6 +76,7 @@ import { NodeBufferContext } from './context/NodeBufferContext';
 import { GraphEvaluator } from './engine/graphEvaluator';
 import { graphContentHash } from './graph/hash';
 import { useHotkeys, type KeyBinding } from './features/hotkeys/hotkeys';
+import { duplicateNodes, deleteNodes } from './app/graphActions';
 
 const SAMPLE_BASE = import.meta.env.DEV ? '/samples/4k' : '/samples/1k';
 
@@ -891,7 +892,7 @@ function Workbench() {
 
 
   // Declarative hotkey table with modifier and modal guards (F-09)
-  const hotkeyBindings: KeyBinding[] = useMemo(
+  const hotkeyBindings = useMemo<KeyBinding[]>(
     () => [
       {
         id: 'undo',
@@ -979,19 +980,13 @@ function Workbench() {
         chord: 'ctrl+d',
         handler: (e) => {
           e.preventDefault?.();
+          const selectedNodes = nodes.filter((n) => n.selected || n.id === activeNodeId);
+          if (selectedNodes.length === 0) return;
           pushSnapshot();
-          setNodes((nds) => {
-            const selectedNodes = nds.filter((n) => n.selected || n.id === activeNodeId);
-            if (selectedNodes.length === 0) return nds;
-            const duplicates = selectedNodes.map((n, i) => ({
-              ...n,
-              id: `node_${Date.now()}_${i}`,
-              selected: true,
-              position: { x: n.position.x + 40, y: n.position.y + 40 },
-            }));
-            setStatusMessage(`Duplicated ${duplicates.length} node(s)`);
-            return [...nds.map((n) => ({ ...n, selected: false })), ...duplicates];
-          });
+          const result = duplicateNodes(nodes, edges, selectedNodes.map((n) => n.id));
+          setNodes(result.nodes);
+          setEdges(result.edges);
+          setStatusMessage(`Duplicated ${result.newNodes.length} node(s)`);
         },
       },
       {
@@ -1009,15 +1004,13 @@ function Workbench() {
         id: 'delete',
         chord: 'delete',
         handler: () => {
+          const toDelete = nodes.filter((n) => n.selected || n.id === activeNodeId);
+          if (toDelete.length === 0) return;
           pushSnapshot();
-          setNodes((nds) => {
-            const toDelete = nds.filter((n) => n.selected || n.id === activeNodeId);
-            if (toDelete.length === 0) return nds;
-            const idsToDelete = new Set(toDelete.map((n) => n.id));
-            setEdges((eds) => eds.filter((ed) => !idsToDelete.has(ed.source) && !idsToDelete.has(ed.target)));
-            setStatusMessage(`Deleted ${toDelete.length} node(s)`);
-            return nds.filter((n) => !idsToDelete.has(n.id));
-          });
+          const result = deleteNodes(nodes, edges, toDelete.map((n) => n.id));
+          setNodes(result.nodes);
+          setEdges(result.edges);
+          setStatusMessage(`Deleted ${result.deletedNodeIds.length} node(s)`);
           setActiveNodeId(null);
         },
       },
@@ -1025,15 +1018,13 @@ function Workbench() {
         id: 'backspace',
         chord: 'backspace',
         handler: () => {
+          const toDelete = nodes.filter((n) => n.selected || n.id === activeNodeId);
+          if (toDelete.length === 0) return;
           pushSnapshot();
-          setNodes((nds) => {
-            const toDelete = nds.filter((n) => n.selected || n.id === activeNodeId);
-            if (toDelete.length === 0) return nds;
-            const idsToDelete = new Set(toDelete.map((n) => n.id));
-            setEdges((eds) => eds.filter((ed) => !idsToDelete.has(ed.source) && !idsToDelete.has(ed.target)));
-            setStatusMessage(`Deleted ${toDelete.length} node(s)`);
-            return nds.filter((n) => !idsToDelete.has(n.id));
-          });
+          const result = deleteNodes(nodes, edges, toDelete.map((n) => n.id));
+          setNodes(result.nodes);
+          setEdges(result.edges);
+          setStatusMessage(`Deleted ${result.deletedNodeIds.length} node(s)`);
           setActiveNodeId(null);
         },
       },
@@ -1050,6 +1041,8 @@ function Workbench() {
       { id: 'spawn-blend', chord: 'b', handler: () => spawnNode('blend') },
     ],
     [
+      nodes,
+      edges,
       handleUndo,
       handleRedo,
       fitView,
