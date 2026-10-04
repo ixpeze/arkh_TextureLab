@@ -345,20 +345,6 @@ export class GraphEvaluator {
           } else if (bufBase) {
             result = bufBase;
           }
-        } else if (nodeType === 'textureOutput') {
-          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              const srcHandle = inEdge.sourceHandle || 'rgba';
-              let coerced = this.coerceUE5(inBuf, srcHandle, 'rgba');
-              if (coerced && coerced.width === 1 && coerced.height === 1) {
-                // If alone at output: expand lazily to 512
-                coerced = PixelEngine.createSolid(512, 512, coerced.data[0], coerced.data[1], coerced.data[2], coerced.data[3]);
-              }
-              result = coerced;
-            }
-          }
         }
       } finally {
         visiting.delete(nodeId);
