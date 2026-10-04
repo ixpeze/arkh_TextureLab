@@ -5,6 +5,14 @@
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }],
     "typescript/no-explicit-any": "warn",
-    "max-lines": ["warn", 400]
-  }
+    "max-lines": ["error", 400]
+  },
+  "overrides": [
+    {
+      "files": ["src/engine/pixelEngine.ts", "src/engine/pixelWorker.ts"],
+      "rules": {
+        "max-lines": "off"
+      }
+    }
+  ]
 }
