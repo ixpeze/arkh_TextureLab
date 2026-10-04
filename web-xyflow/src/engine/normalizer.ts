@@ -24,6 +24,23 @@ export interface NormalizedTextureMeta {
   channels: PBRChannelMapping;
 }
 
+export interface TextureBatchItem {
+  id: string;
+  originalName: string;
+  originalPath: string;
+  newName: string;
+  cleanStem: string;
+  mapType: string;
+  suffix: string;
+  orientation: 'gl' | 'dx' | null;
+  variantNum: number | null;
+  action: 'keep_rename' | 'flip_gl' | 'delete_gl' | 'delete_variant' | 'delete_type_dup' | 'delete_dupe';
+  status: string;
+  mtime: number;
+  buffer?: unknown;
+  dataUrl?: string;
+}
+
 export const PBR_ROLE_DEFINITIONS: Record<string, {
   label: string;
   color: string;
@@ -539,26 +556,11 @@ export class LexicalNormalizer {
    * Group scanned files into cohesive Texture Sets and apply TextureLAB cleanup rules.
    */
   public static processTextureBatch(
-    files: { name: string; path?: string; mtime?: number; buffer?: any; dataUrl?: string }[],
+    files: { name: string; path?: string; mtime?: number; buffer?: unknown; dataUrl?: string }[],
     options: { cleanup?: boolean; flipGreenOnGL?: boolean } = { cleanup: true, flipGreenOnGL: true }
   ): {
-    items: Array<{
-      id: string;
-      originalName: string;
-      originalPath: string;
-      newName: string;
-      cleanStem: string;
-      mapType: string;
-      suffix: string;
-      orientation: 'gl' | 'dx' | null;
-      variantNum: number | null;
-      action: 'keep_rename' | 'flip_gl' | 'delete_gl' | 'delete_variant' | 'delete_type_dup' | 'delete_dupe';
-      status: string;
-      mtime: number;
-      buffer?: any;
-      dataUrl?: string;
-    }>;
-    sets: Record<string, any[]>;
+    items: TextureBatchItem[];
+    sets: Record<string, TextureBatchItem[]>;
   } {
     const rawEntries = files.map((f, idx) => {
       const dot = f.name.lastIndexOf('.');
@@ -695,8 +697,8 @@ export class LexicalNormalizer {
     };
   }
 
-  private static groupEntriesIntoSets(entries: any[]): Record<string, any[]> {
-    const sets: Record<string, any[]> = {};
+  private static groupEntriesIntoSets(entries: TextureBatchItem[]): Record<string, TextureBatchItem[]> {
+    const sets: Record<string, TextureBatchItem[]> = {};
     for (const e of entries) {
       const setName = e.cleanStem || 'DefaultSet';
       sets[setName] = sets[setName] || [];

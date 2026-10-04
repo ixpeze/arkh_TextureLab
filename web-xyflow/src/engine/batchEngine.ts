@@ -52,7 +52,7 @@ export class BatchEngine {
     for (const file of fileList) {
       const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
       if (exts.has(ext)) {
-        const fullPath = (file as any).webkitRelativePath || file.name;
+        const fullPath = file.webkitRelativePath || file.name;
         validFiles.push({
           name: file.name,
           path: fullPath,
@@ -139,8 +139,9 @@ export class BatchEngine {
       try {
         const outBuf = await processFn(item, i);
         results.push({ item, outputBuffer: outBuf });
-      } catch (err: any) {
-        errors.push({ item: item.filename, error: err?.message || String(err) });
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        errors.push({ item: item.filename, error: errorMsg });
         results.push({ item, outputBuffer: null });
       }
     }

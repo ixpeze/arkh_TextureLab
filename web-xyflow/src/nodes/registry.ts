@@ -51,6 +51,8 @@ export interface NodeEvalContext {
   ) => TextureBuffer;
 }
 
+export type NodeParams<T = Record<string, unknown>> = T;
+
 export interface NodeDef<P = Record<string, unknown>> {
   type: string;
   label: string;
@@ -69,6 +71,7 @@ export interface NodeDef<P = Record<string, unknown>> {
     inputs: Record<string, TextureBuffer | undefined>,
     params: P
   ) => TextureBuffer | null;
+  // oxlint-disable-next-line typescript/no-explicit-any
   body?: ComponentType<NodeProps<any>>;
 }
 

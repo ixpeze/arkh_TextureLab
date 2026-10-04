@@ -19,11 +19,22 @@ export interface HistogramData {
   maxCount: number;
 }
 
+export interface WorkerResponsePayload {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+  histogram?: HistogramData;
+  min?: number;
+  max?: number;
+  avg?: number;
+  error?: string;
+}
+
 export class PixelEngine {
   private static offscreenCanvas: HTMLCanvasElement | null = null;
   private static offscreenCtx: CanvasRenderingContext2D | null = null;
   private static worker: Worker | null = null;
-  private static workerCallbacks = new Map<number, (res: any) => void>();
+  private static workerCallbacks = new Map<number, (res: WorkerResponsePayload) => void>();
   private static workerReqId = 0;
 
   private static getContext(width: number, height: number): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
@@ -456,7 +467,10 @@ export class PixelEngine {
     targetDim?: number,
     fallbacks?: { r?: number; g?: number; b?: number; a?: number }
   ): TextureBuffer {
-    const unpack = (input?: any, defaultCh = 0): { buf?: TextureBuffer; ch: number } => {
+    const unpack = (
+      input?: TextureBuffer | { buffer?: TextureBuffer; channel?: number },
+      defaultCh = 0
+    ): { buf?: TextureBuffer; ch: number } => {
       if (!input) return { ch: defaultCh };
       if ('data' in input) return { buf: input, ch: defaultCh };
       return { buf: input.buffer, ch: input.channel ?? defaultCh };

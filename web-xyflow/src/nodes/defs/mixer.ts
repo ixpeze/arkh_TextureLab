@@ -50,7 +50,9 @@ export const channelMixerDef: NodeDef<ChannelMixerParams> = defineNode<ChannelMi
     const gSrc = (params.gSrc as string) || 'g';
     const bSrc = (params.bSrc as string) || 'b';
     const aSrc = (params.aSrc as string) || 'a';
-    const routes = params.routes as any;
+    const routes = params.routes as
+      | Record<string, { sources: string[]; combineOp?: string; modifier?: string; modifierVal?: number }>
+      | undefined;
     const scalarSlots = (params.scalarSlots as { id: string; value: number }[]) || [];
     const scalarValues: Record<string, number> = {};
     for (const s of scalarSlots) {

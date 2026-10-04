@@ -150,7 +150,7 @@ export type WorkerMessage =
   | WorkerUpscalePayload;
 
 const workerScope = self as unknown as {
-  postMessage: (msg: any, transfer?: Transferable[]) => void;
+  postMessage: (msg: unknown, transfer?: Transferable[]) => void;
   onmessage: ((e: MessageEvent<WorkerMessage>) => void) | null;
 };
 

@@ -105,7 +105,7 @@ export class GraphEvaluator {
               return buf ? { buffer: buf, sourceHandle: edge.sourceHandle || 'rgba' } : null;
             },
             coerceUE5: (buf, srcHandle, dstHandle) =>
-              this.coerceUE5(buf, srcHandle, (dstHandle as any) || 'rgba'),
+              this.coerceUE5(buf, srcHandle, (dstHandle as 'rgba' | 'rgb' | 'scalar' | 'r' | 'g' | 'b' | 'a') || 'rgba'),
           };
 
           const inputs: Record<string, TextureBuffer | undefined> = {};

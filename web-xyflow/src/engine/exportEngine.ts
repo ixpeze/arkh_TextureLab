@@ -18,6 +18,7 @@ import type {
 } from '../types/export';
 import { BatchEngine } from './batchEngine';
 import { autoDetectOutputRole } from '../graph/introspect';
+import type { Node, Edge } from '@xyflow/react';
 
 export type ExportTargetResolution =
   | { mode: 'inherit' }
@@ -271,8 +272,8 @@ export class ExportEngine {
    * routing nodes (Pack, Unpack, Mixer), and BatchExport nodes with replacement rules and collision handling.
    */
   public static buildPreflightRegistry(
-    nodes: any[],
-    edges: any[],
+    nodes: Node[],
+    edges: Edge[],
     evaluatedBuffers: Record<string, TextureBuffer>,
     settings: GlobalExportSettings,
     pattern: string,
@@ -292,14 +293,16 @@ export class ExportEngine {
     const items: PreflightOutputItem[] = [];
 
     // Helper to resolve standard item attributes
-    const formatFromNode = (d: any): TextureExportFormat =>
-      d.formatOverride && d.formatOverride !== 'inherit' ? d.formatOverride : settings.defaultFormat;
+    const formatFromNode = (d: Record<string, unknown>): TextureExportFormat =>
+      (typeof d.formatOverride === 'string' && d.formatOverride !== 'inherit') ? (d.formatOverride as TextureExportFormat) : settings.defaultFormat;
     // Honest 16-bit (F-04, P1-A5): Force '8b' at export until true 16-bit pipeline arrives in Phase 4
-    const bitDepthFromNode = (_d: any): TextureBitDepth => '8b';
-    const colorSpaceFromNode = (d: any, autoCs: TextureColorSpace = 'linear'): TextureColorSpace =>
-      d.isColorSpaceOverridden && d.colorSpace ? d.colorSpace : (d.autoDetectedColorSpace || d.colorSpace || autoCs);
-    const resFromNode = (d: any, buf?: TextureBuffer): string => {
-      if (d.resolutionOverride && d.resolutionOverride !== 'inherit') {
+    const bitDepthFromNode = (_d: Record<string, unknown>): TextureBitDepth => '8b';
+    const colorSpaceFromNode = (d: Record<string, unknown>, autoCs: TextureColorSpace = 'linear'): TextureColorSpace =>
+      (d.isColorSpaceOverridden && typeof d.colorSpace === 'string')
+        ? (d.colorSpace as TextureColorSpace)
+        : ((d.autoDetectedColorSpace as TextureColorSpace) || (d.colorSpace as TextureColorSpace) || autoCs);
+    const resFromNode = (d: Record<string, unknown>, buf?: TextureBuffer): string => {
+      if (typeof d.resolutionOverride === 'string' && d.resolutionOverride !== 'inherit') {
         return `${Math.round(parseInt(d.resolutionOverride) / 1024)}K`;
       }
       if (settings.masterResolution !== 'inherit') {
@@ -320,9 +323,9 @@ export class ExportEngine {
       const buf = evaluatedBuffers[n.id];
       const autoInfo = isConnected ? autoDetectOutputRole(n.id, nodes, edges) : null;
 
-      const slot = (d.slot && typeof d.slot === 'string' && d.slot.trim() !== '')
+      const slot = (typeof d.slot === 'string' && d.slot.trim() !== '')
         ? d.slot
-        : (autoInfo?.slot || d.autoDetectedSlot || 'ORM');
+        : (autoInfo?.slot || (typeof d.autoDetectedSlot === 'string' ? d.autoDetectedSlot : 'ORM'));
       const format = formatFromNode(d);
       const bitDepth = bitDepthFromNode(d);
       const colorSpace = colorSpaceFromNode(d, autoInfo?.colorSpace || 'linear');
@@ -342,7 +345,7 @@ export class ExportEngine {
 
       items.push({
         nodeId: n.id,
-        title: d.title || 'Texture Output',
+        title: typeof d.title === 'string' ? d.title : 'Texture Output',
         slot,
         isSlotOverridden: !!d.isSlotOverridden,
         isConnected,
@@ -367,7 +370,7 @@ export class ExportEngine {
         const d = n.data || {};
         const buf = evaluatedBuffers[n.id];
         const isConnected = edges.some((e) => e.target === n.id);
-        const slot = d.slot || 'ORM';
+        const slot = (typeof d.slot === 'string' && d.slot) ? d.slot : 'ORM';
         const format = formatFromNode(d);
         const bitDepth = bitDepthFromNode(d);
         const colorSpace: TextureColorSpace = 'linear';
@@ -456,14 +459,14 @@ export class ExportEngine {
     const mixerNodes = nodes.filter((n) => n.type === 'channelMixer' || n.type === 'channelSwizzle');
     for (const n of mixerNodes) {
       const d = n.data || {};
-      const registeredOutputs: string[] = d.exportOutputs || ['rgba'];
+      const registeredOutputs: string[] = Array.isArray(d.exportOutputs) ? (d.exportOutputs as string[]) : ['rgba'];
       const buf = evaluatedBuffers[n.id];
       const isConnected = edges.some((e) => e.target === n.id);
 
       for (const outKey of registeredOutputs) {
         const srcKey = `${n.id}:${outKey}`;
         if (!consumedOutputs.has(srcKey)) {
-          const slot = d.slot || outKey.toUpperCase();
+          const slot = (typeof d.slot === 'string' && d.slot) ? d.slot : outKey.toUpperCase();
           const format = formatFromNode(d);
           const bitDepth = bitDepthFromNode(d);
           const colorSpace: TextureColorSpace = 'linear';
@@ -503,8 +506,8 @@ export class ExportEngine {
     const batchNodes = nodes.filter((n) => n.type === 'batchExport');
     for (const n of batchNodes) {
       const d = n.data || {};
-      const colId = d.collectionId;
-      const collection = batchCollections?.[colId] || (d.collection as TextureCollection);
+      const colId = typeof d.collectionId === 'string' ? d.collectionId : '';
+      const collection = (colId && batchCollections ? batchCollections[colId] : undefined) || (d.collection as TextureCollection);
       if (collection && collection.items) {
         for (const texItem of collection.items) {
           if (texItem.isExcluded) continue;
@@ -514,7 +517,8 @@ export class ExportEngine {
           const colorSpace = texItem.mapType === 'base_color' ? 'sRGB' : 'linear';
           const resLabel = settings.masterResolution !== 'inherit' ? `${Math.round(parseInt(settings.masterResolution) / 1024)}K` : '4K';
 
-          const resolvedFilename = this.resolveFilename(d.pattern || pattern, {
+          const pat = (typeof d.pattern === 'string' && d.pattern) ? d.pattern : pattern;
+          const resolvedFilename = this.resolveFilename(pat, {
             project: settings.projectName,
             asset: texItem.setName || settings.assetName,
             slot,
@@ -851,7 +855,7 @@ export class ExportEngine {
     eocdView.setUint16(20, 0, true); // Comment length
     parts.push(eocd);
 
-    return new Blob(parts as any, { type: 'application/zip' });
+    return new Blob(parts as BlobPart[], { type: 'application/zip' });
   }
 
   private static computeCRC32(data: Uint8Array): number {
@@ -870,12 +874,14 @@ export class ExportEngine {
     return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
   }
 
-  public static async pickDirectory(): Promise<any | null> {
+  public static async pickDirectory(): Promise<FileSystemDirectoryHandle | null> {
     if (!this.isDirectoryPickerSupported()) return null;
     try {
-      return await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-    } catch (err: any) {
-      if (err.name === 'AbortError') return null;
+      const picker = (window as unknown as { showDirectoryPicker?: (opts: { mode: string }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker;
+      if (!picker) return null;
+      return await picker({ mode: 'readwrite' });
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') return null;
       console.warn('Directory Picker rejected:', err);
       return null;
     }
@@ -883,7 +889,7 @@ export class ExportEngine {
 
   public static async exportToDirectory(
     files: { filename: string; blob: Blob }[],
-    dirHandle: any
+    dirHandle: FileSystemDirectoryHandle
   ): Promise<void> {
     for (const f of files) {
       const parts = f.filename.split('/').filter(Boolean);
