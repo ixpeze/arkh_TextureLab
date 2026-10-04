@@ -63,13 +63,13 @@ OUT: any engine rewrite, UI change, Electron.
 
 ## Exit criteria
 
-- [ ] `dist/` < 5 MB, recorded in BASELINE_METRICS.
-- [ ] App launches without loading any 4K data.
-- [ ] `perf-baseline.json` committed.
-- [ ] TC-004 proves F-01 (or documents that it could not be reproduced, with data).
-- [ ] >= 40 golden CPU cases committed.
-- [ ] `npm test`, `npm run lint`, `npm run build` green.
-- [ ] Status tracker + Handoff notes updated in `00_README_START_HERE.md`.
+- [x] `dist/` < 5 MB, recorded in BASELINE_METRICS. (Measured: 1.55 MB, -99.26% reduction)
+- [x] App launches without loading any 4K data. (Verified: startup useEffect deleted, idle heap 8.58 MB)
+- [x] `perf-baseline.json` committed. (Generated via Playwright Chromium harness)
+- [x] TC-004 proves F-01 (or documents that it could not be reproduced, with data). (Empirically proven: 3,059/4,096 corrupted pixels, max delta 247)
+- [x] >= 40 golden CPU cases committed. (58 fixtures generated, 59 tests in golden.test.ts passing, 76 total tests)
+- [x] `npm test`, `npm run lint`, `npm run build` green. (All 3 commands green)
+- [x] Status tracker + Handoff notes updated in `00_README_START_HERE.md`.
 
 ## Risks
 
@@ -81,5 +81,64 @@ OUT: any engine rewrite, UI change, Electron.
 ## Evidence log (agents fill in)
 
 ```
-date / agent / command / output summary
+2026-10-04 | Agent | git tag pre-roadmap-baseline
+Output: Tag pre-roadmap-baseline created at commit 41d6122 and force-pushed to origin after history rewrite.
+
+2026-10-04 | Agent | (Get-ChildItem dist -Recurse -File | Measure-Object Length -Sum).Sum / 1MB
+Output: 1.5466 MB (< 5 MB target met; baseline was 208.59 MB, -99.26% diet).
+
+2026-10-04 | Agent | git ls-files | ForEach-Object { (Get-Item $_).Length } | Measure-Object -Sum
+Output: Tracked file size dropped from 364.99 MB to 1.53 MB (-363.46 MB drop, > 300 MB target met).
+
+2026-10-04 | Agent | python -c "downscale samples/4k to samples/1k"
+Output: Total samples/1k size: 5.03 MB (<= 6 MB target met, 7 PBR concrete maps downscaled to 1024x1024).
+
+2026-10-04 | Agent | grep_search dead template assets & duplicate fonts
+Output: 0 references found for hero.png, react.svg, vite.svg, icons.svg, assets/fonts. Files deleted.
+
+2026-10-04 | Agent | npm run perf (node scripts/perf/measure.mjs)
+Output:
+  Time to First Contentful Paint: 228 ms
+  Idle JS Heap Size: 8.58 MB
+  Post-Benchmark JS Heap Size: 41.98 MB (delta +33.4 MB)
+  Slider Drag Long Tasks (>50ms): 0 (0.0 ms duration)
+  Saved to docs/roadmap/perf-baseline.json.
+
+2026-10-04 | Agent | npm run test:e2e (playwright test src/__tests__/e2e/alpha-roundtrip.spec.ts)
+Output:
+  Total pixels tested: 4096
+  putImageData -> getImageData corrupted pixels: 3059 (74.7%)
+  Max delta (putImageData): 247
+  toBlob -> decode corrupted pixels: 3059 (74.7%)
+  Max delta (toBlob): 247
+  Zero-alpha total RGB erasure count: 16
+  Test 1 passed (corruption proven); Test 2 xfail passed.
+
+2026-10-04 | Agent | npm test (vitest run --exclude '**/e2e/**')
+Output:
+  Test Files  2 passed (2)
+  Tests       76 passed (76)  [17 pipeline + 59 golden oracle cases]
+  Duration    386ms
+
+2026-10-04 | Agent | npm run lint (oxlint)
+Output:
+  Found 156 warnings and 0 errors (139 typescript/no-explicit-any, 12 eslint/max-lines).
+  Finished in 81ms on 54 files with 118 rules.
+
+2026-10-04 | Agent | npm run build (tsc -b && vite build)
+Output:
+  dist/index.html                     0.47 kB
+  dist/assets/pixelWorker-C0D8kAwM.js 8.15 kB
+  dist/assets/index-DTZSwsim.css     22.01 kB
+  dist/assets/index-LR57hZji.js     674.86 kB
+  built in 603ms. Exit code 0.
+
+2026-10-04 | Agent | P0-T12 Git History Purge & Force-Push
+Output:
+  1. Backup mirror created: ..\arkh_TextureLab_backup.git (bare mirror, preserved)
+  2. git filter-repo --invert-paths --path sample_textures --path web-xyflow/public/sample_textures --force
+  3. Purge clone commit count: 29 (matches pre-purge commit count exactly)
+  4. Force-pushed main and tags to https://github.com/ixpeze/arkh_TextureLab.git
+  5. Fresh clone from GitHub verified: .git size = 5.97 MB (down from 363 MB, < 30 MB target met).
 ```
+

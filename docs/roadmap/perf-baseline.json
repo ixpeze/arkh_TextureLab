@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-04T17:25:30.790Z",
+  "timestamp": "2026-10-04T17:48:51.349Z",
   "environment": {
     "platform": "win32",
     "arch": "x64",
@@ -8,12 +8,12 @@
     "rendererMode": "Canvas2D (Phase 0 Baseline)"
   },
   "metrics": {
-    "timeToFirstPaintMs": 56,
+    "timeToFirstPaintMs": 60,
     "timeToFirstContentfulPaintMs": 228,
-    "totalStartupNavMs": 779,
+    "totalStartupNavMs": 778,
     "idleJSHeapMB": 8.58,
-    "postBenchmarkJSHeapMB": 42.01,
-    "heapDeltaMB": 33.42,
+    "postBenchmarkJSHeapMB": 41.98,
+    "heapDeltaMB": 33.4,
     "sliderDrag50Steps": {
       "longTaskCount": 0,
       "totalLongTaskDurationMs": 0,

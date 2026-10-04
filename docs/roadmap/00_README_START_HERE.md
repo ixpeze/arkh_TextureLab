@@ -79,7 +79,7 @@ Supporting documents:
 
 | Phase | Status | Date | Agent / Notes |
 |---|---|---|---|
-| 0 | NOT STARTED | | |
+| 0 | COMPLETED | 2026-10-04 | Hygiene, asset diet (-99.26%), F-01 proof, 59 golden tests, git history purged to 5.97 MB |
 | 1 | NOT STARTED | | |
 | 2 | NOT STARTED | | |
 | 3 | NOT STARTED | | |
@@ -135,3 +135,4 @@ macOS/Linux installers, cloud sync, accounts, telemetry/analytics, AI upscaling,
 - 2026-10-04 — Roadmap authored. No code changed by the audit. Baseline: 17/17 tests pass, lint clean, build OK, `dist/` = 208.6 MB (JS only 0.67 MB).
 - 2026-10-04 (later) - Owner answers recorded: Electron + GPU-first confirmed; git history purge + force-push APPROVED (D-07, Phase 0 P0-T12); auto-update and EXR/TIFF deferred to v1.1 (D-08, D-09); code signing (OD-2) still open - cost facts in Phase 6 P6-T7.
 - 2026-10-04 (final) - Owner decided: NO code signing, ship free/unsigned (D-10). All open owner decisions are resolved except OD-5 (final icon/name; default = placeholder). Phase 0 is ready to start.
+- 2026-10-04 (Phase 0 Complete) - All Phase 0 tasks (P0-T1 through P0-T12) finished and verified. dist/ reduced from 208.6 MB to 1.55 MB; repo clone size purged from 363 MB to 5.97 MB (backup mirror preserved at ..\arkh_TextureLab_backup.git); benchmark auto-load removed (idle JS heap 8.58 MB); F-01 Canvas2D alpha destruction empirically proven (74.7% corrupted pixels); 58 CPU golden fixtures created (76/76 unit/golden tests green); oxlint & build green. Ready for Phase 1.
