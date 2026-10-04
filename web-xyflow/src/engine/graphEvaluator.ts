@@ -128,47 +128,6 @@ export class GraphEvaluator {
           }
 
           result = regDef.cpuRef(ctx, inputs, data);
-        } else if (nodeType === 'channelCombiner' || nodeType === 'channelPack') {
-          // Inputs: r, g, b, a; each defaults to 0 (UE5 standard)
-          const rEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
-          const gEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'g');
-          const bEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
-          const aEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
-
-          const getChannelSource = (edge?: Edge, defaultCh = 0): { buffer?: TextureBuffer; channel: number } => {
-            if (!edge) return { channel: defaultCh };
-            const srcBuf = evaluateNode(edge.source);
-            if (!srcBuf) return { channel: defaultCh };
-
-            const sh = edge.sourceHandle || 'r';
-            let ch = defaultCh;
-            if (sh === 'r') ch = 0;
-            else if (sh === 'g') ch = 1;
-            else if (sh === 'b') ch = 2;
-            else if (sh === 'a') ch = 3;
-
-            return { buffer: srcBuf, channel: ch };
-          };
-
-          const rSrc = getChannelSource(rEdge, 0);
-          const gSrc = getChannelSource(gEdge, 1);
-          const bSrc = getChannelSource(bEdge, 2);
-          const aSrc = getChannelSource(aEdge, 3);
-
-          const rawFallbacks = (data.fallbacks as any) || {};
-          const parseFallback = (val: any, def: number) => {
-            const n = Number(val);
-            return isNaN(n) ? def : Math.max(0, Math.min(255, Math.round(n)));
-          };
-          // Defaults each to 0 per spec unless user configured fallbacks
-          const fallbacks = {
-            r: parseFallback(rawFallbacks.r, 0),
-            g: parseFallback(rawFallbacks.g, 0),
-            b: parseFallback(rawFallbacks.b, 0),
-            a: parseFallback(rawFallbacks.a, 0),
-          };
-
-          result = PixelEngine.combineChannels(rSrc, gSrc, bSrc, aSrc, undefined, fallbacks);
         } else if (nodeType === 'channelSplitter' || nodeType === 'channelUnpack') {
           const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
           if (inEdge) {
