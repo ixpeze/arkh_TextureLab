@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-10-04T17:25:30.790Z",
+  "environment": {
+    "platform": "win32",
+    "arch": "x64",
+    "nodeVersion": "v24.20.0",
+    "browser": "Chromium (Playwright)",
+    "rendererMode": "Canvas2D (Phase 0 Baseline)"
+  },
+  "metrics": {
+    "timeToFirstPaintMs": 56,
+    "timeToFirstContentfulPaintMs": 228,
+    "totalStartupNavMs": 779,
+    "idleJSHeapMB": 8.58,
+    "postBenchmarkJSHeapMB": 42.01,
+    "heapDeltaMB": 33.42,
+    "sliderDrag50Steps": {
+      "longTaskCount": 0,
+      "totalLongTaskDurationMs": 0,
+      "avgLongTaskDurationMs": 0
+    }
+  },
+  "consoleErrors": []
+}
