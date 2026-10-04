@@ -1,5 +1,7 @@
 # ARKH TextureLab — Interactive PBR Pack <=> Unpack Workstation
 
+> **Notice:** Pre-1.0 rewrite in progress — see [docs/roadmap](docs/roadmap/00_README_START_HERE.md).
+
 ARKH TextureLab is a high-performance web workstation for interactive PBR texture channel multiplexing / unmultiplexing (`pack <=> unpack`), featuring dictionary-driven naming normalization, token-based export naming, live 2D pixel inspection, and Unreal Engine 5 material editor navigation.
 
 ---
@@ -83,10 +85,10 @@ Open **`http://localhost:5173`** in your browser.
 
 ## ⚡ Core Features & Capabilities
 
-### 1. High-Performance Web Worker & Interactive Proxy Engine
-- **Asynchronous Worker (`pixelWorker.ts`)**: Offloads heavy 4K CPU pixel calculations (combine, levels LUT, invert, normalFlip, and histogram) off the main thread to prevent UI freezing.
-- **Interactive 512px Proxies**: Generates lightweight downsampled proxies during active slider drags (Levels, Curves, etc.) ensuring smooth 60 FPS scrubbing, committing full 4K resolutions on release.
-- **Zero-Copy Transfers**: Uses transferable `ArrayBuffer` objects for zero-copy IPC between main thread and worker.
+### 1. Synchronous CPU Evaluation Engine
+- **Topological Graph Evaluator (`graphEvaluator.ts` & `pixelEngine.ts`)**: Evaluates texture node networks deterministically on the CPU using raw typed arrays (`Uint8ClampedArray` buffers) with memoized caching and content hashing.
+- **Resolution Policy**: Automatically resolves multi-input dimensions by adopting the largest connected input dimensions with bilinear resampling, and dynamically expands resolution-less constants.
+- *Note:* Dedicated Web Worker background offloading and live interactive proxy scrubbing are scheduled for the Phase 4 GPU & Performance rewrite (see [Target Architecture](docs/roadmap/02_TARGET_ARCHITECTURE.md)).
 
 ### 2. Interactive Pack <=> Unpack Pipeline
 - **Pack (`ChannelCombinerNode`)**: Multiplexes up to 4 distinct channel maps (e.g. AO -> R, Roughness -> G, Metallic -> B, Height -> A) into a single packed RGBA texture.
