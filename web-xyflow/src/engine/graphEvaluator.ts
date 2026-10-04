@@ -128,48 +128,6 @@ export class GraphEvaluator {
           }
 
           result = regDef.cpuRef(ctx, inputs, data);
-        } else if (nodeType === 'channelSwizzle' || nodeType === 'channelMixer') {
-          // Channel Mixer: straight wires, scalar slots, custom remapping
-          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
-          const inBuf = inEdge ? evaluateNode(inEdge.source) : null;
-          const rSrc = (data.rSrc as string) || 'r';
-          const gSrc = (data.gSrc as string) || 'g';
-          const bSrc = (data.bSrc as string) || 'b';
-          const aSrc = (data.aSrc as string) || 'a';
-          const routes = data.routes as any;
-          const scalarSlots = (data.scalarSlots as { id: string; value: number }[]) || [];
-          const scalarValues: Record<string, number> = {};
-          for (const s of scalarSlots) {
-            scalarValues[s.id] = s.value;
-          }
-
-          if (inBuf) {
-            result = data.isBypassed
-              ? inBuf
-              : PixelEngine.mixChannels(inBuf, routes, scalarValues, rSrc, gSrc, bSrc, aSrc);
-          } else {
-            // Check if individual channel pins are connected
-            const rEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
-            const gEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'g');
-            const bEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
-            const aEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
-
-            if (rEdge || gEdge || bEdge || aEdge) {
-              const rB = rEdge ? evaluateNode(rEdge.source) : null;
-              const gB = gEdge ? evaluateNode(gEdge.source) : null;
-              const bB = bEdge ? evaluateNode(bEdge.source) : null;
-              const aB = aEdge ? evaluateNode(aEdge.source) : null;
-              const combined = PixelEngine.combineChannels(
-                { buffer: rB || undefined, channel: 0 },
-                { buffer: gB || undefined, channel: 1 },
-                { buffer: bB || undefined, channel: 2 },
-                { buffer: aB || undefined, channel: 3 },
-                undefined,
-                { r: 0, g: 0, b: 0, a: 255 }
-              );
-              result = routes ? PixelEngine.mixChannels(combined, routes, scalarValues, rSrc, gSrc, bSrc, aSrc) : combined;
-            }
-          }
         } else if (nodeType === 'resize') {
           const inEdge = edges.find((e) => e.target === nodeId);
           if (inEdge) {
