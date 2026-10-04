@@ -262,32 +262,6 @@ export class GraphEvaluator {
           } else if (data.activeBuffer) {
             result = data.activeBuffer as TextureBuffer;
           }
-        } else if (nodeType === 'normalize') {
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              // If normal map and flip requested:
-              const shouldFlipGreen = !!data.requiresGreenFlip || data.flipGreen;
-              result = shouldFlipGreen ? PixelEngine.flipGreenChannel(inBuf) : inBuf;
-            }
-          }
-        } else if (nodeType === 'invert') {
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              result = data.isBypassed ? inBuf : PixelEngine.invertBuffer(inBuf);
-            }
-          }
-        } else if (nodeType === 'normalFlip') {
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              result = data.isBypassed ? inBuf : PixelEngine.flipGreenChannel(inBuf);
-            }
-          }
         } else if (nodeType === 'blend') {
           const edgeA = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
           const edgeB = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
