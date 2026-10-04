@@ -4,16 +4,66 @@ ARKH TextureLab is a high-performance web workstation for interactive PBR textur
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started & Installation
 
-Launch the local development server:
+### 📋 Prerequisites
+- **Operating System**: Windows 10/11 (or macOS / Linux via terminal).
+- **Node.js**: **v20+ LTS** (v22+ or v24+ recommended).
+  - Download from: [nodejs.org](https://nodejs.org/)
+  - Verify installation in terminal:
+    ```powershell
+    node -v
+    npm -v
+    ```
+
+---
+
+### 💻 First-Time Setup on a Fresh PC
+
+You have three convenient ways to get up and running:
+
+#### Option 1: 1-Click Self-Healing Launcher (Recommended)
+Simply double-click:
 ```powershell
-.\run_web.bat
-# or
+run_web.bat
+```
+> **What it does**: Automatically checks your Node.js environment, detects if dependencies are missing, installs them (`npm install`), launches the local Vite development server, and opens **`http://localhost:5173`** in your default web browser.
+
+#### Option 2: First-Time Installer (`setup.bat`)
+If you want an explicit setup and diagnostic test:
+```powershell
+setup.bat
+```
+> **What it does**: Validates Node.js & npm in PATH, installs dependencies in `web-xyflow/`, runs the 17-test Vitest pipeline suite to ensure 100% integrity, and prompts to launch the application.
+
+#### Option 3: Manual Terminal Setup
+```powershell
+# 1. Navigate to the frontend directory
 cd web-xyflow
-npm run dev
+
+# 2. Install dependencies
+npm install
+
+# 3. Launch local dev server and open browser
+npm run dev -- --open
 ```
 Open **`http://localhost:5173`** in your browser.
+
+---
+
+### ❓ Troubleshooting & FAQs
+
+- **`'node' is not recognized as an internal or external command`**:
+  Node.js is not installed or not added to your system PATH. Download and run the installer from [nodejs.org](https://nodejs.org/), ensure the *"Add to PATH"* option is checked during installation, and restart your command prompt or PC.
+- **Port 5173 is already in use**:
+  Vite will automatically detect this and bind to the next open port (e.g. `http://localhost:5174`) and open your browser automatically.
+- **Clean reinstall**:
+  If you ever need a fresh start:
+  ```powershell
+  cd web-xyflow
+  Remove-Item -Recurse -Force node_modules, package-lock.json
+  npm install
+  ```
 
 ---
 
