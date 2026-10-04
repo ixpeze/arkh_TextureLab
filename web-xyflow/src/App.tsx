@@ -74,6 +74,7 @@ import { PixelEngine, type TextureBuffer } from './engine/pixelEngine';
 import { LexicalNormalizer } from './engine/normalizer';
 import { NodeBufferContext } from './context/NodeBufferContext';
 import { GraphEvaluator } from './engine/graphEvaluator';
+import { graphContentHash } from './graph/hash';
 
 const SAMPLE_BASE = import.meta.env.DEV ? '/samples/4k' : '/samples/1k';
 
@@ -233,17 +234,7 @@ function Workbench() {
   }, []);
 
   // Stable functional signature of nodes (independent of selection, position, dragging or measurements)
-  const graphStructureKey = useMemo(() => {
-    const nodeSig = nodes
-      .map((n) => {
-        const d = (n.data as any) || {};
-        const fallbacksStr = d.fallbacks ? `${d.fallbacks.r}_${d.fallbacks.g}_${d.fallbacks.b}_${d.fallbacks.a}` : '';
-        return `${n.id}:${n.type}:${d.isBypassed ? 1 : 0}:${d.blackPoint ?? ''}:${d.whitePoint ?? ''}:${d.gamma ?? ''}:${d.outBlack ?? ''}:${d.outWhite ?? ''}:${d.opacity ?? ''}:${d.mode || ''}:${d.detailStrength ?? ''}:${d.value ?? ''}:${d.color || ''}:${d.rSrc || ''}:${d.gSrc || ''}:${d.bSrc || ''}:${d.aSrc || ''}:${fallbacksStr}`;
-      })
-      .join('|');
-    const edgeSig = edges.map((e) => `${e.id}:${e.source}:${e.sourceHandle}->${e.target}:${e.targetHandle}`).join('|');
-    return `${nodeSig}#${edgeSig}`;
-  }, [nodes, edges]);
+  const graphStructureKey = useMemo(() => graphContentHash(nodes, edges), [nodes, edges]);
 
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
