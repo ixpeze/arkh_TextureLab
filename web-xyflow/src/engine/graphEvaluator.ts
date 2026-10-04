@@ -128,9 +128,6 @@ export class GraphEvaluator {
           }
 
           result = regDef.cpuRef(ctx, inputs, data);
-        } else if (nodeType === 'textureInput') {
-          // Source buffer from upload or benchmark load
-          result = sourceBuffers[nodeId] || null;
         } else if (nodeType === 'channelCombiner' || nodeType === 'channelPack') {
           // Inputs: r, g, b, a; each defaults to 0 (UE5 standard)
           const rEdge = edges.find((e) => e.target === nodeId && e.targetHandle === 'r');
