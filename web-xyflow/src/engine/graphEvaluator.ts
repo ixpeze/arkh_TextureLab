@@ -128,32 +128,6 @@ export class GraphEvaluator {
           }
 
           result = regDef.cpuRef(ctx, inputs, data);
-        } else if (nodeType === 'resize') {
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              let tw = typeof data.targetWidth === 'number' ? data.targetWidth : 1024;
-              let th = typeof data.targetHeight === 'number' ? data.targetHeight : 1024;
-              const potMode = (data.potMode as 'none' | 'nearest' | 'up' | 'down') || 'none';
-              if (potMode !== 'none') {
-                tw = PixelEngine.toPowerOfTwo(tw, potMode);
-                th = PixelEngine.toPowerOfTwo(th, potMode);
-              }
-              const mode = (data.mode as 'preserve' | 'pad' | 'crop' | 'stretch') || 'preserve';
-              result = data.isBypassed ? inBuf : PixelEngine.resizeBuffer(inBuf, tw, th, mode);
-            }
-          }
-        } else if (nodeType === 'upscale') {
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              const scale = (data.scale === 4 ? 4 : 2) as 2 | 4;
-              // Synchronous preview: fast bilinear resize; export uses upscaleBufferAsync
-              result = data.isBypassed ? inBuf : PixelEngine.resizeBuffer(inBuf, inBuf.width * scale, inBuf.height * scale, 'stretch');
-            }
-          }
         } else if (nodeType === 'compare') {
           const edgeA = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
           const edgeB = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
