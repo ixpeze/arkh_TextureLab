@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import type { Edge, Node } from '@xyflow/react';
 import { PixelEngine, type TextureBuffer, type HistogramData } from '../engine/pixelEngine';
-import { GraphEvaluator } from '../engine/graphEvaluator';
+import { getNodePortTelemetry, autoDetectOutputRole } from '../graph/introspect';
 import { ExportEngine } from '../engine/exportEngine';
 import { NodeSelect, NodeCheckbox, NodeBadge } from './node-system/NodeControls';
 
@@ -49,7 +49,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
   const autoDetectInfo = useMemo(() => {
     if (selectedNode?.type !== 'textureOutput' || !selectedNode || !nodes || !edges) return null;
-    return GraphEvaluator.autoDetectOutputRole(selectedNode.id, nodes, edges);
+    return autoDetectOutputRole(selectedNode.id, nodes, edges);
   }, [selectedNode, nodes, edges]);
 
   const effectiveSlot = (selectedNode?.data?.isSlotOverridden && selectedNode.data.slot)
@@ -240,7 +240,7 @@ export const FloatingDetailsPanel: React.FC<FloatingDetailsPanelProps> = ({
 
   const portTelemetry = useMemo(() => {
     if (!selectedNode || !edges) return [];
-    return GraphEvaluator.getNodePortTelemetry(selectedNode, edges);
+    return getNodePortTelemetry(selectedNode, edges);
   }, [selectedNode, edges]);
 
   return (

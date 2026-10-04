@@ -17,7 +17,7 @@ import type {
   TextureCollection,
 } from '../types/export';
 import { BatchEngine } from './batchEngine';
-import { GraphEvaluator } from './graphEvaluator';
+import { autoDetectOutputRole } from '../graph/introspect';
 
 export type ExportTargetResolution =
   | { mode: 'inherit' }
@@ -318,7 +318,7 @@ export class ExportEngine {
       const inEdge = edges.find((e) => e.target === n.id && (e.targetHandle === 'rgba' || !e.targetHandle));
       const isConnected = !!inEdge;
       const buf = evaluatedBuffers[n.id];
-      const autoInfo = isConnected ? GraphEvaluator.autoDetectOutputRole(n.id, nodes, edges) : null;
+      const autoInfo = isConnected ? autoDetectOutputRole(n.id, nodes, edges) : null;
 
       const slot = (d.slot && typeof d.slot === 'string' && d.slot.trim() !== '')
         ? d.slot

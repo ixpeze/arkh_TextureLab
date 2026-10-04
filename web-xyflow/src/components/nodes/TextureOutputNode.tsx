@@ -5,7 +5,7 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 import { useNodeBuffers } from '../../context/NodeBufferContext';
-import { GraphEvaluator } from '../../engine/graphEvaluator';
+import { autoDetectOutputRole } from '../../graph/introspect';
 import type { LocalOutputData } from '../../types/export';
 
 export const TextureOutputNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
@@ -22,7 +22,7 @@ export const TextureOutputNode: React.FC<NodeProps<any>> = ({ id, data, selected
   const edges = useEdges();
 
   const autoDetect = useMemo(() => {
-    return GraphEvaluator.autoDetectOutputRole(id, nodes, edges);
+    return autoDetectOutputRole(id, nodes, edges);
   }, [id, nodes, edges]);
 
   const currentSlot = d.isSlotOverridden && d.slot ? d.slot : (autoDetect.slot || d.slot || 'ORM');
