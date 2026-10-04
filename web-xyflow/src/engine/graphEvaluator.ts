@@ -128,40 +128,6 @@ export class GraphEvaluator {
           }
 
           result = regDef.cpuRef(ctx, inputs, data);
-        } else if (nodeType === 'compare') {
-          const edgeA = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
-          const edgeB = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
-          const bufA = edgeA ? evaluateNode(edgeA.source) : null;
-          const bufB = edgeB ? evaluateNode(edgeB.source) : null;
-
-          if (bufA && bufB) {
-            const mode = (data.mode as 'wipe' | 'sideBySide' | 'difference') || 'wipe';
-            const wipeProgress = typeof data.wipeProgress === 'number' ? data.wipeProgress : 0.5;
-            const diffGain = typeof data.diffGain === 'number' ? data.diffGain : 1.0;
-            result = PixelEngine.createCompareBuffer(bufA, bufB, mode, wipeProgress, diffGain);
-          } else if (bufA) {
-            result = bufA;
-          } else if (bufB) {
-            result = bufB;
-          }
-        } else if (nodeType === 'seamCheck') {
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              const repeats = (data.repeats === 3 ? 3 : data.repeats === 4 ? 4 : 2) as 2 | 3 | 4;
-              const showBorders = data.showBorders !== false;
-              result = PixelEngine.createSeamCheckBuffer(inBuf, repeats, showBorders);
-            }
-          }
-        } else if (nodeType === 'loadFolder' || nodeType === 'forEach' || nodeType === 'batchExport') {
-          // Pass-through or active item buffer
-          const inEdge = edges.find((e) => e.target === nodeId);
-          if (inEdge) {
-            result = evaluateNode(inEdge.source);
-          } else if (data.activeBuffer) {
-            result = data.activeBuffer as TextureBuffer;
-          }
         }
       } finally {
         visiting.delete(nodeId);
