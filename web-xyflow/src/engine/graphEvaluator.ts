@@ -128,15 +128,6 @@ export class GraphEvaluator {
           }
 
           result = regDef.cpuRef(ctx, inputs, data);
-        } else if (nodeType === 'channelSplitter' || nodeType === 'channelUnpack') {
-          const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
-          if (inEdge) {
-            const inBuf = evaluateNode(inEdge.source);
-            if (inBuf) {
-              const srcHandle = inEdge.sourceHandle || 'rgba';
-              result = this.coerceUE5(inBuf, srcHandle, 'rgba');
-            }
-          }
         } else if (nodeType === 'channelSwizzle' || nodeType === 'channelMixer') {
           // Channel Mixer: straight wires, scalar slots, custom remapping
           const inEdge = edges.find((e) => e.target === nodeId && (e.targetHandle === 'rgba' || e.targetHandle === 'input' || !e.targetHandle));
