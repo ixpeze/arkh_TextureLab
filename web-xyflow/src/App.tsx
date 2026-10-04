@@ -23,6 +23,7 @@ import {
   MessageSquare,
   Download,
   FolderOpen,
+  Sparkles,
 } from 'lucide-react';
 
 import { TextureInputNode } from './components/nodes/TextureInputNode';
@@ -74,12 +75,14 @@ import { LexicalNormalizer } from './engine/normalizer';
 import { NodeBufferContext } from './context/NodeBufferContext';
 import { GraphEvaluator } from './engine/graphEvaluator';
 
+const SAMPLE_BASE = import.meta.env.DEV ? '/samples/4k' : '/samples/1k';
+
 const BENCHMARK_MAPS = [
   {
     nodeId: 'input_ao',
     role: 'Ambient Occlusion',
     roleKey: 'ao',
-    url: '/sample_textures/anthracite smooth cast concrete ambientocclusion 4k.png',
+    url: `${SAMPLE_BASE}/anthracite smooth cast concrete ambientocclusion 4k.png`,
     socket: 'r',
     color: 'var(--pbr-ao)',
   },
@@ -87,7 +90,7 @@ const BENCHMARK_MAPS = [
     nodeId: 'input_rough',
     role: 'Roughness',
     roleKey: 'rough',
-    url: '/sample_textures/anthracite smooth cast concrete roughness 4k.png',
+    url: `${SAMPLE_BASE}/anthracite smooth cast concrete roughness 4k.png`,
     socket: 'g',
     color: 'var(--pbr-rough)',
   },
@@ -95,7 +98,7 @@ const BENCHMARK_MAPS = [
     nodeId: 'input_metal',
     role: 'Metallic',
     roleKey: 'metal',
-    url: '/sample_textures/anthracite smooth cast concrete metallic 4k.png',
+    url: `${SAMPLE_BASE}/anthracite smooth cast concrete metallic 4k.png`,
     socket: 'b',
     color: 'var(--pbr-metal)',
   },
@@ -103,7 +106,7 @@ const BENCHMARK_MAPS = [
     nodeId: 'input_height',
     role: 'Height',
     roleKey: 'height',
-    url: '/sample_textures/anthracite smooth cast concrete height 4k.png',
+    url: `${SAMPLE_BASE}/anthracite smooth cast concrete height 4k.png`,
     socket: 'a',
     color: 'var(--pbr-height)',
   },
@@ -119,7 +122,7 @@ const initialNodes: Node[] = [
       role: 'Ambient Occlusion',
       roleColor: 'var(--pbr-ao)',
       res: '4K',
-      previewUrl: '/sample_textures/anthracite smooth cast concrete ambientocclusion 4k.png',
+      previewUrl: '',
       channels: { r: 'AO', g: 'AO', b: 'AO', a: '1.0' },
     },
   },
@@ -132,7 +135,7 @@ const initialNodes: Node[] = [
       role: 'Roughness',
       roleColor: 'var(--pbr-rough)',
       res: '4K',
-      previewUrl: '/sample_textures/anthracite smooth cast concrete roughness 4k.png',
+      previewUrl: '',
       channels: { r: 'Roughness', g: 'Roughness', b: 'Roughness', a: '1.0' },
     },
   },
@@ -145,7 +148,7 @@ const initialNodes: Node[] = [
       role: 'Metallic',
       roleColor: 'var(--pbr-metal)',
       res: '4K',
-      previewUrl: '/sample_textures/anthracite smooth cast concrete metallic 4k.png',
+      previewUrl: '',
       channels: { r: 'Metallic', g: 'Metallic', b: 'Metallic', a: '1.0' },
     },
   },
@@ -404,7 +407,7 @@ function Workbench() {
 
   // Load benchmark textures and initialize live graph
   const loadBenchmarkTextures = useCallback(async () => {
-    setStatusMessage('Loading Anthracite Concrete 4K maps...');
+    setStatusMessage('Loading Anthracite Concrete benchmark maps...');
     try {
       const loaded: Record<string, TextureBuffer> = {};
       for (const m of BENCHMARK_MAPS) {
@@ -417,25 +420,27 @@ function Workbench() {
       }
 
       setSourceBuffers(loaded);
-      setStatusMessage('Loaded 4K benchmark maps & initialized live graph');
+      setNodes((prev) =>
+        prev.map((node) => {
+          const buf = loaded[node.id];
+          if (buf && buf.dataUrl) {
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                previewUrl: buf.dataUrl,
+              },
+            };
+          }
+          return node;
+        })
+      );
+      setStatusMessage('Loaded benchmark maps & initialized live graph');
     } catch (err) {
       console.error(err);
       setStatusMessage('Benchmark ready');
     }
-  }, []);
-
-  useEffect(() => {
-    let isMounted = true;
-    const timer = setTimeout(() => {
-      loadBenchmarkTextures().then(() => {
-        if (isMounted) setStatusMessage('Ready | Anthracite Concrete 4K buffer online');
-      });
-    }, 0);
-    return () => {
-      isMounted = false;
-      clearTimeout(timer);
-    };
-  }, [loadBenchmarkTextures]);
+  }, [setNodes]);
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -1230,6 +1235,35 @@ function Workbench() {
           >
             <FolderOpen size={10} />
             <span>Batch Pipeline Example</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={loadBenchmarkTextures}
+            title="Load Anthracite Concrete (Benchmark Maps)"
+            style={{
+              background: 'rgba(168, 85, 247, 0.1)',
+              border: '1px solid rgba(168, 85, 247, 0.3)',
+              color: '#c084fc',
+              borderRadius: 3,
+              padding: '2px 8px',
+              fontSize: 8.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              transition: 'all 120ms ease',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.2)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
+            }}
+          >
+            <Sparkles size={10} />
+            <span>Load Benchmark</span>
           </button>
         </div>
 

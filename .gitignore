@@ -20,3 +20,13 @@ pnpm-debug.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Samples & Large Dev Textures
+samples/4k/
+sample_textures/
+
+# Test output
+test-results/
+**/test-results/**
+playwright-report/
+**/playwright-report/**
