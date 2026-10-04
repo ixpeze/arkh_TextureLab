@@ -230,46 +230,6 @@ export class GraphEvaluator {
           } else if (data.activeBuffer) {
             result = data.activeBuffer as TextureBuffer;
           }
-        } else if (nodeType === 'blend') {
-          const edgeA = edges.find((e) => e.target === nodeId && e.targetHandle === 'a');
-          const edgeB = edges.find((e) => e.target === nodeId && e.targetHandle === 'b');
-          const edgeMask = edges.find((e) => e.target === nodeId && e.targetHandle === 'mask');
-
-          const bufA = edgeA ? evaluateNode(edgeA.source) : null;
-          const bufB = edgeB ? evaluateNode(edgeB.source) : null;
-          const bufMask = edgeMask ? evaluateNode(edgeMask.source) : undefined;
-
-          if (bufA && bufB) {
-            const safeOpacity = typeof data.opacity === 'number' && !isNaN(data.opacity) ? Math.max(0, Math.min(1.0, data.opacity)) : 1.0;
-            result = data.isBypassed
-              ? bufA
-              : PixelEngine.blendBuffers(
-                  bufA,
-                  bufB,
-                  bufMask || undefined,
-                  (data.mode as any) || 'lerp',
-                  safeOpacity
-                );
-          } else if (bufA) {
-            result = bufA;
-          } else if (bufB) {
-            result = bufB;
-          }
-        } else if (nodeType === 'normalBlend') {
-          const edgeBase = edges.find((e) => e.target === nodeId && e.targetHandle === 'base');
-          const edgeDetail = edges.find((e) => e.target === nodeId && e.targetHandle === 'detail');
-
-          const bufBase = edgeBase ? evaluateNode(edgeBase.source) : null;
-          const bufDetail = edgeDetail ? evaluateNode(edgeDetail.source) : null;
-
-          if (bufBase && bufDetail) {
-            const safeStrength = typeof data.detailStrength === 'number' && !isNaN(data.detailStrength) ? Math.max(0, Math.min(5.0, data.detailStrength)) : 1.0;
-            result = data.isBypassed
-              ? bufBase
-              : PixelEngine.blendNormalRNM(bufBase, bufDetail, safeStrength);
-          } else if (bufBase) {
-            result = bufBase;
-          }
         }
       } finally {
         visiting.delete(nodeId);
