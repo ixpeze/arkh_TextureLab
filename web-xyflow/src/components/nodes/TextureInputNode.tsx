@@ -29,21 +29,21 @@ export interface TextureInputData {
   };
 }
 
-export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected }) => {
-  const d = data as TextureInputData;
+export const TextureInputNode: React.FC<NodeProps> = ({ id, data, selected }) => {
+  const d = data as unknown as TextureInputData;
   const { setSourceBuffer, onUpdateNodeData } = useNodeBuffers();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [colorSpace, setColorSpace] = useState<'sRGB' | 'Linear'>(d.colorSpace || 'Linear');
-  const [preview, setPreview] = useState(d.previewUrl);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showTiling, setShowTiling] = useState(false);
-  const [tileU, setTileU] = useState(d.tileU ?? 1.0);
-  const [tileV, setTileV] = useState(d.tileV ?? 1.0);
+
+  const colorSpace = d.colorSpace || 'Linear';
+  const preview = d.previewUrl;
+  const tileU = d.tileU ?? 1.0;
+  const tileV = d.tileV ?? 1.0;
 
   const toggleColorSpace = (e: React.MouseEvent) => {
     e.stopPropagation();
     const nextCs = colorSpace === 'Linear' ? 'sRGB' : 'Linear';
-    setColorSpace(nextCs);
     d.onChangeColorSpace?.(nextCs);
     onUpdateNodeData(id, { colorSpace: nextCs });
   };
@@ -51,7 +51,6 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
   const processLoadedFile = async (file: File) => {
     try {
       const buffer = await PixelEngine.loadFromFile(file);
-      setPreview(buffer.dataUrl || '');
       setSourceBuffer(id, buffer);
 
       // Infer texture role from filename
@@ -68,7 +67,6 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
         channels: meta.channels,
       };
 
-      setColorSpace(meta.colorSpace);
       d.onLoadBuffer?.(buffer);
       onUpdateNodeData(id, patch);
     } catch (err) {
@@ -264,7 +262,6 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
               value={tileU}
               onChange={(e) => {
                 const val = parseFloat(e.target.value) || 1.0;
-                setTileU(val);
                 onUpdateNodeData(id, { tileU: val });
               }}
               style={{
@@ -286,7 +283,6 @@ export const TextureInputNode: React.FC<NodeProps<any>> = ({ id, data, selected 
               value={tileV}
               onChange={(e) => {
                 const val = parseFloat(e.target.value) || 1.0;
-                setTileV(val);
                 onUpdateNodeData(id, { tileV: val });
               }}
               style={{
