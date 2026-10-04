@@ -1,0 +1,13 @@
+{
+  "id": "compare_diff_16x16",
+  "category": "compare",
+  "op": "difference",
+  "width": 16,
+  "height": 16,
+  "expectedBase64": "AJKi/2I6gP/Izoj/JvzM/25yjP9Wuvr/7HCU/whcHv/8arD/NMww/xp6Bv9krmj/6ijU/wh4kv9GrFj/vhZK/7I4Pv+O5tz/CJj+/xQeLP/Irsz/nta4/xyC5v/oUpj/wgRm/4qEBP/yhhb/CrL8/wYSOP9G+mD/Yoic/5KejP+KJNT/Xl4Q//IynP/M/lj/oJKm/+6uRP+KWn7/aHJu/xA+pP9EJCj/nOKA/57EWv/itjL/mqKY/16GuP+GHM7/uNqu/y4wvv/UKJj/DHKQ/+RegP/kmGj/Qrgs//oMaP8cxOD/UNjo/yAe+P92GDj/ENRy/zy6Lv+kgB7/OOx6/yKGiv/Mmub/VNTO/2CKVv/AYi7/7liq/9JKwP+0anD/mEas/3AO0P9SNpj/pBjC/5rWJP+iSAr/HMaY/+aqCv9IfLr/qsTE/6j4Sv+cRCL/ajCw/0yaMP9o2PD/9P52/9RWuv+kjJT/fvqc/1KYJP8ofDL/8nZ4//w0Wv9Khnb/lNwi//J4Kv8ouCD/gBy6/xSg4P/QntL/mKgc/8S6lP9EYDT/OIRY/zBcPv+Etmj/ZKZw//QSRP9kusb/0MCe//gOvP9Sthr/zFLO/zygmP9cusD/dFT2/8Z07v+q3DD/+p4E/yqSrP+mpP7/Rk7e/5TGWv+O9pj/GHxQ/2BGwv8yjKL/Gi5Q/8rgEv+OnHz/FCSG/8As5v82/FL/lMAA/2AaIv8e1v7/mOxU//oU3P/I2JT/zEoC/+Z0xP++rFz/9qrA/z5EHP+g7MT/kmrk/+z00v++jAb/2F74/3jmUP+uBqr/FuJE/4j8GP8Kmjb/MmQk/zqU4v/8epD/MsTy/3zQjv92tpz/KvAY/0yYOv/KhpT/akLo/5zIdv+cbBD/yGA0/2QCKv/c9DT/NBZQ/zjo2v/UBs7/5L5S/6LuBP/02oz/RGZu/8bsfP+kiKD/7AxY/6zMUv/qfhj/UpQU/3pyev8qHFb/ioT6/8pk+v9giFj/YNYg/yw8xP/eZgL/YtDE/wjm4P+mpjb/xDxY/47igv+6cEj/hKxE/3SAXv9ChAz/XIyc/zAm2v+sFEz/HMho/45umP+IMob/Wjya/1DmkP/YQLb/mHzy/94U+v/+ZnL/cHKi/7pC9P9ecKD/Ojpw/yiOXP8oWID/8E6Q/8bGwP+e7v7/cnRE/xDq6v9EmDr/rnga/+S0lP/iWOD/2FZs/8hm4P8qhh7/roZU/7JODv8OvBj/EpQc/+ZeCP9qzpr/sPCM/9LICP8kYNj/eOBk/5T2Xv8krIb/Upq6/5y0dP+aDCj/bKSS/0JSCP9uwEr/vioY/yyKiv/iYOr/UBqW/+gAzv8CkP7/BIT8/w==",
+  "params": {
+    "mode": "difference",
+    "wipeProgress": 0.5,
+    "diffGain": 2
+  }
+}
