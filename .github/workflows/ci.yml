@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: 'web-xyflow/package-lock.json'
+
+      - name: Install dependencies
+        run: |
+          cd web-xyflow
+          npm ci
+
+      - name: Lint checks
+        run: |
+          cd web-xyflow
+          npm run lint
+
+      - name: Unit & Golden tests
+        run: |
+          cd web-xyflow
+          npm test
+
+      - name: Build production bundle
+        run: |
+          cd web-xyflow
+          npm run build
