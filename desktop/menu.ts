@@ -24,6 +24,10 @@ export function setupApplicationMenu(mainWindow: BrowserWindow, isDev: boolean):
           click: () => sendCommand('file:open'),
         },
         {
+          label: 'Open &Recent...',
+          click: () => sendCommand('file:recent'),
+        },
+        {
           label: '&Save',
           accelerator: 'CommandOrControl+S',
           click: () => sendCommand('file:save'),

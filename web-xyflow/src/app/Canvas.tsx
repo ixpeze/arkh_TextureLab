@@ -11,6 +11,7 @@ import {
   type Node,
   type OnNodesChange,
   type OnEdgesChange,
+  type OnNodeDrag,
   type NodeTypes,
   type EdgeTypes,
 } from '@xyflow/react';
@@ -32,6 +33,8 @@ export interface CanvasProps {
   edges: Edge[];
   onNodesChange: OnNodesChange;
   onEdgesChange: OnEdgesChange;
+  onNodeDragStart?: OnNodeDrag<Node>;
+  onNodeDragStop?: OnNodeDrag<Node>;
   onConnect: (connection: Connection) => void;
   onReconnectStart: () => void;
   onReconnect: (oldEdge: Edge, newConnection: Connection) => void;
@@ -67,6 +70,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   edges,
   onNodesChange,
   onEdgesChange,
+  onNodeDragStart,
+  onNodeDragStop,
   onConnect,
   onReconnectStart,
   onReconnect,
@@ -124,6 +129,8 @@ export const Canvas: React.FC<CanvasProps> = ({
           edges={edges}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
+          onNodeDragStart={onNodeDragStart}
+          onNodeDragStop={onNodeDragStop}
           onConnect={onConnect}
           onReconnectStart={onReconnectStart}
           onReconnect={onReconnect}

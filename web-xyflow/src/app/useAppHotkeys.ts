@@ -16,6 +16,13 @@ export interface UseAppHotkeysProps {
   toggleShortcuts: () => void;
   toggleExportModal: () => void;
   isModalOpen: boolean;
+  handleSave?: () => void;
+  handleSaveAs?: () => void;
+  handleOpenDialog?: () => void;
+  handleNewProject?: () => void;
+  handleCopy?: () => void;
+  handlePaste?: () => void;
+  handleCut?: () => void;
 }
 
 export function useAppHotkeys({
@@ -33,6 +40,13 @@ export function useAppHotkeys({
   toggleShortcuts,
   toggleExportModal,
   isModalOpen,
+  handleSave,
+  handleSaveAs,
+  handleOpenDialog,
+  handleNewProject,
+  handleCopy,
+  handlePaste,
+  handleCut,
 }: UseAppHotkeysProps) {
   const hotkeyBindings = useMemo<KeyBinding[]>(
     () => [
@@ -58,6 +72,62 @@ export function useAppHotkeys({
         handler: (e) => {
           e.preventDefault?.();
           handleRedo();
+        },
+      },
+      {
+        id: 'save',
+        chord: 'ctrl+s',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleSave?.();
+        },
+      },
+      {
+        id: 'save-as',
+        chord: 'ctrl+shift+s',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleSaveAs?.();
+        },
+      },
+      {
+        id: 'open-project',
+        chord: 'ctrl+o',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleOpenDialog?.();
+        },
+      },
+      {
+        id: 'new-project',
+        chord: 'ctrl+n',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleNewProject?.();
+        },
+      },
+      {
+        id: 'copy-nodes',
+        chord: 'ctrl+c',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleCopy?.();
+        },
+      },
+      {
+        id: 'paste-nodes',
+        chord: 'ctrl+v',
+        handler: (e) => {
+          e.preventDefault?.();
+          handlePaste?.();
+        },
+      },
+      {
+        id: 'cut-nodes',
+        chord: 'ctrl+x',
+        handler: (e) => {
+          e.preventDefault?.();
+          handleCut?.();
         },
       },
       {
@@ -168,6 +238,13 @@ export function useAppHotkeys({
       togglePalette,
       toggleShortcuts,
       toggleExportModal,
+      handleSave,
+      handleSaveAs,
+      handleOpenDialog,
+      handleNewProject,
+      handleCopy,
+      handlePaste,
+      handleCut,
     ]
   );
 

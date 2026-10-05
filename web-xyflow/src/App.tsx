@@ -1,62 +1,71 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
-import {
-  useNodesState,
-  useEdgesState,
-  ReactFlowProvider,
-  useReactFlow,
-} from '@xyflow/react';
+import { ReactFlowProvider, useReactFlow } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
 import { Toolbar } from './app/Toolbar';
 import { Canvas } from './app/Canvas';
-import { useUndoRedo } from './app/useUndoRedo';
 import { useGraphActions } from './app/useGraphActions';
 import { useTextureDrop } from './app/useTextureDrop';
 import { createSpawnedNode, createCommentBoxNode } from './app/spawn';
 import { buildORMHEdges } from './app/autoWire';
-import {
-  BENCHMARK_MAPS,
-  initialNodes,
-  initialEdges,
-  getBatchPipelineExample,
-} from './app/initialGraph';
-import { useAppHotkeys } from './app/useAppHotkeys';
-import { useMenuCommands } from './app/useMenuCommands';
+import { fetchBenchmarkBuffers, getBatchPipelineExample } from './app/initialGraph';
+import { useAppShortcutsAndMenus } from './app/useAppShortcutsAndMenus';
 import { PixelEngine, type TextureBuffer } from './engine/pixelEngine';
 import { GraphEvaluator } from './engine/graphEvaluator';
 import { graphContentHash } from './graph/hash';
+import { useAppStore } from './store/useAppStore';
+import { useProjectFiles } from './features/project/useProjectFiles';
+import { RelinkModal } from './features/project/RelinkModal';
+import { useClipboardOperations } from './features/project/useClipboardOperations';
 
 function Workbench() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
-  const [primaryAsset, setPrimaryAsset] = useState('Anthracite_Concrete');
-  const [activeNodeId, setActiveNodeId] = useState<string | null>('output_ormh');
-  const [palettePos, setPalettePos] = useState<{ x: number; y: number } | null>(null);
-  const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const doc = useAppStore((s) => s.doc);
+  const nodes = doc.graph.nodes;
+  const edges = doc.graph.edges;
+  const onNodesChange = useAppStore((s) => s.onNodesChange);
+  const onEdgesChange = useAppStore((s) => s.onEdgesChange);
+  const onNodeDragStart = useAppStore((s) => s.onNodeDragStart);
+  const onNodeDragStop = useAppStore((s) => s.onNodeDragStop);
+  const setNodes = useAppStore((s) => s.setNodes);
+  const setEdges = useAppStore((s) => s.setEdges);
+  const addNode = useAppStore((s) => s.addNode);
+  const updateNodeData = useAppStore((s) => s.updateNodeData);
+  const updateExportSettings = useAppStore((s) => s.updateExportSettings);
 
-  // Mouse cursor tracking on canvas
+  const activeNodeId = useAppStore((s) => s.activeNodeId);
+  const setActiveNodeId = useAppStore((s) => s.setActiveNodeId);
+  const palettePos = useAppStore((s) => s.palettePos);
+  const setPalettePos = useAppStore((s) => s.setPalettePos);
+  const isShortcutsOpen = useAppStore((s) => s.isShortcutsOpen);
+  const setIsShortcutsOpen = useAppStore((s) => s.setIsShortcutsOpen);
+  const isExportModalOpen = useAppStore((s) => s.isExportModalOpen);
+  const setIsExportModalOpen = useAppStore((s) => s.setIsExportModalOpen);
+  const isRelinkModalOpen = useAppStore((s) => s.isRelinkModalOpen);
+  const setIsRelinkModalOpen = useAppStore((s) => s.setIsRelinkModalOpen);
+  const missingAssets = useAppStore((s) => s.missingAssets);
+  const statusMessage = useAppStore((s) => s.statusMessage);
+  const setStatusMessage = useAppStore((s) => s.setStatusMessage);
+  const projectName = useAppStore((s) => s.projectName);
+  const isDirty = useAppStore((s) => s.isDirty);
+
+  const undo = useAppStore((s) => s.undo);
+  const redo = useAppStore((s) => s.redo);
+  const canUndo = useAppStore((s) => s.canUndo());
+  const canRedo = useAppStore((s) => s.canRedo());
+
   const canvasMousePosRef = useRef<{ x: number; y: number } | null>(null);
-
-  // Live in-memory source buffers
   const [sourceBuffers, setSourceBuffers] = useState<Record<string, TextureBuffer>>({});
-  const [statusMessage, setStatusMessage] = useState('Ready | Tactical DCC Workstation online');
-
   const { screenToFlowPosition, fitView } = useReactFlow();
 
-  // Undo / Redo engine
-  const { pushSnapshot, handleUndo, handleRedo, canUndo, canRedo } = useUndoRedo(
-    nodes,
-    edges,
-    setNodes,
-    setEdges,
-    setStatusMessage
-  );
-
-  // Graph mutations
   const {
-    handleUpdateNodeData,
-    handleDuplicate,
+    handleSave,
+    handleSaveAs,
+    handleNewProject,
+    handleOpenDialog,
+  } = useProjectFiles();
+
+  const {
+    handleDuplicate: origDuplicate,
     handleDelete,
     handleClearGraph,
     onConnect,
@@ -69,26 +78,22 @@ function Workbench() {
     edges,
     setNodes,
     setEdges,
-    pushSnapshot,
+    pushSnapshot: () => {},
     setStatusMessage,
     activeNodeId,
     setActiveNodeId,
   });
 
-  // Source buffer updater for texture uploads
-  const setSourceBuffer = useCallback((nodeId: string, buffer: TextureBuffer) => {
-    setSourceBuffers((prev) => ({ ...prev, [nodeId]: buffer }));
+  const setSourceBuffer = useCallback((nodeOrAssetId: string, buffer: TextureBuffer) => {
+    setSourceBuffers((prev) => ({ ...prev, [nodeOrAssetId]: buffer }));
   }, []);
 
-  // Stable functional signature of nodes
   const graphStructureKey = useMemo(() => graphContentHash(nodes, edges), [nodes, edges]);
-
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const edgesRef = useRef(edges);
   edgesRef.current = edges;
 
-  // Topologically evaluate the entire graph live in real-time
   const evaluatedBuffers = useMemo(() => {
     return GraphEvaluator.evaluate(nodesRef.current, edgesRef.current, sourceBuffers);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,19 +104,17 @@ function Workbench() {
       evaluatedBuffers,
       sourceBuffers,
       setSourceBuffer,
-      onUpdateNodeData: handleUpdateNodeData,
+      onUpdateNodeData: updateNodeData,
     }),
-    [evaluatedBuffers, sourceBuffers, setSourceBuffer, handleUpdateNodeData]
+    [evaluatedBuffers, sourceBuffers, setSourceBuffer, updateNodeData]
   );
 
-  // Clean up selected node if it was removed from the graph
   useEffect(() => {
     if (activeNodeId && !nodes.some((n) => n.id === activeNodeId)) {
       setActiveNodeId(null);
     }
-  }, [nodes, activeNodeId]);
+  }, [nodes, activeNodeId, setActiveNodeId]);
 
-  // Selected or inspected node
   const selectedNode = useMemo(() => {
     if (!activeNodeId) return null;
     return nodes.find((n) => n.id === activeNodeId) || null;
@@ -122,10 +125,8 @@ function Workbench() {
     return evaluatedBuffers[selectedNode.id] || sourceBuffers[selectedNode.id] || null;
   }, [selectedNode, evaluatedBuffers, sourceBuffers]);
 
-  // Node spawning helper with Top-Center cursor alignment
   const spawnNode = useCallback(
     (typeKey: string, customPos?: { x: number; y: number }) => {
-      pushSnapshot();
       let pos: { x: number; y: number };
       if (customPos) {
         pos = customPos;
@@ -140,135 +141,116 @@ function Workbench() {
       const newNode = createSpawnedNode({
         typeKey,
         position: pos,
-        primaryAsset,
+        primaryAsset: doc.export.settings.primaryAsset,
       });
 
-      setNodes((nds) => [...nds, newNode]);
+      addNode(newNode);
       setActiveNodeId(newNode.id);
       setStatusMessage(`Spawned ${newNode.type} node`);
     },
-    [primaryAsset, pushSnapshot, screenToFlowPosition, setNodes]
+    [doc.export.settings.primaryAsset, addNode, screenToFlowPosition, setActiveNodeId, setStatusMessage]
   );
 
-  // UE5 style Comment Box grouping (C Key)
   const spawnCommentBox = useCallback(() => {
-    pushSnapshot();
     const targetNodes = nodes.filter((n) => (n.selected || n.id === activeNodeId) && n.type !== 'commentBox');
     const fallbackPos = canvasMousePosRef.current
       ? screenToFlowPosition(canvasMousePosRef.current)
       : screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
 
     const newCommentNode = createCommentBoxNode(targetNodes, fallbackPos);
-    setNodes((nds) => [newCommentNode, ...nds]);
+    addNode(newCommentNode);
     setStatusMessage('Created Comment Box (UE5)');
-  }, [nodes, activeNodeId, pushSnapshot, screenToFlowPosition, setNodes]);
+  }, [nodes, activeNodeId, addNode, screenToFlowPosition, setStatusMessage]);
 
-  // Toggle Bypass / Mute on selected node (D Key)
   const toggleBypassSelected = useCallback(() => {
-    pushSnapshot();
-    setNodes((nds) =>
-      nds.map((n) => {
-        if (n.selected || n.id === activeNodeId) {
-          const currentBypassed = !!n.data?.isBypassed;
-          return {
-            ...n,
-            data: {
-              ...n.data,
-              isBypassed: !currentBypassed,
-            },
-          };
-        }
-        return n;
-      })
-    );
-    setStatusMessage('Toggled Bypass / Mute state on selected node (D)');
-  }, [activeNodeId, pushSnapshot, setNodes]);
+    const target = nodes.find((n) => n.selected || n.id === activeNodeId);
+    if (target) {
+      const current = !!target.data?.isBypassed;
+      updateNodeData(target.id, { isBypassed: !current });
+      setStatusMessage('Toggled Bypass state on selected node (D)');
+    }
+  }, [nodes, activeNodeId, updateNodeData, setStatusMessage]);
 
-  // Auto-Wire ORMH Combiner
   const autoWireORMH = useCallback(() => {
-    pushSnapshot();
     const updatedEdges = buildORMHEdges(nodes, edges);
     if (updatedEdges) {
       setEdges(updatedEdges);
       setStatusMessage('Auto-wired PBR channels into ORMH Combiner');
     }
-  }, [nodes, edges, pushSnapshot, setEdges]);
+  }, [nodes, edges, setEdges, setStatusMessage]);
 
-  // Load benchmark textures and initialize live graph
   const loadBenchmarkTextures = useCallback(async () => {
     setStatusMessage('Loading Anthracite Concrete benchmark maps...');
     try {
-      const loaded: Record<string, TextureBuffer> = {};
-      for (const m of BENCHMARK_MAPS) {
-        try {
-          const buf = await PixelEngine.loadFromUrl(m.url);
-          loaded[m.nodeId] = buf;
-        } catch (e) {
-          console.warn(`Could not fetch ${m.url}`, e);
-        }
-      }
-
+      const loaded = await fetchBenchmarkBuffers((url) => PixelEngine.loadFromUrl(url));
       setSourceBuffers(loaded);
-      setNodes((prev) =>
-        prev.map((node) => {
-          const buf = loaded[node.id];
-          if (buf && buf.dataUrl) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                previewUrl: buf.dataUrl,
-              },
-            };
-          }
-          return node;
-        })
-      );
       setStatusMessage('Loaded benchmark maps & initialized live graph');
     } catch (err) {
       console.error(err);
       setStatusMessage('Benchmark ready');
     }
-  }, [setNodes]);
+  }, [setStatusMessage]);
 
-  // Load Batch Pipeline Example
   const loadBatchPipelineExample = useCallback(() => {
-    pushSnapshot();
     const { nodes: exNodes, edges: exEdges } = getBatchPipelineExample();
     setNodes(exNodes);
     setEdges(exEdges);
     setActiveNodeId(null);
     setStatusMessage('Loaded working Batch Asset Pipeline example');
-  }, [pushSnapshot, setEdges, setNodes]);
+  }, [setEdges, setNodes, setActiveNodeId, setStatusMessage]);
 
   const selectAll = useCallback(() => {
     setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
     setStatusMessage('Selected all nodes');
-  }, [setNodes]);
+  }, [setNodes, setStatusMessage]);
 
-  useAppHotkeys({
-    handleUndo,
-    handleRedo,
+  // Clipboard operations (P3-T10)
+  const {
+    handleCopy,
+    handlePaste,
+    handleCut,
+    handleDuplicateWithWires,
+  } = useClipboardOperations({
+    nodes,
+    edges,
+    assets: doc.assets,
+    activeNodeId,
+    setNodes,
+    setEdges,
+    handleDelete,
+    origDuplicate,
+    screenToFlowPosition,
+    canvasMousePosRef,
+    setStatusMessage,
+  });
+
+  useAppShortcutsAndMenus({
+    handleUndo: undo,
+    handleRedo: redo,
     fitView: () => fitView({ duration: 300 }),
     autoWireORMH,
     spawnCommentBox,
     toggleBypassSelected,
-    handleDuplicate,
+    handleDuplicate: handleDuplicateWithWires,
     handleDelete,
     selectAll,
     spawnNode,
-    togglePalette: () => setPalettePos((p) => (p ? null : { x: canvasMousePosRef.current?.x ?? window.innerWidth / 2, y: canvasMousePosRef.current?.y ?? window.innerHeight / 2 })),
-    toggleShortcuts: () => setIsShortcutsOpen((p) => !p),
-    toggleExportModal: () => setIsExportModalOpen((p) => !p),
-    isModalOpen: isShortcutsOpen || isExportModalOpen,
-  });
-
-  useMenuCommands({
-    handleUndo, handleRedo, fitView: () => fitView({ duration: 300 }),
-    handleDuplicate, handleDelete, selectAll,
-    toggleExportModal: () => setIsExportModalOpen((p) => !p),
-    toggleShortcuts: () => setIsShortcutsOpen((p) => !p),
-    handleClearGraph, setStatusMessage,
+    togglePalette: () => {
+      const pos = canvasMousePosRef.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      setPalettePos(palettePos ? null : pos);
+    },
+    toggleShortcuts: () => setIsShortcutsOpen(!isShortcutsOpen),
+    toggleExportModal: () => setIsExportModalOpen(!isExportModalOpen),
+    isModalOpen: isShortcutsOpen || isExportModalOpen || isRelinkModalOpen,
+    handleSave,
+    handleSaveAs,
+    handleOpenDialog,
+    handleNewProject,
+    handleCopy,
+    handlePaste,
+    handleCut,
+    handleClearGraph,
+    setStatusMessage,
   });
 
   const { handleDragOver, handleDrop } = useTextureDrop({
@@ -282,7 +264,7 @@ function Workbench() {
 
   const handleAssetChange = useCallback(
     (newAsset: string) => {
-      setPrimaryAsset(newAsset);
+      updateExportSettings({ primaryAsset: newAsset });
       setNodes((nds) =>
         nds.map((n) => {
           if (n.type === 'textureOutput') {
@@ -304,7 +286,7 @@ function Workbench() {
         })
       );
     },
-    [setNodes]
+    [updateExportSettings, setNodes]
   );
 
   const handleExport = useCallback(
@@ -314,7 +296,7 @@ function Workbench() {
         setStatusMessage(`Downloaded ${filename} successfully!`);
       }
     },
-    [activeBuffer]
+    [activeBuffer, setStatusMessage]
   );
 
   return (
@@ -331,15 +313,20 @@ function Workbench() {
       <Toolbar
         onLoadBatchPipeline={loadBatchPipelineExample}
         onLoadBenchmark={loadBenchmarkTextures}
-        onUndo={handleUndo}
+        onUndo={undo}
         canUndo={canUndo}
-        onRedo={handleRedo}
+        onRedo={redo}
         canRedo={canRedo}
         onSpawnCommentBox={spawnCommentBox}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
         onFitView={() => fitView({ duration: 300 })}
         onClearGraph={handleClearGraph}
+        onNewProject={handleNewProject}
+        onOpenProject={handleOpenDialog}
+        onSaveProject={handleSave}
+        projectName={projectName}
+        isDirty={isDirty}
       />
 
       <Canvas
@@ -347,6 +334,8 @@ function Workbench() {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStart={onNodeDragStart}
+        onNodeDragStop={onNodeDragStop}
         onConnect={onConnect}
         onReconnectStart={onReconnectStart}
         onReconnect={onReconnect}
@@ -368,9 +357,9 @@ function Workbench() {
         setStatusMessage={setStatusMessage}
         selectedNode={selectedNode}
         activeBuffer={activeBuffer}
-        primaryAsset={primaryAsset}
+        primaryAsset={doc.export.settings.primaryAsset}
         onAssetChange={handleAssetChange}
-        onUpdateNodeData={handleUpdateNodeData}
+        onUpdateNodeData={updateNodeData}
         onExportTarget={handleExport}
         palettePos={palettePos}
         setPalettePos={setPalettePos}
@@ -381,6 +370,12 @@ function Workbench() {
         setIsExportModalOpen={setIsExportModalOpen}
         evaluatedBuffers={evaluatedBuffers}
         nodeBufferContextValue={nodeBufferContextValue}
+      />
+
+      <RelinkModal
+        isOpen={isRelinkModalOpen}
+        onClose={() => setIsRelinkModalOpen(false)}
+        missingAssets={missingAssets}
       />
     </div>
   );

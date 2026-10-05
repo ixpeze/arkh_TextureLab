@@ -32,14 +32,15 @@ export interface TextureInputData {
 }
 
 export const TextureInputNode: React.FC<NodeProps> = ({ id, data, selected }) => {
-  const d = data as unknown as TextureInputData;
-  const { setSourceBuffer, onUpdateNodeData } = useNodeBuffers();
+  const d = data as unknown as TextureInputData & { assetId?: string; isMissing?: boolean };
+  const { sourceBuffers, setSourceBuffer, onUpdateNodeData } = useNodeBuffers();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showTiling, setShowTiling] = useState(false);
 
   const colorSpace = d.colorSpace || 'Linear';
-  const preview = d.previewUrl;
+  const myBuffer = (d.assetId && sourceBuffers[d.assetId]) || sourceBuffers[id];
+  const preview = myBuffer?.dataUrl || (d as unknown as { previewUrl?: string }).previewUrl || '';
   const tileU = d.tileU ?? 1.0;
   const tileV = d.tileV ?? 1.0;
 
@@ -53,6 +54,8 @@ export const TextureInputNode: React.FC<NodeProps> = ({ id, data, selected }) =>
   const processLoadedFile = async (file: File) => {
     try {
       const buffer = await PixelEngine.loadFromFile(file);
+      const assetId = d.assetId || `asset_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      setSourceBuffer(assetId, buffer);
       setSourceBuffer(id, buffer);
 
       // Infer texture role from filename
@@ -63,7 +66,7 @@ export const TextureInputNode: React.FC<NodeProps> = ({ id, data, selected }) =>
         console.log(`[Drop] Ingested file with absolute path: ${absolutePath}`);
       }
       const patch = {
-        previewUrl: buffer.dataUrl || '',
+        assetId,
         title: meta.assetName ? `${meta.assetName} (${meta.roleLabel})` : file.name,
         role: meta.roleLabel,
         detectedRole: meta.detectedRole,

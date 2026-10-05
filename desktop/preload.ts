@@ -45,12 +45,56 @@ const labAPI: LabAPI = {
     return ipcRenderer.invoke('fs:writeFile', filePath, data);
   },
 
+  writeAtomicFile: (filePath: string, data: Uint8Array | string): Promise<void> => {
+    return ipcRenderer.invoke('fs:writeAtomicFile', filePath, data);
+  },
+
+  getRecentProjects: (): Promise<string[]> => {
+    return ipcRenderer.invoke('recent:get');
+  },
+
+  addRecentProject: (filePath: string): Promise<string[]> => {
+    return ipcRenderer.invoke('recent:add', filePath);
+  },
+
+  removeRecentProject: (filePath: string): Promise<string[]> => {
+    return ipcRenderer.invoke('recent:remove', filePath);
+  },
+
+  clearRecentProjects: (): Promise<void> => {
+    return ipcRenderer.invoke('recent:clear');
+  },
+
+  saveAutosave: (projectId: string, data: string): Promise<string> => {
+    return ipcRenderer.invoke('autosave:save', projectId, data);
+  },
+
+  deleteAutosave: (projectId: string): Promise<void> => {
+    return ipcRenderer.invoke('autosave:delete', projectId);
+  },
+
+  getAutosaves: (): Promise<Array<{ projectId: string; filePath: string; mtimeMs: number }>> => {
+    return ipcRenderer.invoke('autosave:list');
+  },
+
+  readAutosave: (filePath: string): Promise<string> => {
+    return ipcRenderer.invoke('autosave:read', filePath);
+  },
+
   openExternal: (url: string): Promise<void> => {
     return ipcRenderer.invoke('app:openExternal', url);
   },
 
   setDirty: (isDirty: boolean): Promise<void> => {
     return ipcRenderer.invoke('app:setDirty', isDirty);
+  },
+
+  setDirtyState: (isDirty: boolean, projectName: string): Promise<void> => {
+    return ipcRenderer.invoke('app:setDirtyState', isDirty, projectName);
+  },
+
+  showCloseGuardDialog: (projectName: string): Promise<'save' | 'dont-save' | 'cancel'> => {
+    return ipcRenderer.invoke('dialog:closeGuard', projectName);
   },
 
   setTitle: (title: string): Promise<void> => {

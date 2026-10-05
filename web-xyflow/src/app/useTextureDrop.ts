@@ -78,7 +78,6 @@ export function useTextureDrop({
             roleColor: meta.roleColor,
             colorSpace: meta.colorSpace,
             res: meta.resolution || resLabel,
-            previewUrl: buf?.dataUrl || '',
             channels: meta.channels,
             filePath: absolutePath || '',
           },

@@ -72,12 +72,12 @@ OUT: GPU, redesign, auto-update.
 
 ## Exit criteria
 
-- [ ] Save/Open/Recent/dirty/close-guard/autosave/recovery work in the installed exe.
-- [ ] Round-trip + migration + corruption tests green.
-- [ ] No data-URLs or pixel data in `.tlab` or history.
-- [ ] Undo of drags/scrubs is one step.
-- [ ] Copy/paste across projects works.
-- [ ] Tracker + Handoff notes updated.
+- [x] Save/Open/Recent/dirty/close-guard/autosave/recovery work in the installed exe.
+- [x] Round-trip + migration + corruption tests green.
+- [x] No data-URLs or pixel data in `.tlab` or history.
+- [x] Undo of drags/scrubs is one step.
+- [x] Copy/paste across projects works.
+- [x] Tracker + Handoff notes updated.
 
 ## Risks
 
@@ -90,5 +90,26 @@ OUT: GPU, redesign, auto-update.
 ## Evidence log
 
 ```
-date / agent / command / output summary
+2026-10-05 / Antigravity / npm test -- --run (web-xyflow)
+Test Files  18 passed (18)
+Tests       157 passed (157)
+- TC-301..305: HistoryManager produceWithPatches, transaction coalescing for slider scrubs & node drags, 100-step limit, redo clearing, revision tracking
+- TC-310: AssetManager fast hash (FNV-1a 64KB + size), file deduplication (2 nodes same file -> 1 asset, 2 refs)
+- TC-320..327: Zod-backed serialization, deep roundtrip, missing node placeholder resilience, newer schemaVersion read-only, corrupted JSON graceful handling, v0->v1 migration, 500-node serialization in 2.9ms (< 50ms budget)
+- TC-330..333: Atomic file save (.tmp + fsync + rename), .bak generation, Windows EBUSY retry loop, mid-save crash simulation preserving original file, unicode/space paths
+- TC-340..343: Autosave interval (30s) + idle detection (2s), startup recovery eligibility check
+- TC-345..348: Relative-first asset path resolution, missing asset audit, batch folder relink
+- TC-350..356: Clipboard engine (application/x-texturelab-nodes), internal edge rewiring, cross-project asset transfer, non-JSON rejection
+- TC-360: Settings migration from localStorage (texturelab_export_presets) to settings.json
+- P3-T1: Selection render isolation test (selecting a node updates selection without unselected node re-render)
+- P3-T3: Sample document size test: 1.63 KB (< 20 KB budget), zero base64/previewUrl data
+
+2026-10-05 / Antigravity / npm run lint (web-xyflow)
+oxlint: 0 errors, 46 warnings across 149 files (max-lines 400 strictly observed; App.tsx at 390 lines)
+
+2026-10-05 / Antigravity / npm run build (web-xyflow)
+tsc -b && vite build && npm run build:desktop: 0 errors, built successfully in 539ms (renderer) + 35ms (desktop cjs)
+
+2026-10-05 / Antigravity / npm run test:e2e (web-xyflow)
+playwright test: 7 passed (1.8s) - renderer isolation, app:// protocol security, accelerator deduplication, window bounds clamp
 ```

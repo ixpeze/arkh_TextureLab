@@ -80,9 +80,64 @@ export class ElectronPlatformService implements IPlatformService {
     await window.lab.setUserData(key, value);
   }
 
+  public async writeAtomicFile(filePath: string, data: Uint8Array | string): Promise<void> {
+    if (!window.lab) throw new Error('Electron API not available');
+    await window.lab.writeAtomicFile(filePath, data);
+  }
+
+  public async getRecentProjects(): Promise<string[]> {
+    if (!window.lab) return [];
+    return await window.lab.getRecentProjects();
+  }
+
+  public async addRecentProject(filePath: string): Promise<string[]> {
+    if (!window.lab) return [];
+    return await window.lab.addRecentProject(filePath);
+  }
+
+  public async removeRecentProject(filePath: string): Promise<string[]> {
+    if (!window.lab) return [];
+    return await window.lab.removeRecentProject(filePath);
+  }
+
+  public async clearRecentProjects(): Promise<void> {
+    if (!window.lab) return;
+    await window.lab.clearRecentProjects();
+  }
+
+  public async saveAutosave(projectId: string, data: string): Promise<string> {
+    if (!window.lab) return '';
+    return await window.lab.saveAutosave(projectId, data);
+  }
+
+  public async deleteAutosave(projectId: string): Promise<void> {
+    if (!window.lab) return;
+    await window.lab.deleteAutosave(projectId);
+  }
+
+  public async getAutosaves(): Promise<Array<{ projectId: string; filePath: string; mtimeMs: number }>> {
+    if (!window.lab) return [];
+    return await window.lab.getAutosaves();
+  }
+
+  public async readAutosave(filePath: string): Promise<string> {
+    if (!window.lab) return '';
+    return await window.lab.readAutosave(filePath);
+  }
+
   public async setDirty(dirty: boolean): Promise<void> {
     if (!window.lab) return;
     await window.lab.setDirty(dirty);
+  }
+
+  public async setDirtyState(dirty: boolean, projectName: string): Promise<void> {
+    if (!window.lab) return;
+    await window.lab.setDirtyState(dirty, projectName);
+  }
+
+  public async showCloseGuardDialog(projectName: string): Promise<'save' | 'dont-save' | 'cancel'> {
+    if (!window.lab) return 'dont-save';
+    return await window.lab.showCloseGuardDialog(projectName);
   }
 
   public async setTitle(title: string): Promise<void> {

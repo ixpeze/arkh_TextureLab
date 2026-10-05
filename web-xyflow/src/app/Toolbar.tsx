@@ -9,6 +9,8 @@ import {
   Download,
   FolderOpen,
   Sparkles,
+  FilePlus,
+  Save,
 } from 'lucide-react';
 
 export interface ToolbarProps {
@@ -23,6 +25,11 @@ export interface ToolbarProps {
   onOpenShortcuts: () => void;
   onFitView: () => void;
   onClearGraph: () => void;
+  onNewProject?: () => void;
+  onOpenProject?: () => void;
+  onSaveProject?: () => void;
+  projectName?: string;
+  isDirty?: boolean;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -37,6 +44,11 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onOpenShortcuts,
   onFitView,
   onClearGraph,
+  onNewProject,
+  onOpenProject,
+  onSaveProject,
+  projectName,
+  isDirty,
 }) => {
   return (
     <header
@@ -52,8 +64,8 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         userSelect: 'none',
       }}
     >
-      {/* Left Branding: Minimalist Name & Batch Pipeline Example */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      {/* Left Branding: Minimalist Name & Project Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span
           style={{
             fontFamily: "'Geist', sans-serif",
@@ -63,10 +75,82 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             background: 'linear-gradient(135deg, #38bdf8 0%, #a855f7 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
+            marginRight: 4,
           }}
         >
           TextureLAB
         </span>
+
+        {/* Project Name + Dirty Indicator */}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 5,
+            padding: '2px 7px',
+            backgroundColor: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: 3,
+            fontSize: 9.5,
+            color: '#e4e4e7',
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>{projectName || 'Untitled'}</span>
+          {isDirty && (
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: '50%',
+                backgroundColor: '#f59e0b',
+                display: 'inline-block',
+              }}
+              title="Unsaved changes"
+            />
+          )}
+        </div>
+
+        {/* File actions */}
+        {onNewProject && (
+          <button
+            type="button"
+            onClick={onNewProject}
+            title="New Project (Ctrl+N)"
+            className="tactical-tool-btn"
+            style={{ width: 22, height: 22 }}
+          >
+            <FilePlus size={11} color="#a1a1aa" />
+          </button>
+        )}
+        {onOpenProject && (
+          <button
+            type="button"
+            onClick={onOpenProject}
+            title="Open Project (Ctrl+O)"
+            className="tactical-tool-btn"
+            style={{ width: 22, height: 22 }}
+          >
+            <FolderOpen size={11} color="#a1a1aa" />
+          </button>
+        )}
+        {onSaveProject && (
+          <button
+            type="button"
+            onClick={onSaveProject}
+            title="Save Project (Ctrl+S)"
+            className="tactical-tool-btn"
+            style={{
+              width: 22,
+              height: 22,
+              color: isDirty ? '#f59e0b' : '#a1a1aa',
+              borderColor: isDirty ? 'rgba(245, 158, 11, 0.4)' : undefined,
+            }}
+          >
+            <Save size={11} />
+          </button>
+        )}
+
+        <div style={{ width: 1, height: 16, backgroundColor: 'rgba(255, 255, 255, 0.08)', margin: '0 2px' }} />
 
         <button
           type="button"

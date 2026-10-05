@@ -3,7 +3,7 @@ import { app, BrowserWindow, dialog, session } from 'electron';
 import { initLogger, logger } from './logger';
 import { restoreWindowState, trackWindowState, MIN_WIDTH, MIN_HEIGHT } from './windowState';
 import { registerAppProtocolPrivileges, setupAppProtocol } from './protocol';
-import { registerIpcHandlers } from './ipc';
+import { registerIpcHandlers, getWindowDirtyState } from './ipc';
 import { setupApplicationMenu } from './menu';
 
 // Force dedicated high-performance GPU on hybrid/dual-GPU laptops (02 §7)
@@ -105,6 +105,36 @@ async function createWindow(): Promise<BrowserWindow> {
     }
     event.preventDefault();
     logger.warn(`Blocked navigation to: ${navigationUrl}`);
+  });
+
+  // Close guard for unsaved changes (P3-T7: TC-337)
+  let isClosingAllowed = false;
+  win.on('close', (event) => {
+    if (isClosingAllowed) return;
+    const { isDirty, projectName } = getWindowDirtyState();
+    if (isDirty) {
+      const choice = dialog.showMessageBoxSync(win, {
+        type: 'question',
+        buttons: ['&Save', "&Don't Save", '&Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        title: 'TextureLab',
+        message: `Do you want to save changes to "${projectName || 'Untitled'}" before closing?`,
+        detail: 'Your changes will be lost if you do not save them.',
+      });
+
+      if (choice === 0) {
+        // Save
+        event.preventDefault();
+        win.webContents.send('lab:menu-command', 'file:save');
+      } else if (choice === 1) {
+        // Don't save -> proceed with close
+        isClosingAllowed = true;
+      } else {
+        // Cancel
+        event.preventDefault();
+      }
+    }
   });
 
   // Crash handling (P2-T9, TC-218)

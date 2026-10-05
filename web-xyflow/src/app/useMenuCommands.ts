@@ -13,6 +13,13 @@ export interface UseMenuCommandsProps {
   toggleShortcuts: () => void;
   handleClearGraph: () => void;
   setStatusMessage: (msg: string) => void;
+  handleNewProject?: () => void;
+  handleOpenDialog?: () => void;
+  handleSave?: () => void;
+  handleSaveAs?: () => void;
+  handleCopy?: () => void;
+  handlePaste?: () => void;
+  handleCut?: () => void;
 }
 
 export function useMenuCommands(props: UseMenuCommandsProps): void {
@@ -21,17 +28,17 @@ export function useMenuCommands(props: UseMenuCommandsProps): void {
     const cleanup = platform.onMenuCommand((cmd: MenuCommand) => {
       switch (cmd) {
         case 'file:new':
-          props.handleClearGraph();
-          props.setStatusMessage('Created new project');
+          if (props.handleNewProject) props.handleNewProject();
+          else props.handleClearGraph();
           break;
         case 'file:open':
-          props.setStatusMessage('Open project (project format ready in Phase 3)');
+          if (props.handleOpenDialog) props.handleOpenDialog();
           break;
         case 'file:save':
-          props.setStatusMessage('Project saved');
+          if (props.handleSave) props.handleSave();
           break;
         case 'file:save-as':
-          props.setStatusMessage('Save As (project format ready in Phase 3)');
+          if (props.handleSaveAs) props.handleSaveAs();
           break;
         case 'file:export':
           props.toggleExportModal();
@@ -41,6 +48,15 @@ export function useMenuCommands(props: UseMenuCommandsProps): void {
           break;
         case 'edit:redo':
           props.handleRedo();
+          break;
+        case 'edit:copy':
+          props.handleCopy?.();
+          break;
+        case 'edit:paste':
+          props.handlePaste?.();
+          break;
+        case 'edit:cut':
+          props.handleCut?.();
           break;
         case 'edit:duplicate':
           props.handleDuplicate();

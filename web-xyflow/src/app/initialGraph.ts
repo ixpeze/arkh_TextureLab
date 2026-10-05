@@ -37,6 +37,20 @@ export const BENCHMARK_MAPS = [
   },
 ];
 
+export async function fetchBenchmarkBuffers<T>(
+  loadFromUrl: (url: string) => Promise<T>
+): Promise<Record<string, T>> {
+  const loaded: Record<string, T> = {};
+  for (const m of BENCHMARK_MAPS) {
+    try {
+      loaded[m.nodeId] = await loadFromUrl(m.url);
+    } catch (e) {
+      console.warn(`Could not fetch ${m.url}`, e);
+    }
+  }
+  return loaded;
+}
+
 export const initialNodes: Node[] = [
   {
     id: 'input_ao',
@@ -47,7 +61,6 @@ export const initialNodes: Node[] = [
       role: 'Ambient Occlusion',
       roleColor: 'var(--pbr-ao)',
       res: '4K',
-      previewUrl: '',
       channels: { r: 'AO', g: 'AO', b: 'AO', a: '1.0' },
     },
   },
@@ -60,7 +73,6 @@ export const initialNodes: Node[] = [
       role: 'Roughness',
       roleColor: 'var(--pbr-rough)',
       res: '4K',
-      previewUrl: '',
       channels: { r: 'Roughness', g: 'Roughness', b: 'Roughness', a: '1.0' },
     },
   },
@@ -73,7 +85,6 @@ export const initialNodes: Node[] = [
       role: 'Metallic',
       roleColor: 'var(--pbr-metal)',
       res: '4K',
-      previewUrl: '',
       channels: { r: 'Metallic', g: 'Metallic', b: 'Metallic', a: '1.0' },
     },
   },

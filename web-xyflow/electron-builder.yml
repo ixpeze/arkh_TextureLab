@@ -24,6 +24,12 @@ win:
       arch:
         - x64
   icon: build/icon.ico
+fileAssociations:
+  - ext: tlab
+    name: ARKH TextureLab Project
+    description: ARKH TextureLab Project File
+    role: Editor
+    icon: build/icon.ico
 nsis:
   oneClick: false
   perMachine: false
