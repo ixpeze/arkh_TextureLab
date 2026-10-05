@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { Calculator } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
@@ -74,23 +74,10 @@ export const MathNode: React.FC<NodeProps> = ({ id, data, selected, type }) => {
 
   const cfg = OP_CONFIGS[currentOp] || OP_CONFIGS.multiply;
 
-  const [valA, setValA] = useState<number>(d.valA ?? cfg.defA);
-  const [valB, setValB] = useState<number>(d.valB ?? cfg.defB);
-  const [param1, setParam1] = useState<number>(d.param1 ?? cfg.param1Def ?? 0.5);
-  const [param2, setParam2] = useState<number>(d.param2 ?? cfg.param2Def ?? 1.0);
-
-  useEffect(() => {
-    if (d.valA !== undefined) setValA(d.valA);
-  }, [d.valA]);
-  useEffect(() => {
-    if (d.valB !== undefined) setValB(d.valB);
-  }, [d.valB]);
-  useEffect(() => {
-    if (d.param1 !== undefined) setParam1(d.param1);
-  }, [d.param1]);
-  useEffect(() => {
-    if (d.param2 !== undefined) setParam2(d.param2);
-  }, [d.param2]);
+  const valA = d.valA ?? cfg.defA;
+  const valB = d.valB ?? cfg.defB;
+  const param1 = d.param1 ?? cfg.param1Def ?? 0.5;
+  const param2 = d.param2 ?? cfg.param2Def ?? 1.0;
 
   const updateParam = (key: string, val: number) => {
     onUpdateNodeData(id, { [key]: val });
@@ -148,7 +135,6 @@ export const MathNode: React.FC<NodeProps> = ({ id, data, selected, type }) => {
           value={valA}
           onChange={(e) => {
             const v = parseFloat(e.target.value) || 0;
-            setValA(v);
             updateParam('valA', v);
           }}
           className="nodrag nopan"
@@ -182,7 +168,6 @@ export const MathNode: React.FC<NodeProps> = ({ id, data, selected, type }) => {
             value={valB}
             onChange={(e) => {
               const v = parseFloat(e.target.value) || 0;
-              setValB(v);
               updateParam('valB', v);
             }}
             className="nodrag nopan"
@@ -219,7 +204,6 @@ export const MathNode: React.FC<NodeProps> = ({ id, data, selected, type }) => {
             value={param1}
             onChange={(e) => {
               const v = parseFloat(e.target.value) || 0;
-              setParam1(v);
               updateParam('param1', v);
             }}
             className="nodrag nopan"
@@ -248,7 +232,6 @@ export const MathNode: React.FC<NodeProps> = ({ id, data, selected, type }) => {
             value={param1}
             onChange={(e) => {
               const v = parseFloat(e.target.value) || 0;
-              setParam1(v);
               updateParam('param1', v);
             }}
             className="nodrag nopan"
@@ -276,7 +259,6 @@ export const MathNode: React.FC<NodeProps> = ({ id, data, selected, type }) => {
             value={param2}
             onChange={(e) => {
               const v = parseFloat(e.target.value) || 0;
-              setParam2(v);
               updateParam('param2', v);
             }}
             className="nodrag nopan"
