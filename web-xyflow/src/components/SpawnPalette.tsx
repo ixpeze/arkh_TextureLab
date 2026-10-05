@@ -31,6 +31,7 @@ const PALETTE_ITEMS = [
   { cat: 'Math', name: 'Min', key: 'min', color: '#14b8a6' },
   { cat: 'Math', name: 'Max', key: 'max', color: '#f59e0b' },
   { cat: 'Math', name: 'Abs', key: 'abs', color: '#6366f1' },
+  { cat: 'Math', name: 'Math (Expression)', key: 'math', color: '#22c55e' },
   { cat: 'Processing', name: 'Levels (Remap)', key: 'levels', shortcut: 'L', color: '#22c55e' },
   { cat: 'Processing', name: 'Resize', key: 'resize', color: '#38bdf8' },
   { cat: 'Processing', name: 'Upscale', key: 'upscale', color: '#a855f7' },

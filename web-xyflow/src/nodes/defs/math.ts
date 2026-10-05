@@ -46,6 +46,7 @@ interface MathConfig {
   param1Def?: number;
   param2Label?: string;
   param2Def?: number;
+  legacyAliases?: string[];
   body: typeof MathNode;
 }
 
@@ -64,6 +65,7 @@ function createMathDef(cfg: MathConfig): NodeDef<MathParams> {
     category: 'Math',
     inputs,
     outputs: [{ id: 'output', kind: 'any', label: 'Result' }],
+    legacyAliases: cfg.legacyAliases,
     params: {
       valA: { type: 'number', label: 'Value A', default: cfg.defA },
       ...(cfg.hasB ? { valB: { type: 'number', label: 'Value B', default: cfg.defB } } : {}),
@@ -116,6 +118,7 @@ export const mathDef = createMathDef({
   hasB: true,
   defA: 1.0,
   defB: 1.0,
+  legacyAliases: ['mathOp'],
   body: MathNode,
 });
 
@@ -130,6 +133,7 @@ export const lerpDef = createMathDef({
   defB: 1.0,
   param1Label: 'Alpha',
   param1Def: 0.5,
+  legacyAliases: ['mathLerp', 'linearInterpolate'],
   body: LerpNode,
 });
 
@@ -141,6 +145,7 @@ export const multiplyDef = createMathDef({
   hasB: true,
   defA: 1.0,
   defB: 1.0,
+  legacyAliases: ['mathMultiply', 'mathDot', 'mathCross'],
   body: MultiplyNode,
 });
 
@@ -152,6 +157,7 @@ export const addDef = createMathDef({
   hasB: true,
   defA: 0.0,
   defB: 0.0,
+  legacyAliases: ['mathAdd'],
   body: AddNode,
 });
 
@@ -163,6 +169,7 @@ export const subtractDef = createMathDef({
   hasB: true,
   defA: 0.0,
   defB: 0.0,
+  legacyAliases: ['mathSubtract'],
   body: SubtractNode,
 });
 
@@ -174,6 +181,7 @@ export const divideDef = createMathDef({
   hasB: true,
   defA: 1.0,
   defB: 1.0,
+  legacyAliases: ['mathDivide'],
   body: DivideNode,
 });
 
@@ -189,6 +197,7 @@ export const clampDef = createMathDef({
   param1Def: 0.0,
   param2Label: 'Max',
   param2Def: 1.0,
+  legacyAliases: ['mathClamp'],
   body: ClampNode,
 });
 
@@ -200,6 +209,7 @@ export const saturateDef = createMathDef({
   hasB: false,
   defA: 0.0,
   defB: 1.0,
+  legacyAliases: ['mathSaturate'],
   body: SaturateNode,
 });
 
@@ -213,6 +223,7 @@ export const powerDef = createMathDef({
   defB: 1.0,
   param1Label: 'Exp',
   param1Def: 2.0,
+  legacyAliases: ['mathPower'],
   body: PowerNode,
 });
 
@@ -224,6 +235,7 @@ export const oneMinusDef = createMathDef({
   hasB: false,
   defA: 0.0,
   defB: 1.0,
+  legacyAliases: ['mathOneMinus', 'one_minus'],
   body: OneMinusNode,
 });
 
@@ -235,6 +247,7 @@ export const minDef = createMathDef({
   hasB: true,
   defA: 0.0,
   defB: 0.0,
+  legacyAliases: ['mathMin'],
   body: MinNode,
 });
 
@@ -246,6 +259,7 @@ export const maxDef = createMathDef({
   hasB: true,
   defA: 0.0,
   defB: 0.0,
+  legacyAliases: ['mathMax'],
   body: MaxNode,
 });
 
@@ -257,6 +271,7 @@ export const absDef = createMathDef({
   hasB: false,
   defA: 0.0,
   defB: 0.0,
+  legacyAliases: ['mathAbs'],
   body: AbsNode,
 });
 

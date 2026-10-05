@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { NodeProps } from '@xyflow/react';
 import { Calculator } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 import { useNodeBuffers } from '../../context/NodeBufferContext';
+import { nodeRegistry } from '../../nodes/registry';
 
 export type MathOpType =
   | 'lerp'
@@ -60,14 +61,15 @@ const OP_CONFIGS: Record<
   abs: { label: 'Absolute', badge: 'ABS', color: '#6366f1', hasB: false, defA: 0.0, defB: 0.0 },
 };
 
-export const MathNode: React.FC<NodeProps<any>> = ({ id, data, selected, type }) => {
+export const MathNode: React.FC<NodeProps> = ({ id, data, selected, type }) => {
   const d = (data as MathNodeData) || {};
   const isBypassed = !!d.isBypassed;
   const { onUpdateNodeData } = useNodeBuffers();
 
-  // Infer op from node type or data.op
+  // Infer op from canonical node type or data.op
+  const canonicalType = nodeRegistry.resolveCanonicalType(type || '');
   const currentOp: MathOpType = (
-    type && type !== 'math' ? type : d.op || 'multiply'
+    canonicalType && canonicalType !== 'math' ? canonicalType : d.op || 'multiply'
   ) as MathOpType;
 
   const cfg = OP_CONFIGS[currentOp] || OP_CONFIGS.multiply;
@@ -77,6 +79,19 @@ export const MathNode: React.FC<NodeProps<any>> = ({ id, data, selected, type })
   const [param1, setParam1] = useState<number>(d.param1 ?? cfg.param1Def ?? 0.5);
   const [param2, setParam2] = useState<number>(d.param2 ?? cfg.param2Def ?? 1.0);
 
+  useEffect(() => {
+    if (d.valA !== undefined) setValA(d.valA);
+  }, [d.valA]);
+  useEffect(() => {
+    if (d.valB !== undefined) setValB(d.valB);
+  }, [d.valB]);
+  useEffect(() => {
+    if (d.param1 !== undefined) setParam1(d.param1);
+  }, [d.param1]);
+  useEffect(() => {
+    if (d.param2 !== undefined) setParam2(d.param2);
+  }, [d.param2]);
+
   const updateParam = (key: string, val: number) => {
     onUpdateNodeData(id, { [key]: val });
   };
@@ -84,13 +99,40 @@ export const MathNode: React.FC<NodeProps<any>> = ({ id, data, selected, type })
   return (
     <NodeCard
       selected={selected}
-      title={d.title || cfg.label}
+      title={d.title || (canonicalType === 'math' ? `Math (${cfg.label})` : cfg.label)}
       icon={<Calculator size={11} />}
       accentColor={cfg.color}
       headerAction={<NodeBadge color={cfg.color}>{cfg.badge}</NodeBadge>}
       isBypassed={isBypassed}
       width={170}
     >
+      {/* Dynamic Op Selector for generic Math node */}
+      {canonicalType === 'math' && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '1px 6px', marginBottom: 3 }}>
+          <span style={{ fontSize: 7.5, color: '#94a3b8' }}>Op</span>
+          <select
+            value={currentOp}
+            onChange={(e) => {
+              onUpdateNodeData(id, { op: e.target.value as MathOpType });
+            }}
+            className="nodrag nopan"
+            style={{
+              background: '#0a0d14',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              color: '#f8fafc',
+              fontSize: 7.5,
+              padding: '1px 2px',
+              borderRadius: 2,
+            }}
+          >
+            {Object.entries(OP_CONFIGS).map(([k, c]) => (
+              <option key={k} value={k}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {/* Input A Socket with inline scalar fallback */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 6 }}>
         <NodeSocket
@@ -267,15 +309,15 @@ export const MathNode: React.FC<NodeProps<any>> = ({ id, data, selected, type })
 };
 
 // Aliases for individual composable node registration
-export const LerpNode = (props: NodeProps<any>) => <MathNode {...props} type="lerp" />;
-export const MultiplyNode = (props: NodeProps<any>) => <MathNode {...props} type="multiply" />;
-export const AddNode = (props: NodeProps<any>) => <MathNode {...props} type="add" />;
-export const SubtractNode = (props: NodeProps<any>) => <MathNode {...props} type="subtract" />;
-export const DivideNode = (props: NodeProps<any>) => <MathNode {...props} type="divide" />;
-export const ClampNode = (props: NodeProps<any>) => <MathNode {...props} type="clamp" />;
-export const SaturateNode = (props: NodeProps<any>) => <MathNode {...props} type="saturate" />;
-export const PowerNode = (props: NodeProps<any>) => <MathNode {...props} type="power" />;
-export const OneMinusNode = (props: NodeProps<any>) => <MathNode {...props} type="oneMinus" />;
-export const MinNode = (props: NodeProps<any>) => <MathNode {...props} type="min" />;
-export const MaxNode = (props: NodeProps<any>) => <MathNode {...props} type="max" />;
-export const AbsNode = (props: NodeProps<any>) => <MathNode {...props} type="abs" />;
+export const LerpNode = (props: NodeProps) => <MathNode {...props} type="lerp" />;
+export const MultiplyNode = (props: NodeProps) => <MathNode {...props} type="multiply" />;
+export const AddNode = (props: NodeProps) => <MathNode {...props} type="add" />;
+export const SubtractNode = (props: NodeProps) => <MathNode {...props} type="subtract" />;
+export const DivideNode = (props: NodeProps) => <MathNode {...props} type="divide" />;
+export const ClampNode = (props: NodeProps) => <MathNode {...props} type="clamp" />;
+export const SaturateNode = (props: NodeProps) => <MathNode {...props} type="saturate" />;
+export const PowerNode = (props: NodeProps) => <MathNode {...props} type="power" />;
+export const OneMinusNode = (props: NodeProps) => <MathNode {...props} type="oneMinus" />;
+export const MinNode = (props: NodeProps) => <MathNode {...props} type="min" />;
+export const MaxNode = (props: NodeProps) => <MathNode {...props} type="max" />;
+export const AbsNode = (props: NodeProps) => <MathNode {...props} type="abs" />;

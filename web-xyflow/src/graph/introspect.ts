@@ -1,4 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
+import { nodeRegistry } from '../nodes/registry';
 
 export interface HandleConnectionInfo {
   handleId: string;
@@ -22,7 +23,7 @@ export function getNodePortTelemetry(
   node: Node,
   edges: Edge[]
 ): HandleConnectionInfo[] {
-  const nodeType = node.type || '';
+  const nodeType = nodeRegistry.resolveCanonicalType(node.type || '');
   const data = node.data || {};
 
   if (nodeType === 'channelCombiner' || nodeType === 'channelPack') {
@@ -182,7 +183,7 @@ export function autoDetectOutputRole(
     const node = nodeMap.get(nodeId);
     if (!node) return { slot: 'ORM', colorSpace: 'linear' };
 
-    const type = node.type || '';
+    const type = nodeRegistry.resolveCanonicalType(node.type || '');
     const data = (node.data as Record<string, unknown>) || {};
 
     if (type === 'channelCombiner' || type === 'channelPack') {
