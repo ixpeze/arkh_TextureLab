@@ -5,7 +5,7 @@ import type { ExportProgressState } from './types';
 export interface ProgressFooterProps {
   isExporting: boolean;
   exportProgress: ExportProgressState | null;
-  directoryHandle: FileSystemDirectoryHandle | null;
+  directoryHandle: { name: string } | null;
   detectedSourceLocation: string;
   readyCount: number;
   totalCount: number;

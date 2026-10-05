@@ -9,7 +9,7 @@ import type {
 export interface DestinationPickerProps {
   settings: GlobalExportSettings;
   setSettings: React.Dispatch<React.SetStateAction<GlobalExportSettings>>;
-  directoryHandle: FileSystemDirectoryHandle | null;
+  directoryHandle: { name: string } | null;
   detectedSourceLocation: string;
   onPickDirectory: () => void;
   onResetToSourceLocation: () => void;

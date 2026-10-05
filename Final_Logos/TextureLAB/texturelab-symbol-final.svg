@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="tlab-sym-final">
+  <title id="tlab-sym-final">TextureLAB — Master Product Symbol (The Monolithic T-Vault)</title>
+  <!-- Monolithic 3D Isometric 'T' (Canopy & Solid Stem Fused) -->
+  <path fill="#0A0B0E" d="
+    M 52 86
+    L 128 42
+    L 204 86
+    L 166 108
+    L 152 100
+    V 170
+    L 128 184
+    L 104 170
+    V 100
+    L 90 108
+    Z" />
+  <!-- Left Structural Node Pier (Input Channel A) -->
+  <path fill="#0A0B0E" d="M 52 178 L 88 199 V 131 L 52 110 Z" />
+  <!-- Right Structural Node Pier (Input Channel B) -->
+  <path fill="#0A0B0E" d="M 168 199 L 204 178 V 110 L 168 131 Z" />
+  <!-- Coordinate Floor Pedestal (Spatial / Output Datum) -->
+  <polygon fill="#0A0B0E" points="128,198 152,212 128,226 104,212" />
+</svg>

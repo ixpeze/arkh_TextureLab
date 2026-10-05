@@ -6,7 +6,22 @@ ARKH TextureLab is a high-performance web workstation for interactive PBR textur
 
 ---
 
-## 🚀 Getting Started & Installation
+## 📦 Download Installer (Windows Desktop)
+
+You can run ARKH TextureLab as a native Windows desktop application with zero Node.js or terminal prerequisites:
+
+| Download Type | Filename | Description |
+|---|---|---|
+| **Installer** | `release/TextureLab-Setup-0.2.0.exe` | Clean per-user Windows NSIS installer (no admin rights needed, creates shortcuts). |
+| **Portable** | `release/TextureLab-0.2.0-portable.exe` | Standalone portable executable. Runs from any folder or USB drive. |
+
+> [!NOTE]
+> **Windows SmartScreen Note (Free & Unsigned Software):**
+> ARKH TextureLab is distributed unsigned (per locked project decision D-10). On first launch, Windows SmartScreen may show a prompt saying *"Windows protected your PC"*. Simply click **"More info"** and then **"Run anyway"**.
+
+---
+
+## 🚀 Development & Web Setup
 
 ### 📋 Prerequisites
 - **Operating System**: Windows 10/11 (or macOS / Linux via terminal).
@@ -20,16 +35,23 @@ ARKH TextureLab is a high-performance web workstation for interactive PBR textur
 
 ---
 
-### 💻 First-Time Setup on a Fresh PC
+### 💻 Development Launchers
 
-You have three convenient ways to get up and running:
+You have convenient launchers to get up and running in development:
 
-#### Option 1: 1-Click Self-Healing Launcher (Recommended)
-Simply double-click:
+#### Option 1: Desktop Shell in Development Mode
+Double-click:
+```powershell
+run_desktop_dev.bat
+```
+> **What it does**: Compiles the desktop Electron process, launches the Vite HMR server, and opens the native TextureLab desktop window with live hot-reloading.
+
+#### Option 2: Browser Workstation
+Double-click:
 ```powershell
 run_web.bat
 ```
-> **What it does**: Automatically checks your Node.js environment, detects if dependencies are missing, installs them (`npm install`), launches the local Vite development server, and opens **`http://localhost:5173`** in your default web browser.
+> **What it does**: Automatically checks your Node.js environment, installs packages if missing, launches the local Vite development server, and opens **`http://localhost:5173`** in your default web browser.
 
 #### Option 2: First-Time Installer (`setup.bat`)
 If you want an explicit setup and diagnostic test:

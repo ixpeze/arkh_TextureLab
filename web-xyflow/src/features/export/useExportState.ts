@@ -5,6 +5,7 @@ import {
   ExportEngine,
   DEFAULT_GLOBAL_SETTINGS,
   type ExportTargetResolution,
+  type DirectoryExportTarget,
 } from '../../engine/exportEngine';
 import type {
   GlobalExportSettings,
@@ -72,7 +73,7 @@ export function useExportState({
     directoryName: 'sample_textures',
   }));
 
-  const [directoryHandle, setDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [directoryTarget, setDirectoryTarget] = useState<DirectoryExportTarget | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgressState | null>(null);
 
@@ -191,16 +192,16 @@ export function useExportState({
   };
 
   const handlePickDirectory = async () => {
-    const handle = await ExportEngine.pickDirectory();
-    if (handle) {
-      setDirectoryHandle(handle);
-      setSettings((prev) => ({ ...prev, directoryName: handle.name }));
-      showFeedback(`Output folder set to disk: "${handle.name}"`, 'success');
+    const target = await ExportEngine.pickDirectory();
+    if (target) {
+      setDirectoryTarget(target);
+      setSettings((prev) => ({ ...prev, directoryName: target.name }));
+      showFeedback(`Output folder set to disk: "${target.name}"`, 'success');
     }
   };
 
   const handleResetToSourceLocation = () => {
-    setDirectoryHandle(null);
+    setDirectoryTarget(null);
     setSettings((prev) => ({ ...prev, directoryName: detectedSourceLocation }));
     showFeedback(`Restored default source location: "${detectedSourceLocation}"`, 'info');
   };
@@ -252,9 +253,9 @@ export function useExportState({
         await new Promise((resolve) => setTimeout(resolve, 30));
       }
 
-      if (directoryHandle) {
-        await ExportEngine.exportToDirectory(generatedFiles, directoryHandle);
-        onExportComplete?.(`Exported ${generatedFiles.length} textures directly to disk folder "${directoryHandle.name}"`);
+      if (directoryTarget) {
+        await ExportEngine.exportToDirectory(generatedFiles, directoryTarget);
+        onExportComplete?.(`Exported ${generatedFiles.length} textures directly to disk folder "${directoryTarget.name}"`);
       } else {
         const zipPrefix = settings.directoryName || detectedSourceLocation || 'Textures';
         const zipName = `${zipPrefix}_${settings.assetName || 'Asset'}.zip`;
@@ -283,7 +284,7 @@ export function useExportState({
     settings,
     setSettings,
     detectedSourceLocation,
-    directoryHandle,
+    directoryHandle: directoryTarget,
     isExporting,
     exportProgress,
     patternInputRef,

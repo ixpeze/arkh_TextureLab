@@ -218,3 +218,4 @@ Avoid: native Node modules (`sharp`, `canvas`) — they complicate packaging.
 | 6 | Registry-driven nodes | Keep per-node components | One file per node, typed, drives everything | One-time migration of ~30 nodes |
 | 7 | Keep folder `web-xyflow/` | Rename to `app/` | Avoid breaking `setup.bat`/`run_web.bat` mid-roadmap | Cosmetic; revisit in Phase 6 |
 | 8 | CPU engine -> test-only oracle | Delete | Golden reference for shader correctness | Must keep out of prod bundle |
+| 9 | Vite (renderer) + tsup (desktop) | electron-vite | electron-vite peerDependencies require vite ^5-^7, incompatible with repo's Vite 8 (8.3.2). tsup (8.5.1, esbuild-backed) + electron (44.5.1) + electron-builder (26.15.3) compiles desktop/ cleanly while preserving Vite 8 HMR. | Separate compile command for desktop/ orchestrated via npm scripts |

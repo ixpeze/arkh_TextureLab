@@ -23,6 +23,8 @@ import {
   type ExportTargetResolution,
   type TokenResolveContext,
 } from './exportPresets';
+import { getPlatform, type DirectoryExportTarget } from '../platform/PlatformService';
+export type { DirectoryExportTarget };
 import { createZip } from './exportZip';
 import { encodeTGA } from './exportTga';
 import { buildPreflightRegistry } from './exportPreflight';
@@ -196,38 +198,18 @@ export class ExportEngine {
   }
 
   public static isDirectoryPickerSupported(): boolean {
-    return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+    return getPlatform().isFolderExportSupported();
   }
 
-  public static async pickDirectory(): Promise<FileSystemDirectoryHandle | null> {
-    if (!this.isDirectoryPickerSupported()) return null;
-    try {
-      const picker = (window as unknown as { showDirectoryPicker?: (opts: { mode: string }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker;
-      if (!picker) return null;
-      return await picker({ mode: 'readwrite' });
-    } catch (err: unknown) {
-      if (err && typeof err === 'object' && 'name' in err && (err as { name: string }).name === 'AbortError') return null;
-      console.warn('Directory Picker rejected:', err);
-      return null;
-    }
+  public static async pickDirectory(): Promise<DirectoryExportTarget | null> {
+    return await getPlatform().pickDirectory();
   }
 
   public static async exportToDirectory(
     files: { filename: string; blob: Blob }[],
-    dirHandle: FileSystemDirectoryHandle
+    target: DirectoryExportTarget
   ): Promise<void> {
-    for (const f of files) {
-      const parts = f.filename.split('/').filter(Boolean);
-      let targetDir = dirHandle;
-      for (let i = 0; i < parts.length - 1; i++) {
-        targetDir = await targetDir.getDirectoryHandle(parts[i], { create: true });
-      }
-      const leafName = parts[parts.length - 1];
-      const fileHandle = await targetDir.getFileHandle(leafName, { create: true });
-      const writable = await fileHandle.createWritable();
-      await writable.write(f.blob);
-      await writable.close();
-    }
+    return await getPlatform().exportFiles(files, target);
   }
 
   public static triggerDownload(blob: Blob, filename: string): void {

@@ -132,6 +132,23 @@ export function shouldIgnoreEvent(e: KeyboardLikeEvent, context?: HotkeyContext)
  * Dispatches a keyboard event against a list of keybindings.
  * Returns true if a binding matched and was executed.
  */
+export const ELECTRON_MENU_ACCELERATORS = new Set([
+  'ctrl+n',
+  'ctrl+o',
+  'ctrl+s',
+  'ctrl+shift+s',
+  'ctrl+e',
+  'ctrl+z',
+  'ctrl+y',
+  'ctrl+shift+z',
+  'ctrl+x',
+  'ctrl+c',
+  'ctrl+v',
+  'ctrl+d',
+  'ctrl+a',
+  'delete',
+]);
+
 export function dispatchHotkey(
   e: KeyboardLikeEvent,
   bindings: KeyBinding[],
@@ -141,9 +158,15 @@ export function dispatchHotkey(
     return false;
   }
 
+  const chord = getChordString(e);
+  const isElectron = typeof window !== 'undefined' && Boolean(window.lab?.isElectron);
+  if (isElectron && ELECTRON_MENU_ACCELERATORS.has(chord)) {
+    // In Electron, native menu accelerators handle these chords via IPC
+    return false;
+  }
+
   const hasModifier = !!(e.ctrlKey || e.metaKey || e.altKey);
   const canonicalKey = getCanonicalKey(e);
-  const chord = getChordString(e);
 
   for (const binding of bindings) {
     const bindingChord = binding.chord.toLowerCase();

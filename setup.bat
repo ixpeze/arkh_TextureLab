@@ -50,7 +50,8 @@ echo                ARKH TextureLab Setup Completed Successfully!
 echo ===============================================================================
 echo.
 echo You can now launch ARKH TextureLab anytime by running:
-echo    run_web.bat
+echo    run_desktop_dev.bat   (Desktop App)
+echo    run_web.bat           (Web Browser)
 echo.
 set /p "LAUNCH_NOW=Would you like to launch ARKH TextureLab now? (Y/N, default Y): "
 if /i "%LAUNCH_NOW%"=="N" goto :skip_launch

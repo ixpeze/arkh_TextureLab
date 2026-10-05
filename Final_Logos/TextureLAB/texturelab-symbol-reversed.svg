@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="tlab-sym-rev">
+  <title id="tlab-sym-rev">TextureLAB — Master Symbol (Reversed White)</title>
+  <path fill="#FFFFFF" d="
+    M 53 86
+    L 128 43
+    L 203 86
+    L 165 108
+    L 151 100
+    V 169
+    L 128 183
+    L 105 169
+    V 100
+    L 91 108
+    Z" />
+  <path fill="#FFFFFF" d="M 53 177 L 88 198 V 132 L 53 111 Z" />
+  <path fill="#FFFFFF" d="M 168 198 L 203 177 V 111 L 168 132 Z" />
+  <polygon fill="#FFFFFF" points="128,199 151,212 128,225 105,212" />
+</svg>

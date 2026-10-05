@@ -21,6 +21,7 @@ import {
   getBatchPipelineExample,
 } from './app/initialGraph';
 import { useAppHotkeys } from './app/useAppHotkeys';
+import { useMenuCommands } from './app/useMenuCommands';
 import { PixelEngine, type TextureBuffer } from './engine/pixelEngine';
 import { GraphEvaluator } from './engine/graphEvaluator';
 import { graphContentHash } from './graph/hash';
@@ -240,7 +241,11 @@ function Workbench() {
     setStatusMessage('Loaded working Batch Asset Pipeline example');
   }, [pushSnapshot, setEdges, setNodes]);
 
-  // Declarative hotkeys
+  const selectAll = useCallback(() => {
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
+    setStatusMessage('Selected all nodes');
+  }, [setNodes]);
+
   useAppHotkeys({
     handleUndo,
     handleRedo,
@@ -250,24 +255,20 @@ function Workbench() {
     toggleBypassSelected,
     handleDuplicate,
     handleDelete,
-    selectAll: () => {
-      setNodes((nds) => {
-        setStatusMessage(`Selected all ${nds.length} nodes`);
-        return nds.map((n) => ({ ...n, selected: true }));
-      });
-    },
+    selectAll,
     spawnNode,
-    togglePalette: () => {
-      setPalettePos((prev) => {
-        if (prev) return null;
-        const mouseX = canvasMousePosRef.current?.x ?? window.innerWidth / 2;
-        const mouseY = canvasMousePosRef.current?.y ?? window.innerHeight / 2;
-        return { x: mouseX, y: mouseY };
-      });
-    },
-    toggleShortcuts: () => setIsShortcutsOpen((prev) => !prev),
-    toggleExportModal: () => setIsExportModalOpen((prev) => !prev),
+    togglePalette: () => setPalettePos((p) => (p ? null : { x: canvasMousePosRef.current?.x ?? window.innerWidth / 2, y: canvasMousePosRef.current?.y ?? window.innerHeight / 2 })),
+    toggleShortcuts: () => setIsShortcutsOpen((p) => !p),
+    toggleExportModal: () => setIsExportModalOpen((p) => !p),
     isModalOpen: isShortcutsOpen || isExportModalOpen,
+  });
+
+  useMenuCommands({
+    handleUndo, handleRedo, fitView: () => fitView({ duration: 300 }),
+    handleDuplicate, handleDelete, selectAll,
+    toggleExportModal: () => setIsExportModalOpen((p) => !p),
+    toggleShortcuts: () => setIsShortcutsOpen((p) => !p),
+    handleClearGraph, setStatusMessage,
   });
 
   const { handleDragOver, handleDrop } = useTextureDrop({

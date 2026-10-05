@@ -13,6 +13,13 @@
       "rules": {
         "max-lines": "off"
       }
+    },
+    {
+      "files": ["dist-desktop/**"],
+      "rules": {
+        "max-lines": "off",
+        "no-unused-expressions": "off"
+      }
     }
   ]
 }

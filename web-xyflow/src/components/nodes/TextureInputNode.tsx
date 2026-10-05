@@ -7,6 +7,7 @@ import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 import { PixelEngine } from '../../engine/pixelEngine';
 import { LexicalNormalizer } from '../../engine/normalizer';
 import { useNodeBuffers } from '../../context/NodeBufferContext';
+import { getPlatform } from '../../platform/PlatformService';
 
 export interface TextureInputData {
   title: string;
@@ -15,6 +16,7 @@ export interface TextureInputData {
   res: string;
   previewUrl: string;
   colorSpace?: 'sRGB' | 'Linear';
+  filePath?: string;
   tileU?: number;
   tileV?: number;
   isPinned?: boolean;
@@ -56,6 +58,10 @@ export const TextureInputNode: React.FC<NodeProps> = ({ id, data, selected }) =>
       // Infer texture role from filename
       const meta = LexicalNormalizer.normalizeFilename(file.name);
       const resLabel = buffer.width >= 3840 ? '4K' : buffer.width >= 1920 ? '2K' : '1K';
+      const absolutePath = getPlatform().getPathForFile(file);
+      if (absolutePath) {
+        console.log(`[Drop] Ingested file with absolute path: ${absolutePath}`);
+      }
       const patch = {
         previewUrl: buffer.dataUrl || '',
         title: meta.assetName ? `${meta.assetName} (${meta.roleLabel})` : file.name,
@@ -65,6 +71,7 @@ export const TextureInputNode: React.FC<NodeProps> = ({ id, data, selected }) =>
         colorSpace: meta.colorSpace,
         res: meta.resolution || resLabel,
         channels: meta.channels,
+        filePath: absolutePath || '',
       };
 
       d.onLoadBuffer?.(buffer);

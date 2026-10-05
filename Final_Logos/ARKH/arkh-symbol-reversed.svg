@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="arkh-sym-rev-title">
+  <title id="arkh-sym-rev-title">ARKH — Reversed Symbol (White on Dark)</title>
+  <!-- Overhead Canopy -->
+  <path fill="#FFFFFF" d="M 52 86 L 128 42 L 204 86 L 166 108 L 128 86 L 90 108 Z" />
+  <!-- Left Pier -->
+  <path fill="#FFFFFF" d="M 52 178 L 90 200 V 132 L 52 110 Z" />
+  <!-- Right Pier -->
+  <path fill="#FFFFFF" d="M 166 200 L 204 178 V 110 L 166 132 Z" />
+  <!-- Center Floor Diamond -->
+  <polygon fill="#FFFFFF" points="128,168 156,184 128,200 100,184" />
+</svg>

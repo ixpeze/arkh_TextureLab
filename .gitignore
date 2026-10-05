@@ -3,8 +3,13 @@ node_modules/
 **/node_modules/**
 dist/
 **/dist/**
+dist-desktop/
+**/dist-desktop/**
+release/
+**/release/**
 dist-ssr/
 *.local
+*.tsbuildinfo
 
 # Logs
 logs/

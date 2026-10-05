@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 96" width="340" height="96" role="img" aria-labelledby="arkh-wm-title">
+  <title id="arkh-wm-title">ARKH — Geometric Vector Wordmark</title>
+  <g transform="translate(0, -88)">
+    
+    <!-- Letter A -->
+    <path fill="#0A0B0E" fill-rule="evenodd" d="M 36 96 L 72 176 H 50 L 44 160 H 28 L 22 176 H 0 Z M 36 124 L 41 144 H 31 Z" />
+    <!-- Letter R -->
+    <path fill="#0A0B0E" fill-rule="evenodd" d="M 88 96 H 124 C 138 96 148 104 148 118 C 148 128 142 136 132 139 L 150 176 H 128 L 112 142 H 108 V 176 H 88 Z M 108 114 V 126 H 122 C 127 126 130 123 130 120 C 130 117 127 114 122 114 Z" />
+    <!-- Letter K -->
+    <path fill="#0A0B0E" d="M 166 96 H 186 V 130 L 214 96 H 238 L 204 136 L 240 176 H 214 L 186 142 V 176 H 166 Z" />
+    <!-- Letter H -->
+    <path fill="#0A0B0E" d="M 256 96 H 276 V 126 H 304 V 96 H 324 V 176 H 304 V 144 H 276 V 176 H 256 Z" />
+
+  </g>
+</svg>

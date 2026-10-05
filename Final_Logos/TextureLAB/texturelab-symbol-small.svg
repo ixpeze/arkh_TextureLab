@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-labelledby="tlab-sym-small">
+  <title id="tlab-sym-small">TextureLAB — Small Size Cut (16-24px Icon Master)</title>
+  <!-- Monolithic 3D Isometric 'T' with Robust Proportions -->
+  <path fill="#0A0B0E" d="
+    M 50 86
+    L 128 40
+    L 206 86
+    L 170 107
+    L 150 96
+    V 168
+    L 128 182
+    L 106 168
+    V 96
+    L 86 107
+    Z" />
+  <!-- Left Pier with 22px Clearance -->
+  <path fill="#0A0B0E" d="M 50 178 L 84 198 V 133 L 50 113 Z" />
+  <!-- Right Pier with 22px Clearance -->
+  <path fill="#0A0B0E" d="M 172 198 L 206 178 V 113 L 172 133 Z" />
+  <!-- Emphasized Floor Datum -->
+  <polygon fill="#0A0B0E" points="128,198 154,213 128,228 102,213" />
+</svg>

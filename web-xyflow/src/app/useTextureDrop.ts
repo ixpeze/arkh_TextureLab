@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import type { Node } from '@xyflow/react';
 import { PixelEngine, type TextureBuffer } from '../engine/pixelEngine';
 import { LexicalNormalizer } from '../engine/normalizer';
+import { getPlatform } from '../platform/PlatformService';
 
 export interface UseTextureDropProps {
   screenToFlowPosition: (clientPos: { x: number; y: number }) => { x: number; y: number };
@@ -45,6 +46,10 @@ export function useTextureDrop({
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        const absolutePath = getPlatform().getPathForFile(file);
+        if (absolutePath) {
+          console.log(`[Drop] Ingested file with absolute path: ${absolutePath}`);
+        }
         const meta = LexicalNormalizer.normalizeFilename(file.name);
         let buf: TextureBuffer | undefined;
         try {
@@ -75,6 +80,7 @@ export function useTextureDrop({
             res: meta.resolution || resLabel,
             previewUrl: buf?.dataUrl || '',
             channels: meta.channels,
+            filePath: absolutePath || '',
           },
         };
 
