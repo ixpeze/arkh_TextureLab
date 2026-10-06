@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-06T16:47:35.291Z",
+  "timestamp": "2026-10-06T17:02:43.759Z",
   "environment": {
     "platform": "win32",
     "arch": "x64",
@@ -18,12 +18,12 @@
     "rendererMode": "WebGL2 High-Performance Engine"
   },
   "metrics": {
-    "timeToFirstPaintMs": 56,
-    "timeToFirstContentfulPaintMs": 244,
-    "totalStartupNavMs": 819,
-    "idleJSHeapMB": 6.72,
-    "postBenchmarkJSHeapMB": 70.64,
-    "heapDeltaMB": 63.93,
+    "timeToFirstPaintMs": 60,
+    "timeToFirstContentfulPaintMs": 272,
+    "totalStartupNavMs": 845,
+    "idleJSHeapMB": 6.74,
+    "postBenchmarkJSHeapMB": 70.61,
+    "heapDeltaMB": 63.87,
     "sliderDrag50Steps": {
       "longTaskCount": 0,
       "totalLongTaskDurationMs": 0,

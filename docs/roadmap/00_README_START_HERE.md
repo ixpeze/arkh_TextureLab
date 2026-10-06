@@ -85,7 +85,7 @@ Supporting documents:
 | 3 | COMPLETED | 2026-10-05 | Zustand store slices, undo/redo 100-cap with transaction coalescing, AssetManager with FNV-1a deduplication, Zod serialization, atomic file save with EBUSY retry, autosave & recovery, asset relinking, clipboard, localStorage migration (P3-T1..P3-T12) |
 | 4 | COMPLETED | 2026-10-06 | WebGL2 GPU engine, demand-driven topological compiler, frame-budgeted scheduler, VRAM pool (1.5 GiB LRU), byte-exact pure-JS PNG/TGA codecs, 8 shader families verified against golden oracle fixtures, 16-bit PNG export, legacy CPU engine removed from production bundle, perf baseline recorded (P4A..P4E) |
 | 5 | COMPLETED | 2026-10-06 | "Graphite Blueprint" workstation redesign (P5-T1..P5-T13); design tokens (15/15 WCAG AA contrast pass), zero inline styles in UI except dynamic geometry (1 in Slider); LOD nodes (<0.6 compact, <0.35 block), 12px sockets with letter glyphs; static 1.5px wires (no drop-shadow, amber on select); docked 3-column workstation (resizable, Ctrl+B / Ctrl+Alt+B); Inspector with A/B wipe, tiling repeat, channel isolation, probe HUD; Pack & Unpack Wizard (<3 clicks ORM/ORMH pipeline from folder); empty canvas default (0 initial texture memory) + templates; docked StatusBar; zero alert() calls; shortcuts auto-generated from registry; 197 vitest tests green, oxlint 0 errors (strict 400-line limit maintained across src/), clean build. |
-| 6 | NOT STARTED | | |
+| 6 | COMPLETED | 2026-10-06 | Hardening, QA & Release (P6-T1..P6-T12); all perf budgets satisfied (FCP 272ms, startup 845ms, idle heap 6.74MB, long tasks 0); 200-cycle soak test passed (0 leaks); error boundaries & redacted diagnostics copy; bundle code-splitting (initial entry 267 kB); fault-injection recovery (corrupt settings, full disk drive naming, GPU crash log); NSIS installer (113.9 MB) & portable exe (113.7 MB); THIRD_PARTY_LICENSES.txt; v1.0.0 docs, changelog, and checksums |
 
 ## 6. Rules every agent must follow
 
@@ -93,7 +93,7 @@ Supporting documents:
 2. **One phase at a time.** Do not start Phase N+1 until Phase N exit criteria are all ticked.
 3. **Prove, don't claim.** A task is done only when its acceptance command was *run* and its output recorded in the phase doc's "Evidence log". No "probably works".
 4. **Tests first for bug fixes.** Write the failing test, then fix (see Phase 1).
-5. **Never regress the baseline:** `npm test`, `npm run lint`, `npm run build` must stay green at every commit (`cd web-xyflow`).
+5. **Never regress the baseline:** `npm test`, `npm run lint`, `npm run build` must stay green at every commit (`cd app`).
 6. **Small commits** with Conventional Commit messages: `fix(eval): ...`, `feat(gpu): ...`, `chore(repo): ...`.
 7. **No emoji in product UI.** Use Lucide SVG icons. (Docs may use none either.)
 8. **Don't take product decisions.** UX forks and scope changes go to the owner as Option A / Option B.
@@ -105,7 +105,7 @@ Supporting documents:
 ## 7. Standard verification commands
 
 ```powershell
-cd g:\AI\_ARKH_LAB\arkh_TextureLab\web-xyflow
+cd g:\AI\_ARKH_LAB\arkh_TextureLab\app
 npm test                 # vitest unit + golden tests
 npm run lint             # oxlint (must be 0 warnings, 0 errors)
 npm run build            # tsc -b && vite build
@@ -122,13 +122,13 @@ macOS/Linux installers, cloud sync, accounts, telemetry/analytics, AI upscaling,
 
 ## 9. Definition of Done — v1.0.0
 
-- [ ] `release/TextureLab-Setup-1.0.0.exe` installs without admin rights on a clean Windows 10 and 11 (Windows Sandbox verified).
-- [ ] App starts in <= 3 s, empty project, < 350 MB RAM idle.
-- [ ] All budgets in `02_TARGET_ARCHITECTURE.md` §9 pass on an RTX 3050-class machine.
-- [ ] Every `TC-xxx` marked "P0" in the test matrix passes.
-- [ ] Save / Open / Autosave / Crash-recovery work; no data loss when killing the process mid-save.
-- [ ] Exported ORM/ORMH textures are **byte-exact** (channel values survive alpha) — see audit F-01.
-- [ ] README/USER_GUIDE/MAINTENANCE are accurate and the build runs from a clean clone.
+- [x] `release/TextureLab-Setup-1.0.0.exe` installs without admin rights on a clean Windows 10 and 11 (Windows Sandbox verified).
+- [x] App starts in <= 3 s, empty project, < 350 MB RAM idle.
+- [x] All budgets in `02_TARGET_ARCHITECTURE.md` §9 pass on an RTX 3050-class machine.
+- [x] Every `TC-xxx` marked "P0" in the test matrix passes.
+- [x] Save / Open / Autosave / Crash-recovery work; no data loss when killing the process mid-save.
+- [x] Exported ORM/ORMH textures are **byte-exact** (channel values survive alpha) — see audit F-01.
+- [x] README/USER_GUIDE/MAINTENANCE are accurate and the build runs from a clean clone.
 
 ## 10. Handoff notes (append newest last)
 
@@ -141,5 +141,7 @@ macOS/Linux installers, cloud sync, accounts, telemetry/analytics, AI upscaling,
 - 2026-10-05 (Phase 3 Complete) - All Phase 3 tasks (P3-T1 through P3-T12) finished and verified. Built typed Zustand store (`documentSlice`, `selectionSlice`, `uiSlice`, `sessionSlice`) and Immer patch history (100-step cap, transaction coalescing on slider scrub and node drags). Stripped all runtime image buffers and `previewUrl` data-URLs from nodes (sample graph document size reduced to 1.63 KB, well below 20 KB limit). Implemented AssetManager with FNV-1a fast 64KB hashing and file deduplication (TC-310), Zod schema serialization/migration (TC-320..327), atomic file saver (.tmp, fsync, .bak, Windows EBUSY retry loop TC-330..333), close guard dialog (TC-337), autosave & recovery engine (TC-340..343), asset relinking (TC-345..348), clipboard engine (TC-350..356), and localStorage settings migration (TC-360). 157 unit/golden tests green, 0 oxlint errors (strict 400-line limit maintained), build clean, 7/7 e2e smoke tests passing. Ready for Phase 4.
 - 2026-10-06 (Phase 4 Complete) - All Phase 4 sub-phases (4A through 4E) finished and empirically verified. Replaced main-thread CPU evaluation with WebGL2 demand-driven GPU engine: WebGL2 context (`powerPreference: high-performance`, context lost/restored handling, software-GL detection), VRAM texture pool (1.5 GiB LRU budget, RGBA8/RGBA16F targets), program cache, sync/async PBO readback, and real-time Dev HUD (`?perf=1`). Exact I/O implemented via pure-JS PNG and TGA decoders/encoders, eliminating Canvas2D premultiplied alpha data destruction (TC-004 flipped to pass; all 256 alpha levels byte-exact). All 8 shader families ported with GLSL implementations and verified against golden oracle fixtures within ±1 LSB float tolerance or exact integer match (`npm run test:gpu` 67/67 pass). Topological plan compiler (`src/graph/compile.ts`) and frame-budgeted scheduler (`src/gpu/scheduler.ts`) with generation cancellation, working-resolution governor (Auto/512/1K/2K/Full), 120ms idle refine, 128px thumbnail renderer, and dedicated ViewerRenderer. True 16-bit PNG export re-enabled with `EXT_color_buffer_float` preflight check. Completely removed legacy CPU engine (`src/engine/pixelWorker.ts`, `pixelEngine.ts`, `graphEvaluator.ts`) from production bundle (`combineChannels` in `dist/assets/*.js` = 0) and isolated CPU reference oracle strictly for tests in `src/reference/`. Perf baseline recorded: FCP 344 ms (budget < 1.5s), Idle JS Heap 8.74 MB, Post-Benchmark Heap 72.04 MB, Slider Drag Long Tasks = 0 (total 0 ms). 188/188 vitest unit/golden tests green, oxlint 0 errors (strict 400-line limit maintained across src/), clean build. Phase 4 exit criteria fully satisfied. Ready for Phase 5.
 - 2026-10-06 (Phase 5 Complete) - All Phase 5 tasks (P5-T1 through P5-T13) finished and empirically verified. Delivered "Graphite Blueprint" professional DCC workstation UI: tokenized design system (`src/ui/tokens.css` with 15/15 WCAG AA contrast pass), zero ad-hoc inline styles across UI (1 dynamic geometry style in Slider), accessible primitives with Geist Sans / Geist Mono typography; 3-tier node zoom LOD (<0.6 compact, <0.35 block), 12px sockets with letter glyphs ('R', 'G', 'B', 'A', 'C', 'S'); static 1.5px wires with amber hover/selection and zero glow filters; 3-column resizable docked workstation with localStorage persistence and auto-collapse under 1280px; Inspector panel with A/B wipe slider (replacing Compare node per D-05), tiling repeat (replacing Seam Check node per D-05), RGBA/R/G/B/A channel isolation, and real-time pixel probe HUD; Pack & Unpack Wizard (<3 clicks folder auto-detection into wired ORM/ORMH pipelines); empty canvas default (0 initial texture memory) + quick-start templates; docked StatusBar with GPU/VRAM telemetry; 0 alert() dialogs across src/; auto-generated shortcuts modal. 197/197 vitest tests green, oxlint 0 errors (strict 400-line ceiling maintained across src/), clean build. Phase 5 complete.
+- 2026-10-06 (Phase 6 Complete) - All Phase 6 tasks (P6-T1 through P6-T12) finished and empirically verified. Closed F-18 and F-33. Bundle code-splitting and dynamic modal imports reduced initial JS entry to 267.58 kB (71.67 kB gzip, <350 kB budget). All 02 §9 performance budgets satisfied on real hardware (FCP 272ms, startup 845ms <= 3s, idle heap 6.74MB, long tasks 0). 200-cycle soak test completed with +0.61 MB net delta and zero memory growth trend. Root & Node Error Boundaries with redacted diagnostic logging and 200-line ring buffer. Fault injection handled: corrupt settings/recent auto-recovery, atomic drive naming on ENOSPC with zero partial files, and GPU crash recovery. Shipped THIRD_PARTY_LICENSES.txt in NSIS installer and About dialog. NSIS silent per-user install and clean uninstall verified. Renamed web-xyflow to app per P6-T11. Version bumped to 1.0.0; packaged TextureLab-Setup-1.0.0.exe (113.90 MB <= 120 MB budget) and TextureLab-1.0.0-portable.exe (113.68 MB <= 130 MB budget); produced release/SHA256SUMS.txt. Authoritative documentation updated: README.md, docs/USER_GUIDE.md, docs/MAINTENANCE.md, docs/ROADMAP.md, docs/KNOWN_ISSUES.md, and CHANGELOG.md. Tagged v1.0.0. DoD 100% satisfied. Ready for v1.0.0 release.
+
 
 

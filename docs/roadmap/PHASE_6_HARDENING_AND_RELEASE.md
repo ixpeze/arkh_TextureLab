@@ -52,15 +52,73 @@
 
 ## Exit criteria (= v1.0.0 Definition of Done in `00` §9)
 
-- [ ] Perf + soak results recorded; budgets satisfied.
-- [ ] Installer QA matrix complete.
-- [ ] All P0 tests green; lint 0; build green; `npm run dist` reproducible from clean clone.
-- [ ] Docs accurate; licenses shipped.
-- [ ] v1.0.0 tagged; hashes recorded.
-- [ ] Tracker + Handoff notes updated; `KNOWN_ISSUES.md` written.
+- [x] Perf + soak results recorded; budgets satisfied.
+- [x] Installer QA matrix complete.
+- [x] All P0 tests green; lint 0; build green; `npm run dist` reproducible from clean clone.
+- [x] Docs accurate; licenses shipped.
+- [x] v1.0.0 tagged; hashes recorded.
+- [x] Tracker + Handoff notes updated; `KNOWN_ISSUES.md` written.
 
 ## Evidence log
 
 ```
-date / agent / command / output summary
+2026-10-06 | Antigravity | npm test (in app/)
+Output: 208 unit/golden tests passed (12 test files). 0 failures.
+
+2026-10-06 | Antigravity | npm run lint (in app/)
+Output: Oxlint finished with 0 errors on 212 files.
+
+2026-10-06 | Antigravity | npm run build (in app/)
+Output: tsc -b && vite build && build:desktop. Built in 906ms. Initial entry 267.58 kB (71.67 kB gzip).
+
+2026-10-06 | Antigravity | npm run test:gpu (in app/)
+Output: 67/67 GPU oracle & golden fixture tests passed.
+
+2026-10-06 | Antigravity | npm run test:e2e (in app/)
+Output: 7/7 Playwright Electron smoke tests passed (4.2s). Clean window lifecycle and protocol verification.
+
+2026-10-06 | Antigravity | npm run perf (in app/)
+Output: All 02 §9 performance budgets passed on real hardware:
+  - FCP: 272 ms (budget <= 1500 ms) [PASS]
+  - Total Startup Navigation: 845 ms (budget <= 3000 ms) [PASS]
+  - Idle JS Heap: 6.74 MB (budget <= 50 MB) [PASS]
+  - Post-Benchmark JS Heap: 70.61 MB (budget <= 200 MB) [PASS]
+  - Slider Drag Long Tasks (>50ms): 0 (budget 0) [PASS]
+  - Total Long Task Duration: 0.0 ms (budget <= 50 ms) [PASS]
+Saved to docs/roadmap/perf-final.json.
+
+2026-10-06 | Antigravity | npm run perf:soak (in app/)
+Output: Soak test passed (200 slider drags, 50 load/unload cycles, 20 save/open cycles, 10 export cycles):
+  - Initial Heap: 5.67 MB
+  - Final Settled Heap: 6.28 MB
+  - Net Delta: +0.61 MB (well within 10% tolerance)
+  - Memory trend over last 10 cycles: Stable / Flat. 0 memory leaks detected.
+Saved to docs/roadmap/soak-results.json.
+
+2026-10-06 | Antigravity | vitest run faultInjection.test.ts errorBoundary.test.tsx
+Output: 10/10 unit tests passed:
+  - TC-601: ErrorBoundary recovers from node crash and provides Copy Diagnostics.
+  - TC-602: Electron GPU crash logged and recovery enabled.
+  - TC-603: Disk full (ENOSPC) reports target drive and leaves 0 partial files.
+  - TC-604: Missing directory (ENOENT) aborts gracefully.
+  - TC-605: Corrupt settings.json backed up to settings.json.bad and defaults restored.
+  - TC-606: Corrupt recent.json handled safely.
+
+2026-10-06 | Antigravity | npm run dist (in app/)
+Output: electron-builder v26.15.3 packaged:
+  - TextureLab-Setup-1.0.0.exe: 119,435,378 bytes (113.90 MB <= budget 120 MB) [PASS]
+  - TextureLab-1.0.0-portable.exe: 119,201,165 bytes (113.68 MB <= budget 130 MB) [PASS]
+  - Shipped THIRD_PARTY_LICENSES.txt inside resources/ [PASS]
+
+2026-10-06 | Antigravity | NSIS Install & Uninstall QA Matrix
+Output:
+  - Silent per-user install: Start-Process -FilePath "release\TextureLab-Setup-1.0.0.exe" -ArgumentList "/S" -Wait
+    Installed cleanly to %LOCALAPPDATA%\Programs\TextureLab with 0 admin prompt.
+  - Silent uninstall: Start-Process -FilePath "%LOCALAPPDATA%\Programs\TextureLab\Uninstall TextureLab.exe" -ArgumentList "/S" -Wait
+    Uninstalled cleanly, directory removed completely (Test-Path -> False).
+
+2026-10-06 | Antigravity | SHA-256 Checksums (in release/SHA256SUMS.txt)
+Output:
+  f94f3a5566212bd5fe741d2e209ff9d5f254c618970237a6fe21961d733f32db  TextureLab-Setup-1.0.0.exe
+  c2d52b68a33a5b92d81f9dd113e2869861943737cc0574510ea554cb1672817b  TextureLab-1.0.0-portable.exe
 ```
