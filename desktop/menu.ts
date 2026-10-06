@@ -1,5 +1,5 @@
 import { app, Menu, MenuItemConstructorOptions, BrowserWindow, dialog } from 'electron';
-import type { MenuCommand } from '../web-xyflow/src/shared/ipc';
+import type { MenuCommand } from '../app/src/shared/ipc';
 import { logger } from './logger';
 
 export function setupApplicationMenu(mainWindow: BrowserWindow, isDev: boolean): void {

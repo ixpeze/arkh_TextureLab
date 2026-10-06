@@ -19,14 +19,14 @@ where npm >nul 2>&1
 if %errorlevel% neq 0 goto :npm_missing
 
 :: 4. Check if node_modules exists; if not, automatically run npm install
-if not exist "%~dp0web-xyflow\node_modules" goto :install_deps
+if not exist "%~dp0app\node_modules" goto :install_deps
 goto :start_server
 
 :install_deps
 echo [*] First-time setup detected: Installing web dependencies...
 echo     Please wait while npm installs packages...
 echo.
-cd /d "%~dp0web-xyflow"
+cd /d "%~dp0app"
 call npm install
 if %errorlevel% neq 0 goto :install_failed
 echo.
@@ -35,7 +35,7 @@ echo.
 cd /d "%~dp0"
 
 :start_server
-cd /d "%~dp0web-xyflow"
+cd /d "%~dp0app"
 echo [*] Starting ARKH TextureLab local server...
 echo [*] Workstation address: http://localhost:5173
 echo [*] Opening in your default browser...

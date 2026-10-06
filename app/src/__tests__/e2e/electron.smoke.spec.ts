@@ -5,7 +5,7 @@ import electronPath from 'electron';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const webXyflowRoot = path.resolve(__dirname, '../../..');
+const appRoot = path.resolve(__dirname, '../../..');
 
 test.describe.configure({ mode: 'serial' });
 
@@ -17,8 +17,8 @@ test.describe('Electron Shell E2E Smoke Tests', () => {
     test.setTimeout(60000);
     electronApp = await electron.launch({
       executablePath: electronPath as unknown as string,
-      args: [path.join(webXyflowRoot, 'dist-desktop/main.cjs')],
-      cwd: webXyflowRoot,
+      args: [path.join(appRoot, 'dist-desktop/main.cjs')],
+      cwd: appRoot,
       env: {
         ...process.env,
         NODE_ENV: 'test',

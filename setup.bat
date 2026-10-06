@@ -24,8 +24,8 @@ for /f "tokens=*" %%v in ('npm -v 2^>nul') do set "NPM_VER=%%v"
 echo     Found npm v%NPM_VER%
 echo.
 
-:: 3. Navigate to web-xyflow directory
-cd /d "%~dp0web-xyflow"
+:: 3. Navigate to app directory
+cd /d "%~dp0app"
 if %errorlevel% neq 0 goto :dir_missing
 
 :: 4. Install dependencies
@@ -95,7 +95,7 @@ exit /b 1
 
 :dir_missing
 echo.
-echo [ERROR] Could not find the 'web-xyflow' directory at: "%~dp0web-xyflow"
+echo [ERROR] Could not find the 'app' directory at: "%~dp0app"
 pause
 exit /b 1
 
@@ -105,7 +105,7 @@ echo ===========================================================================
 echo [ERROR] npm install failed!
 echo ===============================================================================
 echo Check your internet connection or proxy settings, or try running:
-echo    cd web-xyflow
+echo    cd app
 echo    npm install --verbose
 echo ===============================================================================
 echo.

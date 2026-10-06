@@ -5,7 +5,7 @@ import type {
   ShowOpenDialogOptions,
   ShowSaveDialogOptions,
   PickedImageFile,
-} from '../web-xyflow/src/shared/ipc';
+} from '../app/src/shared/ipc';
 
 const labAPI: LabAPI = {
   isElectron: true,

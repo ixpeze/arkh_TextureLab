@@ -210,7 +210,7 @@ app.whenReady().then(async () => {
     path.join(__dirname, '../dist'),
     path.join(__dirname, 'dist'),
     path.join(app.getAppPath(), 'dist'),
-    path.join(__dirname, '../web-xyflow/dist'),
+    path.join(__dirname, '../app/dist'),
   ];
   let distDir = candidateDirs[0];
   for (const c of candidateDirs) {

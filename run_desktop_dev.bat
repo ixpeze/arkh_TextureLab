@@ -19,18 +19,18 @@ where npm >nul 2>&1
 if %errorlevel% neq 0 goto :npm_missing
 
 :: 4. Check if node_modules exists
-if not exist "%~dp0web-xyflow\node_modules" goto :install_deps
+if not exist "%~dp0app\node_modules" goto :install_deps
 goto :start_desktop
 
 :install_deps
 echo [*] Dependencies not found. Running npm install...
-cd /d "%~dp0web-xyflow"
+cd /d "%~dp0app"
 call npm install
 if %errorlevel% neq 0 goto :install_failed
 cd /d "%~dp0"
 
 :start_desktop
-cd /d "%~dp0web-xyflow"
+cd /d "%~dp0app"
 echo [*] Starting ARKH TextureLab Desktop development environment...
 call npm run dev:desktop
 

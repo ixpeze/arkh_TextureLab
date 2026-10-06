@@ -5,7 +5,7 @@ import type {
   ShowOpenDialogOptions,
   ShowSaveDialogOptions,
   PickedImageFile,
-} from '../web-xyflow/src/shared/ipc';
+} from '../app/src/shared/ipc';
 import { writeAtomicFile } from './atomicSave';
 import { logger } from './logger';
 
