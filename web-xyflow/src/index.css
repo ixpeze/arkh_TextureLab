@@ -151,6 +151,17 @@ body, html, #root {
   border-radius: 4px;
 }
 
+/* Canvas pane cursor behavior matching DCC / Unreal Engine */
+.react-flow__pane {
+  cursor: default !important;
+}
+.react-flow__pane.selection {
+  cursor: crosshair !important;
+}
+.react-flow__pane.dragging {
+  cursor: grabbing !important;
+}
+
 /* Comment Box Framing Container behind regular nodes */
 .react-flow__node-commentBox {
   z-index: -1 !important;

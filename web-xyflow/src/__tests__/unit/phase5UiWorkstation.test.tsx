@@ -193,4 +193,38 @@ describe('Phase 5 UI/UX Redesign Verification Suite', () => {
       expect(html).toContain('aria-pressed="false"');
     });
   });
+
+  describe('Unreal Engine Material Editor Navigation Controls', () => {
+    it('shortcuts registry contains Unreal Engine navigation controls', () => {
+      const allShortcuts = getAllShortcuts();
+      const viewportShortcuts = allShortcuts.filter((s) => s.category === 'viewport');
+
+      // Right Drag or Middle Drag to pan
+      const panShortcut = viewportShortcuts.find((s) =>
+        s.keys.includes('Right Drag')
+      );
+      expect(panShortcut).toBeDefined();
+      expect(panShortcut?.description.toLowerCase()).toContain('pan');
+
+      // Left Drag to box marquee select
+      const selectShortcut = viewportShortcuts.find((s) =>
+        s.keys.includes('Left Drag')
+      );
+      expect(selectShortcut).toBeDefined();
+      expect(selectShortcut?.description.toLowerCase()).toContain('marquee');
+
+      // Wheel to zoom
+      const zoomShortcut = viewportShortcuts.find((s) =>
+        s.keys.includes('Wheel')
+      );
+      expect(zoomShortcut).toBeDefined();
+      expect(zoomShortcut?.description.toLowerCase()).toContain('zoom');
+
+      // Focus extents (F or Home)
+      const focusShortcut = allShortcuts.find((s) =>
+        s.keys.includes('F') || s.keys.includes('F, Home')
+      );
+      expect(focusShortcut).toBeDefined();
+    });
+  });
 });

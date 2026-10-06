@@ -297,8 +297,10 @@ function Workbench() {
               setPalettePos(null);
             }}
             onPaneContextMenu={(e) => {
-              e.preventDefault();
-              setPalettePos({ x: e.clientX, y: e.clientY });
+              e.preventDefault?.();
+              const clientX = 'clientX' in e && typeof e.clientX === 'number' ? e.clientX : window.innerWidth / 2;
+              const clientY = 'clientY' in e && typeof e.clientY === 'number' ? e.clientY : window.innerHeight / 2;
+              setPalettePos({ x: clientX, y: clientY });
             }}
             canvasMousePosRef={canvasMousePosRef}
             onDragOver={handleDragOver}

@@ -33,11 +33,13 @@ export const WORKSPACE_SHORTCUTS: ShortcutEntry[] = [
   { keys: ['Dbl-Click'], description: 'Direct numeric typing input', category: 'slider', tag: 'Direct' },
   { keys: ['Mouse Wheel'], description: 'Nudge value up or down over slider track', category: 'slider' },
 
-  // Viewport Navigation
-  { keys: ['Tab'], description: 'Toggle quick search & spawn palette at cursor', category: 'viewport' },
-  { keys: ['Right Drag'], description: 'Pan canvas workspace', category: 'viewport' },
-  { keys: ['Wheel'], description: 'Smooth zoom in / out', category: 'viewport' },
-  { keys: ['Alt', 'Click'], description: 'Cut / disconnect wire connection (UE5 style)', category: 'viewport' },
+  // Viewport Navigation (Unreal Engine Style)
+  { keys: ['Right Drag'], description: 'Pan canvas workspace (or Middle Drag / Space+Drag)', category: 'viewport', tag: 'UE' },
+  { keys: ['Left Drag'], description: 'Box marquee select nodes', category: 'viewport', tag: 'UE' },
+  { keys: ['Wheel'], description: 'Smooth zoom in / out towards cursor', category: 'viewport' },
+  { keys: ['Right Click'], description: 'Open node spawn palette at cursor (or Tab)', category: 'viewport', tag: 'UE' },
+  { keys: ['Ctrl / Shift', 'Click'], description: 'Toggle / add nodes to selection', category: 'viewport' },
+  { keys: ['Alt', 'Click Wire'], description: 'Cut / disconnect wire connection (UE style)', category: 'viewport', tag: 'UE' },
   { keys: ['?'], description: 'Toggle keyboard shortcuts cheatsheet', category: 'viewport' },
 ];
 

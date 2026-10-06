@@ -3,7 +3,7 @@ import {
   ReactFlow,
   Background,
   BackgroundVariant,
-  PanOnScrollMode,
+  SelectionMode,
   useReactFlow,
   type Connection,
   type Edge,
@@ -14,6 +14,9 @@ import {
   type NodeTypes,
   type EdgeTypes,
 } from '@xyflow/react';
+
+const PAN_ON_DRAG_BUTTONS = [1, 2];
+const MULTI_SELECTION_KEYS = ['Control', 'Shift'];
 
 import { DualMarchingAntsEdge, PulsingChannelEdge } from '../components/edges/AnimatedEdge';
 import { SpawnPalette } from '../components/SpawnPalette';
@@ -88,6 +91,7 @@ export const Canvas: React.FC<CanvasProps> = ({
         }}
         onDragOver={onDragOver}
         onDrop={onDrop}
+        onContextMenu={(e) => e.preventDefault()}
       >
         <ReactFlow
           nodes={nodes}
@@ -107,10 +111,16 @@ export const Canvas: React.FC<CanvasProps> = ({
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           fitView
-          panOnScroll
-          panOnScrollMode={PanOnScrollMode.Free}
-          zoomOnScroll
-          zoomOnPinch
+          panOnDrag={PAN_ON_DRAG_BUTTONS}
+          selectionOnDrag={true}
+          selectionMode={SelectionMode.Partial}
+          panOnScroll={false}
+          zoomOnScroll={true}
+          zoomOnPinch={true}
+          zoomOnDoubleClick={false}
+          panActivationKeyCode="Space"
+          multiSelectionKeyCode={MULTI_SELECTION_KEYS}
+          paneClickDistance={4}
           minZoom={0.15}
           maxZoom={2.5}
           proOptions={{ hideAttribution: true }}

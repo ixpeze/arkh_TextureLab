@@ -186,6 +186,14 @@ export function useAppHotkeys({
         },
       },
       {
+        id: 'fit-view-home',
+        chord: 'home',
+        handler: (e) => {
+          e.preventDefault?.();
+          fitView();
+        },
+      },
+      {
         id: 'shortcuts-modal',
         chord: '?',
         handler: (e) => {
