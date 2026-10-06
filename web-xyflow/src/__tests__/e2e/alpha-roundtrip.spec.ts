@@ -130,38 +130,66 @@ test.describe('F-01: Canvas2D Premultiplied Alpha Corruption Proof', () => {
     expect(result.maxPutGetDelta).toBeGreaterThan(0);
   });
 
-  test('F-01 exact round-trip preservation (xfail until Phase 4 exact I/O replaces Canvas2D)', async ({ page }) => {
-    test.fail(true, 'Expected failure: Canvas2D inherently premultiplies alpha; replaced in Phase 4');
-
+  test('TC-004: F-01 exact round-trip preservation via WebGL2 GPU engine', async ({ page }) => {
     await page.goto('about:blank');
-    const diffCount = await page.evaluate(() => {
+    const result = await page.evaluate(() => {
       const width = 64;
       const height = 64;
       const totalPixels = width * height;
       const canvas = document.createElement('canvas');
       canvas.width = width;
       canvas.height = height;
-      const ctx = canvas.getContext('2d')!;
+      const gl = canvas.getContext('webgl2', {
+        antialias: false,
+        alpha: false,
+        premultipliedAlpha: false,
+        preserveDrawingBuffer: true,
+      });
+      if (!gl) return { webglSupported: false, diffCount: -1 };
 
-      const original = ctx.createImageData(width, height);
+      // Set exact unpack flags
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+
+      // Create raw data with alpha ramp 0..255
+      const original = new Uint8Array(totalPixels * 4);
       for (let i = 0; i < totalPixels; i++) {
         const idx = i * 4;
-        original.data[idx + 0] = (i * 7) % 256;
-        original.data[idx + 1] = (i * 13) % 256;
-        original.data[idx + 2] = (i * 19) % 256;
-        original.data[idx + 3] = Math.floor((i / (totalPixels - 1)) * 255);
+        original[idx + 0] = (i * 7) % 256;
+        original[idx + 1] = (i * 13) % 256;
+        original[idx + 2] = (i * 19) % 256;
+        original[idx + 3] = Math.floor((i / (totalPixels - 1)) * 255);
       }
-      ctx.putImageData(original, 0, 0);
-      const read = ctx.getImageData(0, 0, width, height);
 
-      let diffs = 0;
-      for (let i = 0; i < original.data.length; i++) {
-        if (original.data[i] !== read.data[i]) diffs++;
+      // Create texture
+      const tex = gl.createTexture()!;
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, original);
+
+      // Attach to FBO
+      const fbo = gl.createFramebuffer()!;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+
+      // Read back exact bytes
+      const read = new Uint8Array(totalPixels * 4);
+      gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, read);
+
+      let diffCount = 0;
+      for (let i = 0; i < original.length; i++) {
+        if (original[i] !== read[i]) diffCount++;
       }
-      return diffs;
+
+      return { webglSupported: true, diffCount };
     });
 
-    // An ideal exact pipeline would have 0 differences; Canvas2D fails this assertion.
-    expect(diffCount).toBe(0);
+    expect(result.webglSupported).toBe(true);
+    expect(result.diffCount).toBe(0);
   });
 });
