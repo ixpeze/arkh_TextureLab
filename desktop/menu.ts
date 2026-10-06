@@ -167,11 +167,13 @@ export function setupApplicationMenu(mainWindow: BrowserWindow, isDev: boolean):
         {
           label: '&About TextureLab',
           click: () => {
+            const gpuStatus = app.getGPUFeatureStatus();
+            const webglState = gpuStatus.webgl2 || gpuStatus['2d_canvas'] || 'enabled';
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'About TextureLab',
               message: 'ARKH TextureLab',
-              detail: `Version: ${app.getVersion()}\nHigh-performance PBR texture authoring and channel packing.\nArchitecture: x64 Windows\nElectron: ${process.versions.electron}\nChromium: ${process.versions.chrome}`,
+              detail: `Version: ${app.getVersion()}\nRelease: v1.0.0\nArchitecture: x64 Windows\nGPU Acceleration: ${webglState}\nElectron: ${process.versions.electron}\nChromium: ${process.versions.chrome}\nNode: ${process.versions.node}\n\nHigh-performance PBR texture authoring and channel packing.`,
               buttons: ['OK'],
             });
           },
