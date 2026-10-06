@@ -209,7 +209,7 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
     return await fs.promises.readFile(resolved);
   });
 
-  // Write file as binary
+  // Write file as binary (atomic with ENOSPC & ENOENT fault handling, TC-603, TC-604)
   ipcMain.handle(
     'fs:writeFile',
     async (_event, filePath: string, data: Uint8Array): Promise<void> => {
@@ -219,9 +219,21 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
       const resolved = path.resolve(filePath);
       const parentDir = path.dirname(resolved);
       if (!fs.existsSync(parentDir)) {
-        await fs.promises.mkdir(parentDir, { recursive: true });
+        throw new Error(`Export destination folder was not found or was deleted: "${parentDir}". Export aborted.`);
       }
-      await fs.promises.writeFile(resolved, Buffer.from(data));
+      try {
+        await writeAtomicFile(resolved, Buffer.from(data), { createBackup: false });
+      } catch (err: unknown) {
+        const error = err as { code?: string; message?: string };
+        if (error.code === 'ENOSPC') {
+          const driveRoot = path.parse(resolved).root || resolved;
+          throw new Error(`Disk is full on drive "${driveRoot}". Free up space and try again.`);
+        }
+        if (error.code === 'ENOENT') {
+          throw new Error(`Export folder was deleted or missing: "${parentDir}". Export aborted.`);
+        }
+        throw err;
+      }
     }
   );
 

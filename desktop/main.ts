@@ -253,9 +253,13 @@ app.on('second-instance', (_event, argv) => {
   }
 });
 
-// Global crash / child-process handlers (P2-T9)
+// Global crash / child-process handlers (P2-T9, TC-602)
 app.on('child-process-gone', (_event, details) => {
-  logger.warn('Child process gone:', details);
+  if (details.type === 'GPU') {
+    logger.warn('GPU process gone (TC-602), Chromium will attempt recovery:', details);
+  } else {
+    logger.warn('Child process gone:', details);
+  }
 });
 
 process.on('uncaughtException', (err) => {
