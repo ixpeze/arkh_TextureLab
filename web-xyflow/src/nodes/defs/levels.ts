@@ -1,5 +1,4 @@
 import { defineNode, type NodeDef } from '../registry';
-import { PixelEngine } from '../../engine/pixelEngine';
 import { LevelsNode } from '../../components/nodes/LevelsNode';
 
 export interface LevelsParams {
@@ -51,35 +50,6 @@ export const levelsDef: NodeDef<LevelsParams> = defineNode<LevelsParams>({
   color: '#22c55e',
   gpu: {
     shaderId: 'levels',
-  },
-  cpuRef: (ctx, inputs, params) => {
-    const inBuf = inputs.input || ctx.getInputBuffer();
-    if (!inBuf) return null;
-    if (params.isBypassed) return inBuf;
-
-    const ch = (params.channel as 'all' | 'r' | 'g' | 'b' | 'a') || 'all';
-    const bp =
-      typeof params.blackPoint === 'number' && !isNaN(params.blackPoint)
-        ? Math.max(0, Math.min(255, params.blackPoint))
-        : 0;
-    const wp =
-      typeof params.whitePoint === 'number' && !isNaN(params.whitePoint)
-        ? Math.max(0, Math.min(255, params.whitePoint))
-        : 255;
-    const gm =
-      typeof params.gamma === 'number' && !isNaN(params.gamma)
-        ? Math.max(0.01, Math.min(5.0, params.gamma))
-        : 1.0;
-    const ob =
-      typeof params.outBlack === 'number' && !isNaN(params.outBlack)
-        ? Math.max(0, Math.min(255, params.outBlack))
-        : 0;
-    const ow =
-      typeof params.outWhite === 'number' && !isNaN(params.outWhite)
-        ? Math.max(0, Math.min(255, params.outWhite))
-        : 255;
-
-    return PixelEngine.applyLevelsChannel(inBuf, ch, bp, gm, wp, ob, ow);
   },
   body: LevelsNode,
 });

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { PixelEngine } from '../engine/pixelEngine';
-import { GraphEvaluator } from '../engine/graphEvaluator';
+import { PixelEngine } from '../reference/cpuOracle';
+import { GraphEvaluator } from '../reference/graphEvaluator';
 import { ExportEngine } from '../engine/exportEngine';
 import { BatchEngine } from '../engine/batchEngine';
 import { LexicalNormalizer } from '../engine/normalizer';

@@ -1,5 +1,4 @@
 import { defineNode, type NodeDef } from '../registry';
-import { PixelEngine } from '../../engine/pixelEngine';
 import { ConstantColorNode } from '../../components/nodes/ConstantColorNode';
 import { ConstantScalarNode } from '../../components/nodes/ConstantScalarNode';
 
@@ -11,25 +10,6 @@ export interface ConstantColorParams {
 export interface ConstantScalarParams {
   value?: number;
   [key: string]: unknown;
-}
-
-function hexToRgb(hex: string): { r: number; g: number; b: number } {
-  let clean = hex.replace('#', '');
-  if (clean.length === 3) {
-    clean = clean
-      .split('')
-      .map((c) => c + c)
-      .join('');
-  }
-  const num = parseInt(clean, 16);
-  if (isNaN(num)) {
-    return { r: 255, g: 255, b: 255 };
-  }
-  return {
-    r: (num >> 16) & 255,
-    g: (num >> 8) & 255,
-    b: num & 255,
-  };
 }
 
 export const constantColorDef: NodeDef<ConstantColorParams> = defineNode<ConstantColorParams>({
@@ -58,12 +38,6 @@ export const constantColorDef: NodeDef<ConstantColorParams> = defineNode<Constan
     shaderId: 'constant_color',
     uniforms: { color: 'u_color' },
   },
-  cpuRef: (_ctx, _inputs, params) => {
-    const rawHex = typeof params.color === 'string' ? params.color : '#ffffff';
-    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(rawHex) ? rawHex : '#ffffff';
-    const rgb = hexToRgb(hex);
-    return PixelEngine.createSolid(1, 1, rgb.r, rgb.g, rgb.b, 255);
-  },
   body: ConstantColorNode,
 });
 
@@ -85,12 +59,6 @@ export const constantScalarDef: NodeDef<ConstantScalarParams> = defineNode<Const
   gpu: {
     shaderId: 'constant_scalar',
     uniforms: { value: 'u_value' },
-  },
-  cpuRef: (_ctx, _inputs, params) => {
-    const rawVal = typeof params.value === 'number' && !isNaN(params.value) ? params.value : 1.0;
-    const val = Math.max(0, Math.min(1, rawVal));
-    const byteVal = Math.min(255, Math.max(0, Math.round(val * 255)));
-    return PixelEngine.createSolid(1, 1, byteVal, byteVal, byteVal, 255);
   },
   body: ConstantScalarNode,
 });

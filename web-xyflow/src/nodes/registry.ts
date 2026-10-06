@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import type { NodeProps, Node, Edge, NodeTypes } from '@xyflow/react';
-import type { TextureBuffer } from '../engine/pixelEngine';
+import type { TextureBuffer } from '../types/buffer';
 
 export type NodeCategory =
   | 'Input'

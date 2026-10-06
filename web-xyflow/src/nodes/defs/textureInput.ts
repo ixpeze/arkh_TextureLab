@@ -50,9 +50,6 @@ export const textureInputDef: NodeDef<TextureInputParams> = defineNode<TextureIn
   gpu: {
     shaderId: 'texture_input',
   },
-  cpuRef: (ctx) => {
-    return ctx.sourceBuffers[ctx.nodeId] || null;
-  },
   body: TextureInputNode,
 });
 

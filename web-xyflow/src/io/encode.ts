@@ -10,7 +10,7 @@ export type ExportFormat = 'png' | 'tga' | 'jpg' | 'jpeg' | 'webp';
 export interface EncodeOptions {
   width: number;
   height: number;
-  data: Uint8Array | Uint16Array;
+  data: Uint8Array | Uint16Array | Uint8ClampedArray;
   format: ExportFormat;
   bitDepth?: 8 | 16;
   quality?: number; // 0..1 for jpeg/webp
@@ -28,12 +28,36 @@ export async function encodeImage(options: EncodeOptions): Promise<EncodeResult>
 
   if (normFormat === 'png') {
     const is16 = bitDepth === 16;
+    let encodeData: Uint8Array | Uint16Array;
+    if (is16) {
+      if (data instanceof Uint16Array) {
+        encodeData = data;
+      } else {
+        const u8 = data instanceof Uint8Array ? data : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+        const u16 = new Uint16Array(u8.length);
+        for (let i = 0; i < u8.length; i++) {
+          u16[i] = u8[i] * 257; // Exactly widen 0..255 to 0..65535
+        }
+        encodeData = u16;
+      }
+    } else {
+      if (data instanceof Uint16Array) {
+        const u8 = new Uint8Array(data.length);
+        for (let i = 0; i < data.length; i++) {
+          u8[i] = Math.round(data[i] / 257);
+        }
+        encodeData = u8;
+      } else if (data instanceof Uint8Array) {
+        encodeData = data;
+      } else {
+        encodeData = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+      }
+    }
+
     const pngBytes = encodePng({
       width,
       height,
-      data: is16
-        ? (data instanceof Uint16Array ? data : new Uint16Array(data.buffer))
-        : (data instanceof Uint8Array ? data : new Uint8Array(data.buffer)),
+      data: encodeData,
       depth: is16 ? 16 : 8,
       channels: 4,
     });
@@ -45,7 +69,7 @@ export async function encodeImage(options: EncodeOptions): Promise<EncodeResult>
   }
 
   if (normFormat === 'tga') {
-    const raw8 = data instanceof Uint8Array ? data : convert16To8(data as Uint16Array);
+    const raw8 = toUint8Array(data);
     const tgaBytes = encodeTga({
       width,
       height,
@@ -60,7 +84,7 @@ export async function encodeImage(options: EncodeOptions): Promise<EncodeResult>
   }
 
   if (normFormat === 'jpeg' || normFormat === 'webp') {
-    const raw8 = data instanceof Uint8Array ? data : convert16To8(data as Uint16Array);
+    const raw8 = toUint8Array(data);
     let hasMeaningfulAlpha = false;
 
     // Check if alpha channel has non-255 values
@@ -91,10 +115,12 @@ export async function encodeImage(options: EncodeOptions): Promise<EncodeResult>
   throw new Error(`Unsupported export format: ${format}`);
 }
 
-function convert16To8(data16: Uint16Array): Uint8Array {
-  const out8 = new Uint8Array(data16.length);
-  for (let i = 0; i < data16.length; i++) {
-    out8[i] = Math.round(data16[i] / 257);
+function toUint8Array(data: Uint8Array | Uint16Array | Uint8ClampedArray): Uint8Array {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof Uint8ClampedArray) return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  const out8 = new Uint8Array(data.length);
+  for (let i = 0; i < data.length; i++) {
+    out8[i] = Math.round(data[i] / 257);
   }
   return out8;
 }

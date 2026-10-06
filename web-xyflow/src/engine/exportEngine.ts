@@ -4,7 +4,7 @@
  * and File System Access API direct-disk export.
  */
 
-import type { TextureBuffer } from './pixelEngine';
+import type { TextureBuffer } from '../types/buffer';
 import type {
   ExportPreset,
   GlobalExportSettings,
@@ -28,6 +28,7 @@ export type { DirectoryExportTarget };
 import { createZip } from './exportZip';
 import { encodeTGA } from './exportTga';
 import { buildPreflightRegistry } from './exportPreflight';
+import { encodeImage } from '../io/encode';
 
 // Re-exports for backwards compatibility across existing imports
 export {
@@ -85,64 +86,30 @@ export class ExportEngine {
   public static async encodeImageBlob(
     buffer: TextureBuffer,
     format: TextureExportFormat,
-    target?: ExportTargetResolution | number
+    target?: ExportTargetResolution | number,
+    bitDepth: '8b' | '16b' = '8b'
   ): Promise<Blob> {
     const { width: outWidth, height: outHeight } = calculateTargetDimensions(buffer.width, buffer.height, target);
 
-    if (format === 'TGA') {
-      let targetBuf = buffer;
-      if (outWidth !== buffer.width || outHeight !== buffer.height) {
-        targetBuf = this.resizeBuffer(buffer, outWidth, outHeight);
-      }
-      return this.encodeTGA(targetBuf);
+    let targetBuf = buffer;
+    if (outWidth !== buffer.width || outHeight !== buffer.height) {
+      targetBuf = this.resizeBuffer(buffer, outWidth, outHeight);
     }
 
-    const canvas = document.createElement('canvas');
-    canvas.width = outWidth;
-    canvas.height = outHeight;
+    const fmtLower = format.toLowerCase() as 'png' | 'tga' | 'jpg' | 'webp';
+    const rawData = targetBuf.data instanceof Float32Array
+      ? new Uint8Array(Array.from(targetBuf.data).map((v) => Math.min(255, Math.max(0, Math.round(v * 255)))))
+      : targetBuf.data;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Could not acquire 2D rendering context');
-
-    if (outWidth === buffer.width && outHeight === buffer.height) {
-      const imgData = ctx.createImageData(buffer.width, buffer.height);
-      imgData.data.set(buffer.data);
-      ctx.putImageData(imgData, 0, 0);
-    } else {
-      // High-quality resizing via intermediate source canvas
-      const srcCanvas = document.createElement('canvas');
-      srcCanvas.width = buffer.width;
-      srcCanvas.height = buffer.height;
-      const srcCtx = srcCanvas.getContext('2d')!;
-      const srcImgData = srcCtx.createImageData(buffer.width, buffer.height);
-      srcImgData.data.set(buffer.data);
-      srcCtx.putImageData(srcImgData, 0, 0);
-
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(srcCanvas, 0, 0, outWidth, outHeight);
-    }
-
-    let mimeType = 'image/png';
-    let quality = 0.95;
-    if (format === 'JPG') {
-      mimeType = 'image/jpeg';
-      quality = 0.92;
-    } else if (format === 'WEBP') {
-      mimeType = 'image/webp';
-      quality = 0.95;
-    }
-
-    return new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob(
-        (blob) => {
-          if (blob) resolve(blob);
-          else reject(new Error('Failed to encode image blob from canvas'));
-        },
-        mimeType,
-        quality
-      );
+    const result = await encodeImage({
+      width: outWidth,
+      height: outHeight,
+      data: rawData,
+      format: fmtLower,
+      bitDepth: bitDepth === '16b' ? 16 : 8,
     });
+
+    return new Blob([result.data as unknown as BlobPart], { type: result.mimeType });
   }
 
   public static resizeBuffer(buffer: TextureBuffer, newWidth: number, newHeight: number): TextureBuffer {

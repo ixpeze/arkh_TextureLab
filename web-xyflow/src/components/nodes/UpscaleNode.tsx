@@ -5,7 +5,7 @@ import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
 import { useNodeBuffers } from '../../context/NodeBufferContext';
-import { PixelEngine } from '../../engine/pixelEngine';
+import { ExportEngine } from '../../engine/exportEngine';
 
 export interface UpscaleNodeData {
   title?: string;
@@ -39,7 +39,7 @@ export const UpscaleNode: React.FC<NodeProps<any>> = ({ id, data, selected }) =>
     try {
       setIsProcessing(true);
       setProgressMsg(`Upscaling ${scale}x (${inBuf.width * scale}×${inBuf.height * scale})...`);
-      const upscaled = await PixelEngine.upscaleBufferAsync(inBuf, scale, tileSize);
+      const upscaled = ExportEngine.resizeBuffer(inBuf, inBuf.width * scale, inBuf.height * scale);
       setSourceBuffer(id, upscaled);
       setProgressMsg(`Done: ${upscaled.width}×${upscaled.height}`);
     } catch (err: any) {

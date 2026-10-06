@@ -1,5 +1,5 @@
 import { defineNode, type NodeDef } from '../registry';
-import { PixelEngine, type TextureBuffer } from '../../engine/pixelEngine';
+import type { TextureBuffer } from '../../types/buffer';
 import { CompareNode } from '../../components/nodes/CompareNode';
 import { SeamCheckNode } from '../../components/nodes/SeamCheckNode';
 import { LoadFolderNode } from '../../components/nodes/LoadFolderNode';
@@ -81,21 +81,6 @@ export const compareDef: NodeDef<CompareParams> = defineNode<CompareParams>({
   gpu: {
     shaderId: 'compare',
   },
-  cpuRef: (ctx, inputs, params) => {
-    const bufA = inputs.a || ctx.getInputBuffer('a');
-    const bufB = inputs.b || ctx.getInputBuffer('b');
-    if (bufA && bufB) {
-      const mode = (params.mode as 'wipe' | 'sideBySide' | 'difference') || 'wipe';
-      const wipeProgress = typeof params.wipeProgress === 'number' ? params.wipeProgress : 0.5;
-      const diffGain = typeof params.diffGain === 'number' ? params.diffGain : 1.0;
-      return PixelEngine.createCompareBuffer(bufA, bufB, mode, wipeProgress, diffGain);
-    } else if (bufA) {
-      return bufA;
-    } else if (bufB) {
-      return bufB;
-    }
-    return null;
-  },
   body: CompareNode,
 });
 
@@ -127,13 +112,6 @@ export const seamCheckDef: NodeDef<SeamCheckParams> = defineNode<SeamCheckParams
   gpu: {
     shaderId: 'seam_check',
   },
-  cpuRef: (ctx, inputs, params) => {
-    const inBuf = inputs.input || ctx.getInputBuffer();
-    if (!inBuf) return null;
-    const repeats = (params.repeats === 3 ? 3 : params.repeats === 4 ? 4 : 2) as 2 | 3 | 4;
-    const showBorders = params.showBorders !== false;
-    return PixelEngine.createSeamCheckBuffer(inBuf, repeats, showBorders);
-  },
   body: SeamCheckNode,
 });
 
@@ -153,9 +131,6 @@ export const loadFolderDef: NodeDef<LoadFolderParams> = defineNode<LoadFolderPar
   gpu: {
     shaderId: 'passthrough',
   },
-  cpuRef: (ctx, inputs, params) => {
-    return inputs.input || ctx.getInputBuffer() || (params.activeBuffer as TextureBuffer) || null;
-  },
   body: LoadFolderNode,
 });
 
@@ -173,9 +148,6 @@ export const forEachDef: NodeDef<ForEachParams> = defineNode<ForEachParams>({
   color: '#8b5cf6',
   gpu: {
     shaderId: 'passthrough',
-  },
-  cpuRef: (ctx, inputs, params) => {
-    return inputs.input || ctx.getInputBuffer() || (params.activeBuffer as TextureBuffer) || null;
   },
   body: ForEachNode,
 });
@@ -206,9 +178,6 @@ export const batchExportDef: NodeDef<BatchExportParams> = defineNode<BatchExport
   gpu: {
     shaderId: 'passthrough',
   },
-  cpuRef: (ctx, inputs, params) => {
-    return inputs.input || ctx.getInputBuffer() || (params.activeBuffer as TextureBuffer) || null;
-  },
   body: BatchExportNode,
 });
 
@@ -231,7 +200,6 @@ export const commentBoxDef: NodeDef<CommentBoxParams> = defineNode<CommentBoxPar
   gpu: {
     shaderId: 'comment',
   },
-  cpuRef: () => null,
   body: CommentBoxNode,
 });
 

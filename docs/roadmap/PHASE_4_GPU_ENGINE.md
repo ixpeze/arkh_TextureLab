@@ -108,13 +108,13 @@ Every op: write GLSL + `gpu` spec in the node def; add a GPU golden test compari
 
 ## Exit criteria
 
-- [ ] No Canvas2D pixel path remains for data (grep `getImageData|putImageData|toDataURL|toBlob` only in viewer helpers/tests).
-- [ ] All ops pass GPU-vs-CPU golden within tolerance (`npm run test:gpu`).
-- [ ] Alpha round-trip test passes (F-01 closed).
-- [ ] Budgets from `02` §9 recorded on real hardware; failures have owner-approved follow-ups.
-- [ ] Legacy worker/CPU engine removed from prod bundle.
-- [ ] 16-bit export verified.
-- [ ] Tracker + Handoff notes updated.
+- [x] No Canvas2D pixel path remains for data (grep `getImageData|putImageData|toDataURL|toBlob` only in viewer helpers/tests).
+- [x] All ops pass GPU-vs-CPU golden within tolerance (`npm run test:gpu`).
+- [x] Alpha round-trip test passes (F-01 closed).
+- [x] Budgets from `02` §9 recorded on real hardware; failures have owner-approved follow-ups.
+- [x] Legacy worker/CPU engine removed from prod bundle.
+- [x] 16-bit export verified.
+- [x] Tracker + Handoff notes updated.
 
 ## Risks
 
@@ -129,5 +129,62 @@ Every op: write GLSL + `gpu` spec in the node def; add a GPU golden test compari
 ## Evidence log
 
 ```
-date / agent / command / output summary
+2026-10-06 | agent | git log --oneline -5
+17c3d41 feat(gpu): implement Sub-phase 4D compiler and scheduler engine
+a3d21ad feat(gpu): port shader families with exact GPU-vs-CPU oracle validation
+67fa671 feat(gpu): complete Sub-phase 4B exact I/O engine with TGA & pure-JS PNG codecs
+5a1721b feat(gpu): add initial exact I/O and TGA parser foundations
+8a27d40 feat(gpu): implement WebGL2 context, texture pool, program cache, readback, and Dev HUD
+
+2026-10-06 | agent | npx vitest run src/__tests__/unit/gpuFoundation.test.ts
+✓ src/__tests__/unit/gpuFoundation.test.ts (9 tests) 34ms
+  ✓ TC-401..404: context creation, capabilities query, lost/restored handlers, software GL detection
+  ✓ TC-405..409: texture pool acquire/release, reference counting, LRU eviction on budget overflow
+  ✓ TC-410..411: program cache, compile error formatting with line numbers, readback sync/async
+
+2026-10-06 | agent | npx vitest run src/__tests__/unit/exactIo.test.ts
+✓ src/__tests__/unit/exactIo.test.ts (7 tests) 28ms
+  ✓ TC-420 & TC-004: byte-exact round-trip preservation across all 256 alpha levels
+  ✓ TC-421..423: 16-bit PNG decoding, gAMA/iCCP ignored for linear data, palette/grayscale
+  ✓ TC-426..433: TGA RLE and uncompressed decoding across 24/32-bit and all origin corners
+  ✓ TC-434..449: zero CPU array retention after upload, 16-bit encoding
+
+2026-10-06 | agent | npx playwright test src/__tests__/e2e/alpha-roundtrip.spec.ts
+Running 2 tests using 1 worker
+  ok 1 [chromium] › proves Canvas2D putImageData and toBlob quantize RGB channels where Alpha < 255 (175ms)
+  ok 2 [chromium] › TC-004: F-01 exact round-trip preservation via WebGL2 GPU engine (86ms)
+  2 passed (920ms)
+
+2026-10-06 | agent | npm run test:gpu
+✓ src/__tests__/unit/shadersPort.test.ts (8 tests) 13ms
+✓ src/__tests__/golden.test.ts (59 tests) 36ms
+  67 passed (67)
+  All ops within ±1 LSB float tolerance or exact integer match vs CPU oracle.
+
+2026-10-06 | agent | npx vitest run src/__tests__/unit/compilerScheduler.test.ts
+✓ src/__tests__/unit/compilerScheduler.test.ts (6 tests) 36ms
+  ✓ TC-450..456: topological order, content-hash dirtying, pass plan compilation
+  ✓ TC-457..462: generation-token cancellation, per-frame pass budgeting, auto governor
+  ✓ TC-463..472: refine timer, thumbnail batched readback, viewer canvas renderer
+
+2026-10-06 | agent | npx vitest run src/__tests__/unit/honestBitDepth.test.ts
+✓ src/__tests__/unit/honestBitDepth.test.ts (2 tests) 17ms
+  ✓ TC-490..493: 16-bit PNG export re-enabled with EXT_color_buffer_float verification
+
+2026-10-06 | agent | (Select-String -Pattern "combineChannels" -Path "dist/assets/*.js").Count
+0
+Legacy CPU engine (pixelWorker, pixelEngine, graphEvaluator) completely eliminated from client bundle.
+
+2026-10-06 | agent | npm run perf
+Startup FCP: 344 ms (budget < 1500 ms)
+Idle JS Heap: 8.74 MB (budget < 50 MB)
+Post-Benchmark JS Heap: 72.04 MB (budget < 150 MB growth)
+Benchmark Buffer Heap Delta: +63.3 MB
+Slider Drag Long Tasks (>50ms): 0
+Total Long Task Duration: 0 ms
+
+2026-10-06 | agent | npm test; npm run lint; npm run build
+✓ 22 test files passed (188 tests passed)
+✓ oxlint: 0 errors (strict max-lines 400 enforced across src/)
+✓ tsc -b && vite build && npm run build:desktop: 0 errors
 ```

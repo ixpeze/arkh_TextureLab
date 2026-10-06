@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ExportEngine, calculateTargetDimensions } from '../../engine/exportEngine';
-import type { TextureBuffer } from '../../engine/pixelEngine';
+import type { TextureBuffer } from '../../types/buffer';
 
 describe('P1-A4: Export Aspect Ratio Preservation (F-05, TC-125..127)', () => {
   it('TC-125: non-square 4096x2048 with longEdge 2048 scales to 2048x1024', () => {

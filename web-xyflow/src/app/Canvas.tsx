@@ -26,7 +26,7 @@ import { ExportModal } from '../components/ExportModal';
 
 import { nodeRegistry } from '../nodes/registry';
 import { NodeBufferContext, type NodeBufferContextType } from '../context/NodeBufferContext';
-import type { TextureBuffer } from '../engine/pixelEngine';
+import type { TextureBuffer } from '../types/buffer';
 
 export interface CanvasProps {
   nodes: Node[];

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useMemo } from 'react';
-import { PixelEngine, type TextureBuffer, type HistogramData } from '../../engine/pixelEngine';
+import type { TextureBuffer } from '../../types/buffer';
+import { computeHistogram, type HistogramBins } from '../../gpu/histogram';
 import type { ChannelKey } from './types';
 
 export interface HistogramTabProps {
@@ -13,9 +14,14 @@ export const HistogramTab: React.FC<HistogramTabProps> = ({
 }) => {
   const histCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const histogramData: HistogramData | null = useMemo(() => {
+  const histogramData: HistogramBins | null = useMemo(() => {
     if (!activeBuffer) return null;
-    return PixelEngine.computeHistogram(activeBuffer);
+    const rawData = activeBuffer.data instanceof Uint8Array
+      ? activeBuffer.data
+      : activeBuffer.data instanceof Uint8ClampedArray
+      ? new Uint8Array(activeBuffer.data.buffer, activeBuffer.data.byteOffset, activeBuffer.data.byteLength)
+      : new Uint8Array(Array.from(activeBuffer.data));
+    return computeHistogram({ data: rawData, width: activeBuffer.width, height: activeBuffer.height, format: 'RGBA8' });
   }, [activeBuffer]);
 
   useEffect(() => {
@@ -46,7 +52,7 @@ export const HistogramTab: React.FC<HistogramTabProps> = ({
 
     const max = histogramData.maxCount || 1;
 
-    const drawCurve = (bins: number[], color: string, alpha = 0.8) => {
+    const drawCurve = (bins: Uint32Array | number[], color: string, alpha = 0.8) => {
       ctx.strokeStyle = color;
       ctx.fillStyle = color.replace(')', ', 0.12)').replace('rgb', 'rgba');
       ctx.lineWidth = 1.4;

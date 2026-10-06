@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Maximize, Minimize } from 'lucide-react';
-import { PixelEngine, type TextureBuffer } from '../../engine/pixelEngine';
+import type { TextureBuffer } from '../../types/buffer';
 import type { ChannelKey, HoverPixelInfo } from './types';
 
 export interface ViewportTabProps {
@@ -25,19 +25,21 @@ export const ViewportTab: React.FC<ViewportTabProps> = ({
     const canvas = canvasRef.current;
     if (!canvas || !activeBuffer) return;
 
-    const sourceBuf = isPixelExact
-      ? activeBuffer
-      : (activeBuffer.proxy || (activeBuffer.width > 512 ? PixelEngine.createDownsampledProxy(activeBuffer, 512) : activeBuffer));
+    const sourceBuf = activeBuffer;
 
     let displayBuf = sourceBuf;
-    if (isolatedChannel === 'R') {
-      displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 0);
-    } else if (isolatedChannel === 'G') {
-      displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 1);
-    } else if (isolatedChannel === 'B') {
-      displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 2);
-    } else if (isolatedChannel === 'A') {
-      displayBuf = PixelEngine.getIsolatedChannel(sourceBuf, 3);
+    if (isolatedChannel === 'R' || isolatedChannel === 'G' || isolatedChannel === 'B' || isolatedChannel === 'A') {
+      const chIdx = isolatedChannel === 'R' ? 0 : isolatedChannel === 'G' ? 1 : isolatedChannel === 'B' ? 2 : 3;
+      const out = new Uint8ClampedArray(sourceBuf.width * sourceBuf.height * 4);
+      const src = sourceBuf.data;
+      for (let i = 0; i < sourceBuf.width * sourceBuf.height; i++) {
+        const v = src[i * 4 + chIdx];
+        out[i * 4 + 0] = v;
+        out[i * 4 + 1] = v;
+        out[i * 4 + 2] = v;
+        out[i * 4 + 3] = 255;
+      }
+      displayBuf = { width: sourceBuf.width, height: sourceBuf.height, data: out };
     }
 
     if (canvas.width !== displayBuf.width || canvas.height !== displayBuf.height) {

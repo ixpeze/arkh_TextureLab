@@ -9,7 +9,7 @@
   },
   "overrides": [
     {
-      "files": ["src/engine/pixelEngine.ts", "src/engine/pixelWorker.ts"],
+      "files": ["src/reference/**"],
       "rules": {
         "max-lines": "off"
       }

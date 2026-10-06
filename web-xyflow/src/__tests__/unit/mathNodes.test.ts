@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { nodeRegistry } from '../../nodes/registry';
 import { CATEGORIES } from '../../components/nodeLibraryData';
 import { createSpawnedNode } from '../../app/spawn';
-import { GraphEvaluator } from '../../engine/graphEvaluator';
-import { type TextureBuffer } from '../../engine/pixelEngine';
+import { GraphEvaluator } from '../../reference/graphEvaluator';
+import type { TextureBuffer } from '../../types/buffer';
 import { getNodePortTelemetry } from '../../graph/introspect';
 import type { Node, Edge } from '@xyflow/react';
 

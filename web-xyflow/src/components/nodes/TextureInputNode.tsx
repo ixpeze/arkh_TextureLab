@@ -4,7 +4,8 @@ import { Layers, UploadCloud, Sliders } from 'lucide-react';
 import { NodeCard } from '../node-system/NodeCard';
 import { NodeSocket, NodeSocketGroup } from '../node-system/NodeSocket';
 import { NodeBadge, NodeDivider } from '../node-system/NodeControls';
-import { PixelEngine } from '../../engine/pixelEngine';
+import { decodeImage } from '../../io/decode';
+import type { TextureBuffer } from '../../types/buffer';
 import { LexicalNormalizer } from '../../engine/normalizer';
 import { useNodeBuffers } from '../../context/NodeBufferContext';
 import { getPlatform } from '../../platform/PlatformService';
@@ -53,7 +54,13 @@ export const TextureInputNode: React.FC<NodeProps> = ({ id, data, selected }) =>
 
   const processLoadedFile = async (file: File) => {
     try {
-      const buffer = await PixelEngine.loadFromFile(file);
+      const ab = await file.arrayBuffer();
+      const decoded = await decodeImage(ab, file.name);
+      const buffer: TextureBuffer = {
+        width: decoded.width,
+        height: decoded.height,
+        data: decoded.data,
+      };
       const assetId = d.assetId || `asset_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       setSourceBuffer(assetId, buffer);
       setSourceBuffer(id, buffer);

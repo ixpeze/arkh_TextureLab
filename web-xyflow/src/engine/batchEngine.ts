@@ -4,7 +4,7 @@
  */
 
 import { LexicalNormalizer } from './normalizer';
-import type { TextureBuffer } from './pixelEngine';
+import type { TextureBuffer } from '../types/buffer';
 import type { TextureCollection, TextureItem, CollisionPolicy } from '../types/export';
 
 export interface BatchProgressCallback {

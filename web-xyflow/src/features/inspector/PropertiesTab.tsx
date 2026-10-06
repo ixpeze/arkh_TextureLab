@@ -1,10 +1,9 @@
 import React, { useMemo } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import { Download } from 'lucide-react';
-import type { TextureBuffer } from '../../engine/pixelEngine';
+import type { TextureBuffer } from '../../types/buffer';
 import { getNodePortTelemetry, autoDetectOutputRole } from '../../graph/introspect';
 import { ExportEngine } from '../../engine/exportEngine';
-import { PixelEngine } from '../../engine/pixelEngine';
 import { OutputTargetControls } from './OutputTargetControls';
 
 export interface PropertiesTabProps {
@@ -82,8 +81,8 @@ export const PropertiesTab: React.FC<PropertiesTabProps> = ({
     try {
       const blob = await ExportEngine.encodeImageBlob(activeBuffer, format as Parameters<typeof ExportEngine.encodeImageBlob>[1]);
       ExportEngine.triggerDownload(blob, filename);
-    } catch {
-      PixelEngine.downloadBuffer(activeBuffer, filename);
+    } catch (err) {
+      console.error('Download failed:', err);
     }
     onExportTarget?.(filename);
   };

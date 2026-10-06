@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { addEdge, reconnectEdge, type Connection, type Edge, type Node } from '@xyflow/react';
-import { GraphEvaluator } from '../engine/graphEvaluator';
+import { validateConnection } from '../graph/validate';
 import { getEdgeConfig } from './autoWire';
 import { duplicateNodes, deleteNodes } from './graphActions';
 
@@ -114,7 +114,7 @@ export function useGraphActions({
   // Connect wires
   const onConnect = useCallback(
     (params: Connection) => {
-      const validation = GraphEvaluator.validateConnection(params, edges);
+      const validation = validateConnection(params, edges);
       if (!validation.isValid) {
         setStatusMessage(`Wire rejected: ${validation.reason}`);
         return;
@@ -147,7 +147,7 @@ export function useGraphActions({
 
   const onReconnect = useCallback(
     (oldEdge: Edge, newConnection: Connection) => {
-      const validation = GraphEvaluator.validateConnection(
+      const validation = validateConnection(
         newConnection,
         edges.filter((e) => e.id !== oldEdge.id)
       );
@@ -210,7 +210,7 @@ export function useGraphActions({
   );
 
   const isValidConnection = useCallback(
-    (conn: Edge | Connection) => GraphEvaluator.validateConnection(conn, edges).isValid,
+    (conn: Edge | Connection) => validateConnection(conn, edges).isValid,
     [edges]
   );
 

@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { TextureBuffer } from '../engine/pixelEngine';
+import type { TextureBuffer } from '../types/buffer';
 
 export interface NodeBufferContextType {
   evaluatedBuffers: Record<string, TextureBuffer>;

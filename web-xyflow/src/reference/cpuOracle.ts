@@ -6,7 +6,7 @@
 export interface TextureBuffer {
   width: number;
   height: number;
-  data: Uint8ClampedArray; // RGBA 8-bit
+  data: any; // Uint8ClampedArray | Uint8Array | Uint16Array | Float32Array
   dataUrl?: string;
   proxy?: TextureBuffer; // Downsampled 512px interactive proxy for 60 FPS slider dragging
 }
@@ -33,7 +33,6 @@ export interface WorkerResponsePayload {
 export class PixelEngine {
   private static offscreenCanvas: HTMLCanvasElement | null = null;
   private static offscreenCtx: CanvasRenderingContext2D | null = null;
-  private static worker: Worker | null = null;
   private static workerCallbacks = new Map<number, (res: WorkerResponsePayload) => void>();
   private static workerReqId = 0;
 
@@ -64,20 +63,7 @@ export class PixelEngine {
    * Lazily initialize Web Worker
    */
   public static getWorker(): Worker {
-    if (!this.worker) {
-      this.worker = new Worker(new URL('./pixelWorker.ts', import.meta.url), { type: 'module' });
-      this.worker.onmessage = (e) => {
-        const { reqId, ...result } = e.data;
-        if (reqId !== undefined) {
-          const cb = this.workerCallbacks.get(reqId);
-          if (cb) {
-            this.workerCallbacks.delete(reqId);
-            cb(result);
-          }
-        }
-      };
-    }
-    return this.worker;
+    throw new Error('Web Worker removed in Phase 4; use GPU pipeline');
   }
 
   /**

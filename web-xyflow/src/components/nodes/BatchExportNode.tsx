@@ -168,7 +168,7 @@ export const BatchExportNode: React.FC<NodeProps<any>> = ({ id, data, selected }
               }}
             >
               <option value="8b">8-bit</option>
-              <option value="16b" disabled title="Coming in v1.0 final">16-bit (Coming in v1.0 final)</option>
+              <option value="16b">16-bit Precision</option>
             </select>
           </div>
         </div>

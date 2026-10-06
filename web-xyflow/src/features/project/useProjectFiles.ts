@@ -75,7 +75,7 @@ export function useProjectFiles() {
 
   // Save implementation
   const handleSave = useCallback(
-    async (asNewPath?: string): Promise<boolean> => {
+    async function performSave(asNewPath?: string): Promise<boolean> {
       const currentState = useAppStore.getState();
       const targetPath = asNewPath || currentState.projectPath;
       if (!targetPath) {
@@ -89,7 +89,7 @@ export function useProjectFiles() {
           ],
         });
         if (!chosenPath) return false;
-        return await handleSave(chosenPath);
+        return await performSave(chosenPath);
       }
 
       if (readOnly && !asNewPath) {

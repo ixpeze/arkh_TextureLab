@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { Node } from '@xyflow/react';
-import { PixelEngine, type TextureBuffer } from '../engine/pixelEngine';
+import type { TextureBuffer } from '../types/buffer';
+import { decodeImage } from '../io/decode';
 import { LexicalNormalizer } from '../engine/normalizer';
 import { getPlatform } from '../platform/PlatformService';
 
@@ -53,7 +54,13 @@ export function useTextureDrop({
         const meta = LexicalNormalizer.normalizeFilename(file.name);
         let buf: TextureBuffer | undefined;
         try {
-          buf = await PixelEngine.loadFromFile(file);
+          const ab = await file.arrayBuffer();
+          const decoded = await decodeImage(ab, file.name);
+          buf = {
+            width: decoded.width,
+            height: decoded.height,
+            data: decoded.data,
+          };
         } catch (err) {
           console.error(err);
         }

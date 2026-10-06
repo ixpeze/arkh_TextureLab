@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
-import { PixelEngine, type TextureBuffer } from '../engine/pixelEngine';
-import { GraphEvaluator } from '../engine/graphEvaluator';
+import { PixelEngine } from '../reference/cpuOracle';
+import type { TextureBuffer } from '../types/buffer';
+import { GraphEvaluator } from '../reference/graphEvaluator';
 import { createDeterministicBuffer, toBase64, type GoldenFixture } from './generate_golden';
 
 describe('PixelEngine CPU Golden Oracle Fixtures', () => {

@@ -33,16 +33,6 @@ export const channelSplitterDef: NodeDef<ChannelSplitterParams> = defineNode<Cha
   gpu: {
     shaderId: 'channel_splitter',
   },
-  cpuRef: (ctx) => {
-    const inConn =
-      ctx.getInputConnection('rgba') ||
-      ctx.getInputConnection('input') ||
-      ctx.getInputConnection();
-    if (inConn) {
-      return ctx.coerceUE5(inConn.buffer, inConn.sourceHandle || 'rgba', 'rgba');
-    }
-    return null;
-  },
   body: ChannelSplitterNode,
 });
 

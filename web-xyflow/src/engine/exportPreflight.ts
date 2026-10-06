@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
-import type { TextureBuffer } from './pixelEngine';
+import type { TextureBuffer } from '../types/buffer';
 import type {
   GlobalExportSettings,
   PreflightOutputItem,
@@ -40,8 +40,11 @@ export function buildPreflightRegistry(
   // Helper to resolve standard item attributes
   const formatFromNode = (d: Record<string, unknown>): TextureExportFormat =>
     (typeof d.formatOverride === 'string' && d.formatOverride !== 'inherit') ? (d.formatOverride as TextureExportFormat) : settings.defaultFormat;
-  // Honest 16-bit (F-04, P1-A5): Force '8b' at export until true 16-bit pipeline arrives in Phase 4
-  const bitDepthFromNode = (_d: Record<string, unknown>): TextureBitDepth => '8b';
+  // True 16-bit High-Precision pipeline enabled in Phase 4 (P4-E2, TC-490..493)
+  const bitDepthFromNode = (d: Record<string, unknown>): TextureBitDepth =>
+    (typeof d.bitDepthOverride === 'string' && d.bitDepthOverride !== 'inherit')
+      ? (d.bitDepthOverride as TextureBitDepth)
+      : (typeof d.bitDepth === 'string' ? (d.bitDepth as TextureBitDepth) : settings.defaultBitDepth);
   const colorSpaceFromNode = (d: Record<string, unknown>, autoCs: TextureColorSpace = 'linear'): TextureColorSpace =>
     (d.isColorSpaceOverridden && typeof d.colorSpace === 'string')
       ? (d.colorSpace as TextureColorSpace)

@@ -1,5 +1,4 @@
 import { defineNode, type NodeDef, type PortDef } from '../registry';
-import { PixelEngine } from '../../engine/pixelEngine';
 import {
   MathNode,
   LerpNode,
@@ -88,23 +87,6 @@ function createMathDef(cfg: MathConfig): NodeDef<MathParams> {
     gpu: {
       shaderId: 'math_op',
       uniforms: { op: cfg.op },
-    },
-    cpuRef: (ctx, inputs, params) => {
-      const op = (cfg.type === 'math' ? params.op || 'multiply' : cfg.op) as MathOpType;
-      const bufA = inputs.a || ctx.getInputBuffer('a') || ctx.getInputBuffer('base') || ctx.getInputBuffer('input') || ctx.getInputBuffer();
-      const bufB = inputs.b || ctx.getInputBuffer('b') || ctx.getInputBuffer('exp');
-      const bufAlpha = inputs.alpha || ctx.getInputBuffer('alpha') || ctx.getInputBuffer('mask');
-
-      if (params.isBypassed && bufA) {
-        return bufA;
-      }
-
-      const scalarA = typeof params.valA === 'number' ? params.valA : (typeof params.a === 'number' ? params.a : undefined);
-      const scalarB = typeof params.valB === 'number' ? params.valB : (typeof params.b === 'number' ? params.b : undefined);
-      const param1 = typeof params.param1 === 'number' ? params.param1 : (typeof params.min === 'number' ? params.min : (typeof params.exp === 'number' ? params.exp : (typeof params.alpha === 'number' ? params.alpha : undefined)));
-      const param2 = typeof params.param2 === 'number' ? params.param2 : (typeof params.max === 'number' ? params.max : undefined);
-
-      return PixelEngine.applyMath(op, bufA || null, bufB || null, bufAlpha || null, scalarA, scalarB, param1, param2);
     },
     body: cfg.body,
   });

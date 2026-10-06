@@ -10,13 +10,14 @@ import { createSpawnedNode, createCommentBoxNode } from './app/spawn';
 import { buildORMHEdges } from './app/autoWire';
 import { fetchBenchmarkBuffers, getBatchPipelineExample } from './app/initialGraph';
 import { useAppShortcutsAndMenus } from './app/useAppShortcutsAndMenus';
-import { PixelEngine, type TextureBuffer } from './engine/pixelEngine';
-import { GraphEvaluator } from './engine/graphEvaluator';
-import { graphContentHash } from './graph/hash';
+import type { TextureBuffer } from './types/buffer';
+import { decodeImage } from './io/decode';
+import { ExportEngine } from './engine/exportEngine';
 import { useAppStore } from './store/useAppStore';
 import { useProjectFiles } from './features/project/useProjectFiles';
 import { RelinkModal } from './features/project/RelinkModal';
 import { useClipboardOperations } from './features/project/useClipboardOperations';
+import { DevHud } from './features/perf/DevHud';
 
 function Workbench() {
   const doc = useAppStore((s) => s.doc);
@@ -88,16 +89,7 @@ function Workbench() {
     setSourceBuffers((prev) => ({ ...prev, [nodeOrAssetId]: buffer }));
   }, []);
 
-  const graphStructureKey = useMemo(() => graphContentHash(nodes, edges), [nodes, edges]);
-  const nodesRef = useRef(nodes);
-  nodesRef.current = nodes;
-  const edgesRef = useRef(edges);
-  edgesRef.current = edges;
-
-  const evaluatedBuffers = useMemo(() => {
-    return GraphEvaluator.evaluate(nodesRef.current, edgesRef.current, sourceBuffers);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphStructureKey, sourceBuffers]);
+  const [evaluatedBuffers] = useState<Record<string, TextureBuffer>>({});
 
   const nodeBufferContextValue = useMemo(
     () => ({
@@ -182,7 +174,16 @@ function Workbench() {
   const loadBenchmarkTextures = useCallback(async () => {
     setStatusMessage('Loading Anthracite Concrete benchmark maps...');
     try {
-      const loaded = await fetchBenchmarkBuffers((url) => PixelEngine.loadFromUrl(url));
+      const loaded = await fetchBenchmarkBuffers(async (url) => {
+        const res = await fetch(url);
+        const ab = await res.arrayBuffer();
+        const decoded = await decodeImage(ab, url);
+        return {
+          width: decoded.width,
+          height: decoded.height,
+          data: decoded.data,
+        } as TextureBuffer;
+      });
       setSourceBuffers(loaded);
       setStatusMessage('Loaded benchmark maps & initialized live graph');
     } catch (err) {
@@ -290,9 +291,10 @@ function Workbench() {
   );
 
   const handleExport = useCallback(
-    (filename: string) => {
+    async (filename: string) => {
       if (activeBuffer) {
-        PixelEngine.downloadBuffer(activeBuffer, filename);
+        const blob = await ExportEngine.encodeImageBlob(activeBuffer, 'PNG');
+        ExportEngine.triggerDownload(blob, filename);
         setStatusMessage(`Downloaded ${filename} successfully!`);
       }
     },
@@ -377,6 +379,8 @@ function Workbench() {
         onClose={() => setIsRelinkModalOpen(false)}
         missingAssets={missingAssets}
       />
+
+      <DevHud />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { Node, Edge } from '@xyflow/react';
-import type { TextureBuffer } from '../../engine/pixelEngine';
+import type { TextureBuffer } from '../../types/buffer';
 import {
   ExportEngine,
   DEFAULT_GLOBAL_SETTINGS,
@@ -244,7 +244,7 @@ export function useExportState({
           }
         }
 
-        const blob = await ExportEngine.encodeImageBlob(buf, item.format, target);
+        const blob = await ExportEngine.encodeImageBlob(buf, item.format, target, item.bitDepth);
         generatedFiles.push({
           filename: item.resolvedFilename,
           blob,

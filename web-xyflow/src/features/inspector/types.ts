@@ -1,5 +1,5 @@
 import type { Node, Edge } from '@xyflow/react';
-import type { TextureBuffer } from '../../engine/pixelEngine';
+import type { TextureBuffer } from '../../types/buffer';
 
 export type ChannelKey = 'RGBA' | 'R' | 'G' | 'B' | 'A';
 

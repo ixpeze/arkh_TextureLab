@@ -1,5 +1,4 @@
 import { defineNode, type NodeDef } from '../registry';
-import { PixelEngine } from '../../engine/pixelEngine';
 import { InvertNode } from '../../components/nodes/InvertNode';
 import { NormalFlipNode } from '../../components/nodes/NormalFlipNode';
 import { NormalizeNode } from '../../components/nodes/NormalizeNode';
@@ -35,11 +34,6 @@ export const invertDef: NodeDef<InvertParams> = defineNode<InvertParams>({
   gpu: {
     shaderId: 'invert',
   },
-  cpuRef: (ctx, inputs, params) => {
-    const inBuf = inputs.input || ctx.getInputBuffer();
-    if (!inBuf) return null;
-    return params.isBypassed ? inBuf : PixelEngine.invertBuffer(inBuf);
-  },
   body: InvertNode,
 });
 
@@ -61,11 +55,6 @@ export const normalFlipDef: NodeDef<NormalFlipParams> = defineNode<NormalFlipPar
   gpu: {
     shaderId: 'normal_flip',
   },
-  cpuRef: (ctx, inputs, params) => {
-    const inBuf = inputs.input || ctx.getInputBuffer();
-    if (!inBuf) return null;
-    return params.isBypassed ? inBuf : PixelEngine.flipGreenChannel(inBuf);
-  },
   body: NormalFlipNode,
 });
 
@@ -85,12 +74,6 @@ export const normalizeDef: NodeDef<NormalizeParams> = defineNode<NormalizeParams
   color: '#10b981',
   gpu: {
     shaderId: 'normalize',
-  },
-  cpuRef: (ctx, inputs, params) => {
-    const inBuf = inputs.input || ctx.getInputBuffer();
-    if (!inBuf) return null;
-    const shouldFlipGreen = !!(params.requiresGreenFlip || params.flipGreen);
-    return shouldFlipGreen ? PixelEngine.flipGreenChannel(inBuf) : inBuf;
   },
   body: NormalizeNode,
 });

@@ -1,5 +1,4 @@
 import { defineNode, type NodeDef } from '../registry';
-import { PixelEngine } from '../../engine/pixelEngine';
 import { BlendNode } from '../../components/nodes/BlendNode';
 import { NormalBlendNode } from '../../components/nodes/NormalBlendNode';
 
@@ -54,32 +53,6 @@ export const blendDef: NodeDef<BlendParams> = defineNode<BlendParams>({
   gpu: {
     shaderId: 'blend',
   },
-  cpuRef: (ctx, inputs, params) => {
-    const bufA = inputs.a || ctx.getInputBuffer('a');
-    const bufB = inputs.b || ctx.getInputBuffer('b');
-    const bufMask = inputs.mask || ctx.getInputBuffer('mask');
-
-    if (bufA && bufB) {
-      const safeOpacity =
-        typeof params.opacity === 'number' && !isNaN(params.opacity)
-          ? Math.max(0, Math.min(1.0, params.opacity))
-          : 1.0;
-      return params.isBypassed
-        ? bufA
-        : PixelEngine.blendBuffers(
-            bufA,
-            bufB,
-            bufMask || undefined,
-            (params.mode as 'add' | 'multiply' | 'overlay' | 'screen' | 'min' | 'max' | 'lerp') || 'lerp',
-            safeOpacity
-          );
-    } else if (bufA) {
-      return bufA;
-    } else if (bufB) {
-      return bufB;
-    }
-    return null;
-  },
   body: BlendNode,
 });
 
@@ -109,23 +82,6 @@ export const normalBlendDef: NodeDef<NormalBlendParams> = defineNode<NormalBlend
   color: '#06b6d4',
   gpu: {
     shaderId: 'normal_blend_rnm',
-  },
-  cpuRef: (ctx, inputs, params) => {
-    const bufBase = inputs.base || ctx.getInputBuffer('base');
-    const bufDetail = inputs.detail || ctx.getInputBuffer('detail');
-
-    if (bufBase && bufDetail) {
-      const safeStrength =
-        typeof params.detailStrength === 'number' && !isNaN(params.detailStrength)
-          ? Math.max(0, Math.min(5.0, params.detailStrength))
-          : 1.0;
-      return params.isBypassed
-        ? bufBase
-        : PixelEngine.blendNormalRNM(bufBase, bufDetail, safeStrength);
-    } else if (bufBase) {
-      return bufBase;
-    }
-    return null;
   },
   body: NormalBlendNode,
 });

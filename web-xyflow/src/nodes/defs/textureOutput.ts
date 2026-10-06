@@ -1,5 +1,4 @@
 import { defineNode, type NodeDef } from '../registry';
-import { PixelEngine } from '../../engine/pixelEngine';
 import { TextureOutputNode } from '../../components/nodes/TextureOutputNode';
 
 export interface TextureOutputParams {
@@ -36,7 +35,7 @@ export const textureOutputDef: NodeDef<TextureOutputParams> = defineNode<Texture
       label: 'Bit Depth',
       options: [
         { value: '8b', label: '8-bit' },
-        { value: '16b', label: '16-bit (Coming in v1.0 final)' },
+        { value: '16b', label: '16-bit Precision' },
       ],
       default: '8b',
     },
@@ -50,27 +49,6 @@ export const textureOutputDef: NodeDef<TextureOutputParams> = defineNode<Texture
   color: '#4ade80',
   gpu: {
     shaderId: 'texture_output',
-  },
-  cpuRef: (ctx) => {
-    const inConn =
-      ctx.getInputConnection('rgba') ||
-      ctx.getInputConnection('input') ||
-      ctx.getInputConnection();
-    if (inConn) {
-      let coerced = ctx.coerceUE5(inConn.buffer, inConn.sourceHandle || 'rgba', 'rgba');
-      if (coerced && coerced.width === 1 && coerced.height === 1) {
-        coerced = PixelEngine.createSolid(
-          512,
-          512,
-          coerced.data[0],
-          coerced.data[1],
-          coerced.data[2],
-          coerced.data[3]
-        );
-      }
-      return coerced;
-    }
-    return null;
   },
   body: TextureOutputNode,
 });

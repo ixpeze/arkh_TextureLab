@@ -157,9 +157,9 @@ export const OutputTargetControls: React.FC<OutputTargetControlsProps> = ({
           label="Bit Depth"
           value={(typeof nodeData.bitDepthOverride === 'string' && nodeData.bitDepthOverride) || 'inherit'}
           options={[
-            { label: 'Inherit Global (8-bit)', value: 'inherit' },
+            { label: 'Inherit Global', value: 'inherit' },
             { label: '8-bit Standard', value: '8b' },
-            { label: '16-bit Precision (Coming in v1.0 final)', value: '16b', disabled: true, title: 'Coming in v1.0 final' },
+            { label: '16-bit Precision', value: '16b' },
           ]}
           onChange={(val) => onUpdateNodeData?.(selectedNode.id, { bitDepthOverride: val })}
         />

@@ -1,4 +1,4 @@
-import type { TextureBuffer } from './pixelEngine';
+import type { TextureBuffer } from '../types/buffer';
 
 /**
  * Encode an RGBA TextureBuffer directly into uncompressed 32-bit Truevision TGA binary format.

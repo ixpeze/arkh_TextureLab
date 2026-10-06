@@ -1,5 +1,4 @@
 import { defineNode, type NodeDef } from '../registry';
-import { PixelEngine } from '../../engine/pixelEngine';
 import { ResizeNode } from '../../components/nodes/ResizeNode';
 import { UpscaleNode } from '../../components/nodes/UpscaleNode';
 
@@ -62,21 +61,6 @@ export const resizeDef: NodeDef<ResizeParams> = defineNode<ResizeParams>({
   gpu: {
     shaderId: 'resize',
   },
-  cpuRef: (ctx, inputs, params) => {
-    const inBuf = inputs.input || ctx.getInputBuffer();
-    if (!inBuf) return null;
-    if (params.isBypassed) return inBuf;
-
-    let tw = typeof params.targetWidth === 'number' ? params.targetWidth : 1024;
-    let th = typeof params.targetHeight === 'number' ? params.targetHeight : 1024;
-    const potMode = (params.potMode as 'none' | 'nearest' | 'up' | 'down') || 'none';
-    if (potMode !== 'none') {
-      tw = PixelEngine.toPowerOfTwo(tw, potMode);
-      th = PixelEngine.toPowerOfTwo(th, potMode);
-    }
-    const mode = (params.mode as 'preserve' | 'pad' | 'crop' | 'stretch') || 'preserve';
-    return PixelEngine.resizeBuffer(inBuf, tw, th, mode);
-  },
   body: ResizeNode,
 });
 
@@ -106,14 +90,6 @@ export const upscaleDef: NodeDef<UpscaleParams> = defineNode<UpscaleParams>({
   color: '#a855f7',
   gpu: {
     shaderId: 'upscale',
-  },
-  cpuRef: (ctx, inputs, params) => {
-    const inBuf = inputs.input || ctx.getInputBuffer();
-    if (!inBuf) return null;
-    if (params.isBypassed) return inBuf;
-
-    const scale = (params.scale === 4 ? 4 : 2) as 2 | 4;
-    return PixelEngine.resizeBuffer(inBuf, inBuf.width * scale, inBuf.height * scale, 'stretch');
   },
   body: UpscaleNode,
 });
