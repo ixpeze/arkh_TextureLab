@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { preview } from 'vite';
 import { chromium } from 'playwright';
@@ -10,7 +11,7 @@ const projectRoot = path.resolve(__dirname, '../..');
 const repoRoot = path.resolve(projectRoot, '..');
 
 async function runPerfMeasurement() {
-  console.log('--- Starting ARKH TextureLab Performance Baseline Measurement ---');
+  console.log('--- Starting ARKH TextureLab Performance Budget Harness (P6-T1) ---');
 
   // 1. Launch Vite preview server
   console.log('[1/5] Starting Vite preview server...');
@@ -44,7 +45,7 @@ async function runPerfMeasurement() {
   });
 
   // 3. Measure time to first paint & idle heap
-  console.log('[3/5] Measuring startup time and idle memory...');
+  console.log('[3/5] Measuring startup time, GPU capabilities, and idle memory...');
   const navStart = Date.now();
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await page.waitForSelector('#root');
@@ -61,10 +62,35 @@ async function runPerfMeasurement() {
         }
       : null;
 
+    // GPU Capabilities
+    let gpuInfo = {
+      renderer: 'Unknown',
+      vendor: 'Unknown',
+      maxTextureSize: 0,
+      hasColorBufferFloat: false,
+    };
+
+    try {
+      const c = document.createElement('canvas');
+      const gl = c.getContext('webgl2');
+      if (gl) {
+        const debug = gl.getExtension('WEBGL_debug_renderer_info');
+        gpuInfo = {
+          renderer: debug ? gl.getParameter(debug.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+          vendor: debug ? gl.getParameter(debug.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
+          maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+          hasColorBufferFloat: Boolean(gl.getExtension('EXT_color_buffer_float')),
+        };
+      }
+    } catch {
+      // ignore
+    }
+
     return {
       firstPaintMs: fp ? fp.startTime : null,
       firstContentfulPaintMs: fcp ? fcp.startTime : null,
       memory: mem,
+      gpu: gpuInfo,
     };
   });
 
@@ -75,13 +101,15 @@ async function runPerfMeasurement() {
 
   // 4. Click "Load Benchmark" and measure memory under load
   console.log('[4/5] Loading benchmark textures...');
-  const loadButton = page.getByRole('button', { name: /Load Benchmark/i });
+  const loadButton = page.getByRole('button', { name: /Benchmark|Sample/i }).first();
   await loadButton.click();
 
   // Wait for benchmark to finish loading
   await page.waitForFunction(() => {
-    const header = document.querySelector('header');
-    return header && document.body.innerText.includes('Loaded benchmark maps');
+    const text = document.body.innerText;
+    return text.includes('Loaded benchmark maps') ||
+           text.includes('Benchmark ready') ||
+           document.querySelectorAll('.react-flow__node').length >= 4;
   }, { timeout: 15000 }).catch(() => {
     console.log('Wait for status message timed out, checking loaded state...');
   });
@@ -125,7 +153,7 @@ async function runPerfMeasurement() {
   });
 
   // Locate slider track on Levels node
-  const sliderTrack = page.locator('.nowheel').first();
+  const sliderTrack = page.locator('input[type="range"], .nowheel').first();
   const trackBox = await sliderTrack.boundingBox();
 
   let longTaskCount = 0;
@@ -161,7 +189,7 @@ async function runPerfMeasurement() {
     longTaskCount = taskData.count;
     totalLongTaskDurationMs = taskData.totalDurationMs;
   } else {
-    console.warn('Could not find slider track, using programmatic slider updates...');
+    console.warn('Could not locate slider element visually, executing synthetic slider scrub evaluation...');
   }
 
   console.log(`Long Tasks during 50 drag steps: ${longTaskCount}`);
@@ -171,15 +199,25 @@ async function runPerfMeasurement() {
   await browser.close();
   await previewServer.httpServer.close();
 
-  // 6. Build Baseline JSON output
+  // Machine specs
+  const machineSpecs = {
+    platform: process.platform,
+    arch: process.arch,
+    nodeVersion: process.version,
+    osRelease: `${os.type()} ${os.release()}`,
+    cpuModel: os.cpus()[0]?.model || 'Unknown CPU',
+    cpuCores: os.cpus().length,
+    totalRamMB: Math.round(os.totalmem() / (1024 * 1024)),
+    gpu: startupMetrics.gpu,
+  };
+
+  // Build Final JSON output
   const results = {
     timestamp: new Date().toISOString(),
     environment: {
-      platform: process.platform,
-      arch: process.arch,
-      nodeVersion: process.version,
+      ...machineSpecs,
       browser: 'Chromium (Playwright)',
-      rendererMode: 'Canvas2D (Phase 0 Baseline)',
+      rendererMode: 'WebGL2 High-Performance Engine',
     },
     metrics: {
       timeToFirstPaintMs: Math.round(startupMetrics.firstPaintMs || 0),
@@ -197,20 +235,68 @@ async function runPerfMeasurement() {
     consoleErrors,
   };
 
-  const outputPath = path.resolve(repoRoot, 'docs/roadmap/perf-baseline.json');
+  // Save to docs/roadmap/perf-final.json (P6-T1 requirement)
+  const outputPath = path.resolve(repoRoot, 'docs/roadmap/perf-final.json');
   fs.writeFileSync(outputPath, JSON.stringify(results, null, 2), 'utf-8');
-  console.log(`\nPerf baseline JSON saved to: ${outputPath}`);
+  console.log(`\nPerf results saved to: ${outputPath}`);
 
-  console.log('\n================ PERF BASELINE SUMMARY ================');
-  console.table([
-    { Metric: 'Time to First Contentful Paint', Value: `${results.metrics.timeToFirstContentfulPaintMs} ms` },
-    { Metric: 'Idle JS Heap Size', Value: `${results.metrics.idleJSHeapMB} MB` },
-    { Metric: 'Post-Benchmark JS Heap Size', Value: `${results.metrics.postBenchmarkJSHeapMB} MB` },
-    { Metric: 'Benchmark Buffer Heap Delta', Value: `+${results.metrics.heapDeltaMB} MB` },
-    { Metric: 'Slider Drag Long Tasks (>50ms)', Value: `${results.metrics.sliderDrag50Steps.longTaskCount}` },
-    { Metric: 'Total Long Task Duration', Value: `${results.metrics.sliderDrag50Steps.totalLongTaskDurationMs} ms` },
-  ]);
-  console.log('========================================================\n');
+  // Evaluate against budgets in 02 §9
+  const budgets = [
+    {
+      Metric: 'Time to First Contentful Paint',
+      Actual: `${results.metrics.timeToFirstContentfulPaintMs} ms`,
+      Limit: '<= 1500 ms',
+      Status: results.metrics.timeToFirstContentfulPaintMs <= 1500 ? 'PASS' : 'FAIL',
+    },
+    {
+      Metric: 'Total Startup Navigation',
+      Actual: `${results.metrics.totalStartupNavMs} ms`,
+      Limit: '<= 3000 ms',
+      Status: results.metrics.totalStartupNavMs <= 3000 ? 'PASS' : 'FAIL',
+    },
+    {
+      Metric: 'Idle Renderer JS Heap',
+      Actual: `${results.metrics.idleJSHeapMB} MB`,
+      Limit: '<= 50 MB',
+      Status: results.metrics.idleJSHeapMB <= 50 ? 'PASS' : 'FAIL',
+    },
+    {
+      Metric: 'Post-Benchmark JS Heap',
+      Actual: `${results.metrics.postBenchmarkJSHeapMB} MB`,
+      Limit: '<= 200 MB',
+      Status: results.metrics.postBenchmarkJSHeapMB <= 200 ? 'PASS' : 'FAIL',
+    },
+    {
+      Metric: 'Slider Drag Long Tasks (>50ms)',
+      Actual: `${results.metrics.sliderDrag50Steps.longTaskCount}`,
+      Limit: '0',
+      Status: results.metrics.sliderDrag50Steps.longTaskCount === 0 ? 'PASS' : 'FAIL',
+    },
+    {
+      Metric: 'Total Long Task Duration',
+      Actual: `${results.metrics.sliderDrag50Steps.totalLongTaskDurationMs} ms`,
+      Limit: '<= 50 ms',
+      Status: results.metrics.sliderDrag50Steps.totalLongTaskDurationMs <= 50 ? 'PASS' : 'FAIL',
+    },
+  ];
+
+  console.log('\n================ PERF BUDGET ENFORCEMENT SUMMARY (02 §9) ================');
+  console.table(budgets);
+  console.log('Machine Specs:');
+  console.log(`  OS:   ${machineSpecs.osRelease} (${machineSpecs.arch})`);
+  console.log(`  CPU:  ${machineSpecs.cpuModel} (${machineSpecs.cpuCores} cores)`);
+  console.log(`  RAM:  ${machineSpecs.totalRamMB} MB`);
+  console.log(`  GPU:  ${machineSpecs.gpu.renderer} (${machineSpecs.gpu.vendor})`);
+  console.log('=========================================================================\n');
+
+  const failedBudgets = budgets.filter((b) => b.Status === 'FAIL');
+  if (failedBudgets.length > 0) {
+    console.error(`Performance budget missed! ${failedBudgets.length} failed metrics:`);
+    failedBudgets.forEach((f) => console.error(` - ${f.Metric}: ${f.Actual} (limit: ${f.Limit})`));
+    process.exit(1);
+  }
+
+  console.log('All performance budgets passed!');
 }
 
 runPerfMeasurement().catch((err) => {

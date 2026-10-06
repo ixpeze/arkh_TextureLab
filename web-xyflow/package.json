@@ -22,6 +22,7 @@
     "test:e2e": "playwright test",
     "dist": "npm run build:icon && npm run build && electron-builder --config electron-builder.yml",
     "perf": "node scripts/perf/measure.mjs",
+    "perf:soak": "node scripts/perf/soak.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
