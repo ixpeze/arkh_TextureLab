@@ -16,7 +16,7 @@ export class ElectronPlatformService implements IPlatformService {
 
   constructor() {
     this.platform = window.lab?.platform || 'win32';
-    this.version = window.lab?.version || '0.2.0';
+    this.version = window.lab?.version || '1.0.0';
   }
 
   public isFolderExportSupported(): boolean {

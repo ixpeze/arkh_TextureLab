@@ -10,7 +10,7 @@ import type {
 const labAPI: LabAPI = {
   isElectron: true,
   platform: process.platform as 'win32' | 'darwin' | 'linux',
-  version: process.env.APP_VERSION || '0.2.0',
+  version: process.env.APP_VERSION || '1.0.0',
 
   getPathForFile: (file: File): string => {
     try {

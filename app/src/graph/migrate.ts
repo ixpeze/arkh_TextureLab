@@ -3,7 +3,7 @@ import type { TlabDocument, AssetRecord } from '../types/project';
 import { nodeRegistry } from '../nodes/registry';
 
 export const CURRENT_SCHEMA_VERSION = 1;
-export const CURRENT_APP_VERSION = '0.2.0';
+export const CURRENT_APP_VERSION = '1.0.0';
 
 export interface MigrationResult {
   doc: TlabDocument;

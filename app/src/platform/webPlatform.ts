@@ -12,7 +12,7 @@ import type {
 export class WebPlatformService implements IPlatformService {
   public readonly isElectron = false;
   public readonly platform = 'browser' as const;
-  public readonly version = '0.2.0';
+  public readonly version = '1.0.0';
 
   public isFolderExportSupported(): boolean {
     return typeof window !== 'undefined' && 'showDirectoryPicker' in window;

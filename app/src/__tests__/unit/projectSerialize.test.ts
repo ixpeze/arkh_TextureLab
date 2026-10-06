@@ -27,7 +27,7 @@ describe('Project Serialization & Migration (P3-T5: TC-320..327)', () => {
     return {
       format: 'arkh-texturelab',
       schemaVersion: 1,
-      appVersion: '0.2.0',
+      appVersion: '1.0.0',
       meta: {
         id: 'proj_test_123',
         name: 'Test Project',

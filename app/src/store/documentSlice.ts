@@ -28,7 +28,7 @@ export function createDefaultDocument(withSample = false): TlabDocument {
     return {
       format: 'arkh-texturelab',
       schemaVersion: 1,
-      appVersion: '0.2.0',
+      appVersion: '1.0.0',
       meta: {
         id: `proj_${Date.now()}`,
         name: 'Anthracite_Concrete',
@@ -57,7 +57,7 @@ export function createDefaultDocument(withSample = false): TlabDocument {
   return {
     format: 'arkh-texturelab',
     schemaVersion: 1,
-    appVersion: '0.2.0',
+    appVersion: '1.0.0',
     meta: {
       id: `proj_${Date.now()}`,
       name: 'Untitled',
