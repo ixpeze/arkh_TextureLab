@@ -6,7 +6,7 @@ import type { Node } from '@xyflow/react';
 describe('Patch History & Coalescing (P3-T2: TC-301..305)', () => {
   beforeEach(() => {
     useAppStore.setState({
-      doc: createDefaultDocument(),
+      doc: createDefaultDocument(true),
       isDirty: false,
       activeNodeId: 'input_ao',
       selectedNodeIds: [],

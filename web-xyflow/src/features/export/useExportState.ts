@@ -268,7 +268,7 @@ export function useExportState({
     } catch (err: unknown) {
       console.error('Batch export failed:', err);
       const msg = err instanceof Error ? err.message : 'Failed to encode files';
-      alert(`Export error: ${msg}`);
+      onExportComplete?.(`Export error: ${msg}`);
     } finally {
       setIsExporting(false);
       setExportProgress(null);

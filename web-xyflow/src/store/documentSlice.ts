@@ -17,31 +17,61 @@ import { initialNodes, initialEdges } from '../app/initialGraph';
 import { sanitizeNodeData } from '../graph/migrate';
 import type { HistoryManager } from './history';
 
-export function createDefaultDocument(): TlabDocument {
-  const cleanInitialNodes = initialNodes.map((n) => ({
-    ...n,
-    data: sanitizeNodeData((n.data as Record<string, unknown>) || {}),
-  }));
-
+export function createDefaultDocument(withSample = false): TlabDocument {
   const now = new Date().toISOString();
+
+  if (withSample) {
+    const cleanInitialNodes = initialNodes.map((n) => ({
+      ...n,
+      data: sanitizeNodeData((n.data as Record<string, unknown>) || {}),
+    }));
+    return {
+      format: 'arkh-texturelab',
+      schemaVersion: 1,
+      appVersion: '0.2.0',
+      meta: {
+        id: `proj_${Date.now()}`,
+        name: 'Anthracite_Concrete',
+        createdAt: now,
+        modifiedAt: now,
+      },
+      assets: [],
+      graph: {
+        nodes: cleanInitialNodes,
+        edges: [...initialEdges],
+      },
+      export: {
+        settings: {
+          primaryAsset: 'Anthracite_Concrete',
+          exportPattern: 'T_{asset}_{slot}.{format}',
+        },
+        presets: [],
+      },
+      view: {
+        zoom: 1,
+        pan: [0, 0],
+      },
+    };
+  }
+
   return {
     format: 'arkh-texturelab',
     schemaVersion: 1,
     appVersion: '0.2.0',
     meta: {
       id: `proj_${Date.now()}`,
-      name: 'Anthracite_Concrete',
+      name: 'Untitled',
       createdAt: now,
       modifiedAt: now,
     },
     assets: [],
     graph: {
-      nodes: cleanInitialNodes,
-      edges: [...initialEdges],
+      nodes: [],
+      edges: [],
     },
     export: {
       settings: {
-        primaryAsset: 'Anthracite_Concrete',
+        primaryAsset: 'TextureSet',
         exportPattern: 'T_{asset}_{slot}.{format}',
         exportDirRel: '',
       },

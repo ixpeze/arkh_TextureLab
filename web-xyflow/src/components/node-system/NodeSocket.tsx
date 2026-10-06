@@ -67,6 +67,17 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
     handleRef.current.dispatchEvent(event);
   };
 
+  const glyph = (function () {
+    const clean = id.toLowerCase();
+    if (clean === 'r' || clean === 'red') return 'R';
+    if (clean === 'g' || clean === 'green') return 'G';
+    if (clean === 'b' || clean === 'blue') return 'B';
+    if (clean === 'a' || clean === 'alpha') return 'A';
+    if (clean.includes('rgba') || clean.includes('rgb') || clean.includes('color')) return 'C';
+    if (clean.includes('scalar')) return 'S';
+    return (label[0] || id[0] || '•').toUpperCase();
+  })();
+
   return (
     <div
       className={`node-socket-row ${isSection ? 'is-section-row' : ''}`}
@@ -124,7 +135,7 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
         ...style,
       }}
     >
-      {/* Target (Input) Handle: Physically anchored on the LEFT border of the node card */}
+      {/* Target (Input) Handle: 12px dot with semantic letter glyph */}
       {isInput && (
         <Handle
           ref={handleRef}
@@ -134,21 +145,31 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
           className={shapeClass}
           style={{
             position: 'absolute',
-            left: -5,
+            left: -6,
             top: '50%',
             transform: shape === 'diamond' ? 'translateY(-50%) rotate(45deg)' : 'translateY(-50%)',
-            width: isSection ? 11 : 10,
-            height: isSection ? 11 : 10,
+            width: 12,
+            height: 12,
             backgroundColor: color,
-            borderColor: '#0c0e14',
+            borderColor: '#131211',
             borderWidth: 1.5,
             borderStyle: 'solid',
-            boxShadow: isHovered ? `0 0 12px ${color}` : `0 0 5px ${color}60`,
+            boxShadow: isHovered ? `0 0 10px ${color}` : `0 0 4px ${color}60`,
             cursor: 'crosshair',
             zIndex: 15,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 7,
+            fontWeight: 700,
+            color: '#131211',
+            lineHeight: 1,
+            userSelect: 'none',
             transition: 'transform 120ms ease, box-shadow 120ms ease',
           }}
-        />
+        >
+          <span style={{ transform: shape === 'diamond' ? 'rotate(-45deg)' : 'none' }}>{glyph}</span>
+        </Handle>
       )}
 
       {/* Socket Label & Direction Indicator */}
@@ -243,7 +264,7 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
         </span>
       )}
 
-      {/* Source (Output) Handle: Physically anchored on the RIGHT border of the node card */}
+      {/* Source (Output) Handle: 12px dot with semantic letter glyph */}
       {!isInput && (
         <Handle
           ref={handleRef}
@@ -253,21 +274,31 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
           className={shapeClass}
           style={{
             position: 'absolute',
-            right: -5,
+            right: -6,
             top: '50%',
             transform: shape === 'diamond' ? 'translateY(-50%) rotate(45deg)' : 'translateY(-50%)',
-            width: isSection ? 11 : 10,
-            height: isSection ? 11 : 10,
+            width: 12,
+            height: 12,
             backgroundColor: color,
-            borderColor: '#0c0e14',
+            borderColor: '#131211',
             borderWidth: 1.5,
             borderStyle: 'solid',
-            boxShadow: isHovered ? `0 0 12px ${color}` : `0 0 5px ${color}60`,
+            boxShadow: isHovered ? `0 0 10px ${color}` : `0 0 4px ${color}60`,
             cursor: 'crosshair',
             zIndex: 15,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 7,
+            fontWeight: 700,
+            color: '#131211',
+            lineHeight: 1,
+            userSelect: 'none',
             transition: 'transform 120ms ease, box-shadow 120ms ease',
           }}
-        />
+        >
+          <span style={{ transform: shape === 'diamond' ? 'rotate(-45deg)' : 'none' }}>{glyph}</span>
+        </Handle>
       )}
     </div>
   );

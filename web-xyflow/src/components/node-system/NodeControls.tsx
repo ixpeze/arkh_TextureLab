@@ -43,7 +43,7 @@ export const NodeInput: React.FC<NodeInputProps> = ({
       style={{ display: 'flex', flexDirection: 'column', gap: 2 }}
     >
       {label && (
-        <span style={{ fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 500 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>
           {label}
         </span>
       )}
@@ -60,7 +60,7 @@ export const NodeInput: React.FC<NodeInputProps> = ({
         }}
       >
         {prefix && (
-          <span style={{ fontSize: 8.5, fontFamily: 'monospace', color: 'var(--text-dim)' }}>
+          <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-dim)' }}>
             {prefix}
           </span>
         )}
@@ -80,14 +80,14 @@ export const NodeInput: React.FC<NodeInputProps> = ({
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            fontSize: 9,
+            fontSize: 11,
             fontFamily: type === 'number' ? "'Geist Mono', monospace" : 'inherit',
             color: '#f8fafc',
             fontWeight: 500,
           }}
         />
         {suffix && (
-          <span style={{ fontSize: 8.5, fontFamily: 'monospace', color: 'var(--text-dim)' }}>
+          <span style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-dim)' }}>
             {suffix}
           </span>
         )}
@@ -126,7 +126,7 @@ export const NodeToggle: React.FC<NodeToggleProps> = ({
         padding: '2px 0',
       }}
     >
-      <span style={{ fontSize: 9, color: '#e2e8f0', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 11, color: '#e2e8f0', fontWeight: 500 }}>{label}</span>
       <div
         style={{
           width: 22,
@@ -200,7 +200,7 @@ export const NodeCheckbox: React.FC<NodeCheckboxProps> = ({
       >
         {checked && <Check size={8} color="#ffffff" strokeWidth={3} />}
       </div>
-      <span style={{ fontSize: 9, color: '#e2e8f0', fontWeight: 500 }}>{label}</span>
+      <span style={{ fontSize: 11, color: '#e2e8f0', fontWeight: 500 }}>{label}</span>
     </div>
   );
 };
@@ -236,7 +236,7 @@ export const NodeSelect: React.FC<NodeSelectProps> = ({
       style={{ display: 'flex', flexDirection: 'column', gap: 2 }}
     >
       {label && (
-        <span style={{ fontSize: 8.5, color: 'var(--text-muted)', fontWeight: 500 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 500 }}>
           {label}
         </span>
       )}
@@ -261,7 +261,7 @@ export const NodeSelect: React.FC<NodeSelectProps> = ({
             background: 'transparent',
             border: 'none',
             outline: 'none',
-            fontSize: 9,
+            fontSize: 11,
             color: '#f8fafc',
             fontWeight: 500,
             padding: '3px 18px 3px 6px',
@@ -329,7 +329,7 @@ export const NodeBadge: React.FC<NodeBadgeProps> = ({
   return (
     <span
       style={{
-        fontSize: 7.5,
+        fontSize: 10,
         fontWeight: 700,
         fontFamily: "'Geist Mono', monospace",
         color: variant === 'solid' ? '#0c0e14' : color,
@@ -341,7 +341,7 @@ export const NodeBadge: React.FC<NodeBadgeProps> = ({
         display: 'inline-flex',
         alignItems: 'center',
         gap: 2,
-        lineHeight: '11px',
+        lineHeight: '12px',
       }}
     >
       {children}

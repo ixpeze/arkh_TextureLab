@@ -4,20 +4,22 @@ import '@xyflow/react/dist/style.css';
 
 import { Toolbar } from './app/Toolbar';
 import { Canvas } from './app/Canvas';
+import { StatusBar } from './app/StatusBar';
+import { LibraryPanel } from './features/library/LibraryPanel';
+import { InspectorPanel } from './features/inspector/InspectorPanel';
+import { EmptyStateCard } from './features/project/EmptyStateCard';
+import { WorkbenchModals } from './app/WorkbenchModals';
+
 import { useGraphActions } from './app/useGraphActions';
 import { useTextureDrop } from './app/useTextureDrop';
-import { createSpawnedNode, createCommentBoxNode } from './app/spawn';
-import { buildORMHEdges } from './app/autoWire';
-import { fetchBenchmarkBuffers, getBatchPipelineExample } from './app/initialGraph';
+import { createSpawnedNode } from './app/spawn';
 import { useAppShortcutsAndMenus } from './app/useAppShortcutsAndMenus';
-import type { TextureBuffer } from './types/buffer';
-import { decodeImage } from './io/decode';
-import { ExportEngine } from './engine/exportEngine';
-import { useAppStore } from './store/useAppStore';
+import { useDockResizing } from './features/layout/useDockResizing';
 import { useProjectFiles } from './features/project/useProjectFiles';
-import { RelinkModal } from './features/project/RelinkModal';
 import { useClipboardOperations } from './features/project/useClipboardOperations';
-import { DevHud } from './features/perf/DevHud';
+import { useWorkbenchActions } from './app/useWorkbenchActions';
+import { useAppStore } from './store/useAppStore';
+import type { TextureBuffer } from './types/buffer';
 
 function Workbench() {
   const doc = useAppStore((s) => s.doc);
@@ -43,6 +45,10 @@ function Workbench() {
   const setIsExportModalOpen = useAppStore((s) => s.setIsExportModalOpen);
   const isRelinkModalOpen = useAppStore((s) => s.isRelinkModalOpen);
   const setIsRelinkModalOpen = useAppStore((s) => s.setIsRelinkModalOpen);
+  const isSettingsOpen = useAppStore((s) => s.isSettingsOpen);
+  const setIsSettingsOpen = useAppStore((s) => s.setIsSettingsOpen);
+  const isPackWizardOpen = useAppStore((s) => s.isPackWizardOpen);
+  const setIsPackWizardOpen = useAppStore((s) => s.setIsPackWizardOpen);
   const missingAssets = useAppStore((s) => s.missingAssets);
   const statusMessage = useAppStore((s) => s.statusMessage);
   const setStatusMessage = useAppStore((s) => s.setStatusMessage);
@@ -53,17 +59,23 @@ function Workbench() {
   const redo = useAppStore((s) => s.redo);
   const canUndo = useAppStore((s) => s.canUndo());
   const canRedo = useAppStore((s) => s.canRedo());
+  const toggleLibrary = useAppStore((s) => s.toggleLibrary);
+  const toggleInspector = useAppStore((s) => s.toggleInspector);
+
+  const {
+    libraryWidth,
+    inspectorWidth,
+    isLibraryOpen,
+    isInspectorOpen,
+    handleMouseDownLeft,
+    handleMouseDownRight,
+  } = useDockResizing();
 
   const canvasMousePosRef = useRef<{ x: number; y: number } | null>(null);
   const [sourceBuffers, setSourceBuffers] = useState<Record<string, TextureBuffer>>({});
-  const { screenToFlowPosition, fitView } = useReactFlow();
+  const { screenToFlowPosition, fitView, getViewport } = useReactFlow();
 
-  const {
-    handleSave,
-    handleSaveAs,
-    handleNewProject,
-    handleOpenDialog,
-  } = useProjectFiles();
+  const { handleSave, handleSaveAs, handleNewProject, handleOpenDialog } = useProjectFiles();
 
   const {
     handleDuplicate: origDuplicate,
@@ -85,8 +97,8 @@ function Workbench() {
     setActiveNodeId,
   });
 
-  const setSourceBuffer = useCallback((nodeOrAssetId: string, buffer: TextureBuffer) => {
-    setSourceBuffers((prev) => ({ ...prev, [nodeOrAssetId]: buffer }));
+  const setSourceBuffer = useCallback((id: string, buf: TextureBuffer) => {
+    setSourceBuffers((prev) => ({ ...prev, [id]: buf }));
   }, []);
 
   const [evaluatedBuffers] = useState<Record<string, TextureBuffer>>({});
@@ -117,6 +129,33 @@ function Workbench() {
     return evaluatedBuffers[selectedNode.id] || sourceBuffers[selectedNode.id] || null;
   }, [selectedNode, evaluatedBuffers, sourceBuffers]);
 
+  const {
+    spawnCommentBox,
+    toggleBypassSelected,
+    autoWireORMH,
+    loadBenchmarkTextures,
+    loadBatchPipelineExample,
+    loadTemplate,
+    selectAll,
+    handleAssetChange,
+    handleExport,
+  } = useWorkbenchActions({
+    nodes,
+    edges,
+    setNodes,
+    setEdges,
+    activeNodeId,
+    setActiveNodeId,
+    updateNodeData,
+    updateExportSettings,
+    setStatusMessage,
+    activeBuffer,
+    setSourceBuffers,
+    canvasMousePosRef,
+    screenToFlowPosition,
+    addNode,
+  });
+
   const spawnNode = useCallback(
     (typeKey: string, customPos?: { x: number; y: number }) => {
       let pos: { x: number; y: number };
@@ -143,75 +182,7 @@ function Workbench() {
     [doc.export.settings.primaryAsset, addNode, screenToFlowPosition, setActiveNodeId, setStatusMessage]
   );
 
-  const spawnCommentBox = useCallback(() => {
-    const targetNodes = nodes.filter((n) => (n.selected || n.id === activeNodeId) && n.type !== 'commentBox');
-    const fallbackPos = canvasMousePosRef.current
-      ? screenToFlowPosition(canvasMousePosRef.current)
-      : screenToFlowPosition({ x: window.innerWidth / 2, y: window.innerHeight / 2 });
-
-    const newCommentNode = createCommentBoxNode(targetNodes, fallbackPos);
-    addNode(newCommentNode);
-    setStatusMessage('Created Comment Box (UE5)');
-  }, [nodes, activeNodeId, addNode, screenToFlowPosition, setStatusMessage]);
-
-  const toggleBypassSelected = useCallback(() => {
-    const target = nodes.find((n) => n.selected || n.id === activeNodeId);
-    if (target) {
-      const current = !!target.data?.isBypassed;
-      updateNodeData(target.id, { isBypassed: !current });
-      setStatusMessage('Toggled Bypass state on selected node (D)');
-    }
-  }, [nodes, activeNodeId, updateNodeData, setStatusMessage]);
-
-  const autoWireORMH = useCallback(() => {
-    const updatedEdges = buildORMHEdges(nodes, edges);
-    if (updatedEdges) {
-      setEdges(updatedEdges);
-      setStatusMessage('Auto-wired PBR channels into ORMH Combiner');
-    }
-  }, [nodes, edges, setEdges, setStatusMessage]);
-
-  const loadBenchmarkTextures = useCallback(async () => {
-    setStatusMessage('Loading Anthracite Concrete benchmark maps...');
-    try {
-      const loaded = await fetchBenchmarkBuffers(async (url) => {
-        const res = await fetch(url);
-        const ab = await res.arrayBuffer();
-        const decoded = await decodeImage(ab, url);
-        return {
-          width: decoded.width,
-          height: decoded.height,
-          data: decoded.data,
-        } as TextureBuffer;
-      });
-      setSourceBuffers(loaded);
-      setStatusMessage('Loaded benchmark maps & initialized live graph');
-    } catch (err) {
-      console.error(err);
-      setStatusMessage('Benchmark ready');
-    }
-  }, [setStatusMessage]);
-
-  const loadBatchPipelineExample = useCallback(() => {
-    const { nodes: exNodes, edges: exEdges } = getBatchPipelineExample();
-    setNodes(exNodes);
-    setEdges(exEdges);
-    setActiveNodeId(null);
-    setStatusMessage('Loaded working Batch Asset Pipeline example');
-  }, [setEdges, setNodes, setActiveNodeId, setStatusMessage]);
-
-  const selectAll = useCallback(() => {
-    setNodes((nds) => nds.map((n) => ({ ...n, selected: true })));
-    setStatusMessage('Selected all nodes');
-  }, [setNodes, setStatusMessage]);
-
-  // Clipboard operations (P3-T10)
-  const {
-    handleCopy,
-    handlePaste,
-    handleCut,
-    handleDuplicateWithWires,
-  } = useClipboardOperations({
+  const { handleCopy, handlePaste, handleCut, handleDuplicateWithWires } = useClipboardOperations({
     nodes,
     edges,
     assets: doc.assets,
@@ -242,7 +213,7 @@ function Workbench() {
     },
     toggleShortcuts: () => setIsShortcutsOpen(!isShortcutsOpen),
     toggleExportModal: () => setIsExportModalOpen(!isExportModalOpen),
-    isModalOpen: isShortcutsOpen || isExportModalOpen || isRelinkModalOpen,
+    isModalOpen: isShortcutsOpen || isExportModalOpen || isRelinkModalOpen || isSettingsOpen || isPackWizardOpen,
     handleSave,
     handleSaveAs,
     handleOpenDialog,
@@ -252,6 +223,10 @@ function Workbench() {
     handleCut,
     handleClearGraph,
     setStatusMessage,
+    toggleLibrary,
+    toggleInspector,
+    togglePackWizard: () => setIsPackWizardOpen(!isPackWizardOpen),
+    toggleSettings: () => setIsSettingsOpen(!isSettingsOpen),
   });
 
   const { handleDragOver, handleDrop } = useTextureDrop({
@@ -263,124 +238,135 @@ function Workbench() {
     setStatusMessage,
   });
 
-  const handleAssetChange = useCallback(
-    (newAsset: string) => {
-      updateExportSettings({ primaryAsset: newAsset });
-      setNodes((nds) =>
-        nds.map((n) => {
-          if (n.type === 'textureOutput') {
-            const d = (n.data as Record<string, unknown>) || {};
-            const slot = (typeof d.slot === 'string' && d.slot) || 'ORM';
-            const format =
-              typeof d.formatOverride === 'string' && d.formatOverride !== 'inherit'
-                ? d.formatOverride.toLowerCase()
-                : (typeof d.format === 'string' ? d.format : 'png').toLowerCase();
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                outputFilename: `T_${newAsset}_${slot}.${format}`,
-              },
-            };
-          }
-          return n;
-        })
-      );
-    },
-    [updateExportSettings, setNodes]
-  );
-
-  const handleExport = useCallback(
-    async (filename: string) => {
-      if (activeBuffer) {
-        const blob = await ExportEngine.encodeImageBlob(activeBuffer, 'PNG');
-        ExportEngine.triggerDownload(blob, filename);
-        setStatusMessage(`Downloaded ${filename} successfully!`);
-      }
-    },
-    [activeBuffer, setStatusMessage]
-  );
+  const currentZoom = getViewport().zoom || 1;
 
   return (
-    <div
-      style={{
-        width: '100vw',
-        height: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
+    <div className="tl-workstation">
       <Toolbar
+        projectName={projectName}
+        isDirty={isDirty}
+        onNewProject={handleNewProject}
+        onOpenProject={handleOpenDialog}
+        onSaveProject={handleSave}
         onLoadBatchPipeline={loadBatchPipelineExample}
         onLoadBenchmark={loadBenchmarkTextures}
         onUndo={undo}
         canUndo={canUndo}
         onRedo={redo}
         canRedo={canRedo}
-        onSpawnCommentBox={spawnCommentBox}
+        onOpenPackWizard={() => setIsPackWizardOpen(true)}
         onOpenExportModal={() => setIsExportModalOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenShortcuts={() => setIsShortcutsOpen(true)}
+        onSpawnCommentBox={spawnCommentBox}
         onFitView={() => fitView({ duration: 300 })}
         onClearGraph={handleClearGraph}
-        onNewProject={handleNewProject}
-        onOpenProject={handleOpenDialog}
-        onSaveProject={handleSave}
-        projectName={projectName}
-        isDirty={isDirty}
+        isLibraryOpen={isLibraryOpen}
+        onToggleLibrary={toggleLibrary}
+        isInspectorOpen={isInspectorOpen}
+        onToggleInspector={toggleInspector}
       />
 
-      <Canvas
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        onNodeDragStart={onNodeDragStart}
-        onNodeDragStop={onNodeDragStop}
-        onConnect={onConnect}
-        onReconnectStart={onReconnectStart}
-        onReconnect={onReconnect}
-        onReconnectEnd={onReconnectEnd}
-        onEdgeClick={onEdgeClick}
-        onNodeClick={(_e, node) => setActiveNodeId(node.id)}
-        onPaneClick={() => {
-          setActiveNodeId(null);
-          setPalettePos(null);
-        }}
-        onPaneContextMenu={(e) => {
-          e.preventDefault();
-          setPalettePos({ x: e.clientX, y: e.clientY });
-        }}
-        canvasMousePosRef={canvasMousePosRef}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
+      <div className="tl-workstation__body">
+        {isLibraryOpen && (
+          <aside className="tl-workstation__pane-left" style={{ width: libraryWidth }}>
+            <LibraryPanel onSpawnNode={(k) => spawnNode(k)} />
+          </aside>
+        )}
+
+        {isLibraryOpen && (
+          <div className="tl-workstation__resizer" onMouseDown={handleMouseDownLeft} />
+        )}
+
+        <div className="tl-workstation__canvas-wrap">
+          <Canvas
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onNodeDragStart={onNodeDragStart}
+            onNodeDragStop={onNodeDragStop}
+            onConnect={onConnect}
+            onReconnectStart={onReconnectStart}
+            onReconnect={onReconnect}
+            onReconnectEnd={onReconnectEnd}
+            onEdgeClick={onEdgeClick}
+            onNodeClick={(_e, node) => setActiveNodeId(node.id)}
+            onPaneClick={() => {
+              setActiveNodeId(null);
+              setPalettePos(null);
+            }}
+            onPaneContextMenu={(e) => {
+              e.preventDefault();
+              setPalettePos({ x: e.clientX, y: e.clientY });
+            }}
+            canvasMousePosRef={canvasMousePosRef}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            palettePos={palettePos}
+            setPalettePos={setPalettePos}
+            spawnNode={spawnNode}
+            nodeBufferContextValue={nodeBufferContextValue}
+          />
+
+          {nodes.length === 0 && (
+            <EmptyStateCard
+              onOpenWizard={() => setIsPackWizardOpen(true)}
+              onOpenUnpackWizard={() => setIsPackWizardOpen(true)}
+              onLoadSample={loadBenchmarkTextures}
+              onLoadTemplate={loadTemplate}
+            />
+          )}
+        </div>
+
+        {isInspectorOpen && (
+          <div className="tl-workstation__resizer" onMouseDown={handleMouseDownRight} />
+        )}
+
+        {isInspectorOpen && (
+          <aside className="tl-workstation__pane-right" style={{ width: inspectorWidth }}>
+            <InspectorPanel
+              selectedNode={selectedNode}
+              nodes={nodes}
+              primaryAsset={doc.export.settings.primaryAsset}
+              onAssetChange={handleAssetChange}
+              activeBuffer={activeBuffer}
+              edges={edges}
+              onUpdateNodeData={updateNodeData}
+              onExportTarget={handleExport}
+            />
+          </aside>
+        )}
+      </div>
+
+      <StatusBar
         statusMessage={statusMessage}
-        setStatusMessage={setStatusMessage}
-        selectedNode={selectedNode}
-        activeBuffer={activeBuffer}
-        primaryAsset={doc.export.settings.primaryAsset}
-        onAssetChange={handleAssetChange}
-        onUpdateNodeData={updateNodeData}
-        onExportTarget={handleExport}
-        palettePos={palettePos}
-        setPalettePos={setPalettePos}
-        spawnNode={spawnNode}
+        zoom={currentZoom}
+        nodeCount={nodes.length}
+        edgeCount={edges.length}
+        onFitView={() => fitView({ duration: 300 })}
+      />
+
+      <WorkbenchModals
+        isPackWizardOpen={isPackWizardOpen}
+        setIsPackWizardOpen={setIsPackWizardOpen}
+        isSettingsOpen={isSettingsOpen}
+        setIsSettingsOpen={setIsSettingsOpen}
         isShortcutsOpen={isShortcutsOpen}
         setIsShortcutsOpen={setIsShortcutsOpen}
         isExportModalOpen={isExportModalOpen}
         setIsExportModalOpen={setIsExportModalOpen}
+        isRelinkModalOpen={isRelinkModalOpen}
+        setIsRelinkModalOpen={setIsRelinkModalOpen}
+        nodes={nodes}
+        edges={edges}
         evaluatedBuffers={evaluatedBuffers}
-        nodeBufferContextValue={nodeBufferContextValue}
-      />
-
-      <RelinkModal
-        isOpen={isRelinkModalOpen}
-        onClose={() => setIsRelinkModalOpen(false)}
+        primaryAsset={doc.export.settings.primaryAsset}
+        onAssetChange={handleAssetChange}
+        onUpdateNodeData={updateNodeData}
+        setStatusMessage={setStatusMessage}
         missingAssets={missingAssets}
       />
-
-      <DevHud />
     </div>
   );
 }

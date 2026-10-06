@@ -25,6 +25,10 @@ export interface UseAppShortcutsAndMenusProps {
   handleCut: () => void;
   handleClearGraph: () => void;
   setStatusMessage: (msg: string) => void;
+  toggleLibrary?: () => void;
+  toggleInspector?: () => void;
+  togglePackWizard?: () => void;
+  toggleSettings?: () => void;
 }
 
 export function useAppShortcutsAndMenus(props: UseAppShortcutsAndMenusProps) {
@@ -50,6 +54,10 @@ export function useAppShortcutsAndMenus(props: UseAppShortcutsAndMenusProps) {
     handleCopy: props.handleCopy,
     handlePaste: props.handlePaste,
     handleCut: props.handleCut,
+    toggleLibrary: props.toggleLibrary,
+    toggleInspector: props.toggleInspector,
+    togglePackWizard: props.togglePackWizard,
+    toggleSettings: props.toggleSettings,
   });
 
   useMenuCommands({

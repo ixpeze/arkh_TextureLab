@@ -23,6 +23,10 @@ export interface UseAppHotkeysProps {
   handleCopy?: () => void;
   handlePaste?: () => void;
   handleCut?: () => void;
+  toggleLibrary?: () => void;
+  toggleInspector?: () => void;
+  togglePackWizard?: () => void;
+  toggleSettings?: () => void;
 }
 
 export function useAppHotkeys({
@@ -47,9 +51,45 @@ export function useAppHotkeys({
   handleCopy,
   handlePaste,
   handleCut,
+  toggleLibrary,
+  toggleInspector,
+  togglePackWizard,
+  toggleSettings,
 }: UseAppHotkeysProps) {
   const hotkeyBindings = useMemo<KeyBinding[]>(
     () => [
+      {
+        id: 'toggle-library',
+        chord: 'ctrl+b',
+        handler: (e) => {
+          e.preventDefault?.();
+          toggleLibrary?.();
+        },
+      },
+      {
+        id: 'toggle-inspector',
+        chord: 'ctrl+alt+b',
+        handler: (e) => {
+          e.preventDefault?.();
+          toggleInspector?.();
+        },
+      },
+      {
+        id: 'pack-wizard',
+        chord: 'ctrl+w',
+        handler: (e) => {
+          e.preventDefault?.();
+          togglePackWizard?.();
+        },
+      },
+      {
+        id: 'settings',
+        chord: 'ctrl+,',
+        handler: (e) => {
+          e.preventDefault?.();
+          toggleSettings?.();
+        },
+      },
       {
         id: 'undo',
         chord: 'ctrl+z',
@@ -245,6 +285,10 @@ export function useAppHotkeys({
       handleCopy,
       handlePaste,
       handleCut,
+      toggleLibrary,
+      toggleInspector,
+      togglePackWizard,
+      toggleSettings,
     ]
   );
 

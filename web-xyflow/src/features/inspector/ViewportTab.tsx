@@ -1,7 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Maximize, Minimize } from 'lucide-react';
+// src/features/inspector/ViewportTab.tsx
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Maximize, Minimize, Pin, Sliders, Grid } from 'lucide-react';
 import type { TextureBuffer } from '../../types/buffer';
 import type { ChannelKey, HoverPixelInfo } from './types';
+import { Segmented } from '../../ui/Segmented';
+import { Slider } from '../../ui/Slider';
+import { Button } from '../../ui/Button';
 
 export interface ViewportTabProps {
   activeBuffer?: TextureBuffer | null;
@@ -21,38 +25,108 @@ export const ViewportTab: React.FC<ViewportTabProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hoverPixel, setHoverPixel] = useState<HoverPixelInfo | null>(null);
 
+  // A/B Compare state (replaces Compare node per D-05, TC-517)
+  const [pinnedBufferA, setPinnedBufferA] = useState<TextureBuffer | null>(null);
+  const [wipeProgress, setWipeProgress] = useState(0.5);
+
+  // Tiling repeat state (replaces Seam node per D-05, TC-518)
+  const [tilingRepeat, setTilingRepeat] = useState<1 | 2 | 3 | 4>(1);
+
+  const handlePinA = useCallback(() => {
+    if (activeBuffer) {
+      // Clone buffer to pin A
+      const copy: TextureBuffer = {
+        width: activeBuffer.width,
+        height: activeBuffer.height,
+        data: new Uint8ClampedArray(activeBuffer.data),
+      };
+      setPinnedBufferA(copy);
+    }
+  }, [activeBuffer]);
+
+  const handleClearPinA = useCallback(() => {
+    setPinnedBufferA(null);
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !activeBuffer) return;
 
     const sourceBuf = activeBuffer;
+    const baseW = sourceBuf.width;
+    const baseH = sourceBuf.height;
+    const targetW = baseW * tilingRepeat;
+    const targetH = baseH * tilingRepeat;
 
-    let displayBuf = sourceBuf;
-    if (isolatedChannel === 'R' || isolatedChannel === 'G' || isolatedChannel === 'B' || isolatedChannel === 'A') {
-      const chIdx = isolatedChannel === 'R' ? 0 : isolatedChannel === 'G' ? 1 : isolatedChannel === 'B' ? 2 : 3;
-      const out = new Uint8ClampedArray(sourceBuf.width * sourceBuf.height * 4);
-      const src = sourceBuf.data;
-      for (let i = 0; i < sourceBuf.width * sourceBuf.height; i++) {
-        const v = src[i * 4 + chIdx];
-        out[i * 4 + 0] = v;
-        out[i * 4 + 1] = v;
-        out[i * 4 + 2] = v;
-        out[i * 4 + 3] = 255;
-      }
-      displayBuf = { width: sourceBuf.width, height: sourceBuf.height, data: out };
+    if (canvas.width !== targetW || canvas.height !== targetH) {
+      canvas.width = targetW;
+      canvas.height = targetH;
     }
 
-    if (canvas.width !== displayBuf.width || canvas.height !== displayBuf.height) {
-      canvas.width = displayBuf.width;
-      canvas.height = displayBuf.height;
-    }
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const imgData = ctx.createImageData(displayBuf.width, displayBuf.height);
-      imgData.data.set(displayBuf.data);
-      ctx.putImageData(imgData, 0, 0);
+    if (!ctx) return;
+
+    const imgData = ctx.createImageData(targetW, targetH);
+    const dst = imgData.data;
+    const srcB = sourceBuf.data;
+    const srcA = pinnedBufferA?.data;
+    const hasPinA = Boolean(srcA && pinnedBufferA && pinnedBufferA.width === baseW && pinnedBufferA.height === baseH);
+
+    const wipeX = Math.round(targetW * wipeProgress);
+
+    for (let ty = 0; ty < targetH; ty++) {
+      const srcY = ty % baseH;
+      for (let tx = 0; tx < targetW; tx++) {
+        const srcX = tx % baseW;
+        const srcIdx = (srcY * baseW + srcX) * 4;
+        const dstIdx = (ty * targetW + tx) * 4;
+
+        // Choose between Buffer A and Buffer B based on wipe progress
+        const useA = hasPinA && tx < wipeX;
+        const src = useA && srcA ? srcA : srcB;
+
+        let r = src[srcIdx + 0];
+        let g = src[srcIdx + 1];
+        let b = src[srcIdx + 2];
+        let a = src[srcIdx + 3];
+
+        // Channel isolation (TC-515)
+        if (isolatedChannel === 'R') {
+          g = r;
+          b = r;
+          a = 255;
+        } else if (isolatedChannel === 'G') {
+          r = g;
+          b = g;
+          a = 255;
+        } else if (isolatedChannel === 'B') {
+          r = b;
+          g = b;
+          a = 255;
+        } else if (isolatedChannel === 'A') {
+          r = a;
+          g = a;
+          b = a;
+          a = 255;
+        }
+
+        // Draw 1px amber wipe separator line
+        if (hasPinA && Math.abs(tx - wipeX) <= 1) {
+          dst[dstIdx + 0] = 255;
+          dst[dstIdx + 1] = 176;
+          dst[dstIdx + 2] = 46;
+          dst[dstIdx + 3] = 255;
+        } else {
+          dst[dstIdx + 0] = r;
+          dst[dstIdx + 1] = g;
+          dst[dstIdx + 2] = b;
+          dst[dstIdx + 3] = a;
+        }
+      }
     }
-  }, [activeBuffer, isolatedChannel, isPixelExact]);
+
+    ctx.putImageData(imgData, 0, 0);
+  }, [activeBuffer, isolatedChannel, isPixelExact, pinnedBufferA, wipeProgress, tilingRepeat]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -60,13 +134,18 @@ export const ViewportTab: React.FC<ViewportTabProps> = ({
     const rect = canvas.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return;
 
-    const rawX = Math.floor(((e.clientX - rect.left) / rect.width) * activeBuffer.width);
-    const rawY = Math.floor(((e.clientY - rect.top) / rect.height) * activeBuffer.height);
+    const baseW = activeBuffer.width;
+    const baseH = activeBuffer.height;
+    const targetW = baseW * tilingRepeat;
+    const targetH = baseH * tilingRepeat;
 
-    const x = Math.min(activeBuffer.width - 1, Math.max(0, rawX));
-    const y = Math.min(activeBuffer.height - 1, Math.max(0, rawY));
+    const canvasX = Math.floor(((e.clientX - rect.left) / rect.width) * targetW);
+    const canvasY = Math.floor(((e.clientY - rect.top) / rect.height) * targetH);
 
-    const idx = (y * activeBuffer.width + x) * 4;
+    const x = Math.min(baseW - 1, Math.max(0, canvasX % baseW));
+    const y = Math.min(baseH - 1, Math.max(0, canvasY % baseH));
+
+    const idx = (y * baseW + x) * 4;
     setHoverPixel({
       x,
       y,
@@ -78,32 +157,14 @@ export const ViewportTab: React.FC<ViewportTabProps> = ({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div
-        style={{
-          position: 'relative',
-          width: '100%',
-          height: 220,
-          backgroundColor: '#0c0e14',
-          borderRadius: 6,
-          border: '1px solid rgba(255, 255, 255, 0.08)',
-          overflow: 'hidden',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
+    <div className="tl-viewport-tab">
+      {/* Canvas Viewport Frame */}
+      <div className="tl-viewport-frame">
         <canvas
           ref={canvasRef}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoverPixel(null)}
-          style={{
-            maxWidth: '100%',
-            maxHeight: '100%',
-            objectFit: isPixelExact ? 'none' : 'contain',
-            imageRendering: 'pixelated',
-            cursor: 'crosshair',
-          }}
+          className={`tl-viewport-canvas ${isPixelExact ? 'tl-viewport-canvas--1to1' : ''}`}
         />
 
         {/* 1:1 Pixel Exact Toggle Button */}
@@ -111,92 +172,98 @@ export const ViewportTab: React.FC<ViewportTabProps> = ({
           type="button"
           onClick={() => setIsPixelExact((prev) => !prev)}
           title={isPixelExact ? 'Pixel Exact (1:1 Native Resolution) — Click to Fit View' : 'Fitted to View — Click for 1:1 Native Resolution'}
-          style={{
-            position: 'absolute',
-            bottom: 6,
-            right: 6,
-            height: 20,
-            padding: '0 6px',
-            backgroundColor: isPixelExact ? 'rgba(56, 189, 248, 0.25)' : 'rgba(10, 13, 20, 0.8)',
-            border: `1px solid ${isPixelExact ? '#38bdf8' : 'rgba(255, 255, 255, 0.15)'}`,
-            borderRadius: 3,
-            color: isPixelExact ? '#38bdf8' : '#94a3b8',
-            fontSize: 7.5,
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 3,
-          }}
+          className="tl-viewport-btn-float tl-viewport-btn-float--bottom-right"
         >
-          {isPixelExact ? <Minimize size={10} /> : <Maximize size={10} />}
+          {isPixelExact ? <Minimize size={11} /> : <Maximize size={11} />}
           <span>{isPixelExact ? '1:1 PIXEL' : 'FIT'}</span>
         </button>
 
-        {/* Hover Pixel Probe HUD */}
+        {/* Hover Pixel Probe HUD in Geist Mono */}
         {hoverPixel && (
-          <div
-            style={{
-              position: 'absolute',
-              top: 6,
-              right: 6,
-              background: 'rgba(10, 13, 20, 0.95)',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
-              padding: '4px 6px',
-              borderRadius: 4,
-              fontSize: 8,
-              fontFamily: "'Geist Mono', monospace",
-              color: '#f8fafc',
-              pointerEvents: 'none',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 2,
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.6)',
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', fontSize: 7 }}>
+          <div className="tl-probe-hud" role="status" aria-label="Pixel Probe Telemetry">
+            <div className="tl-probe-hud__coords">
               <span>X: {hoverPixel.x}</span>
               <span>Y: {hoverPixel.y}</span>
             </div>
-            <div style={{ display: 'flex', gap: 5 }}>
-              <span style={{ color: 'var(--pbr-ao)' }}>R:{hoverPixel.r} ({(hoverPixel.r / 255).toFixed(2)})</span>
-              <span style={{ color: 'var(--pbr-rough)' }}>G:{hoverPixel.g} ({(hoverPixel.g / 255).toFixed(2)})</span>
+            <div className="tl-probe-hud__row">
+              <span className="tl-probe-hud__r">R:{hoverPixel.r} ({(hoverPixel.r / 255).toFixed(2)})</span>
+              <span className="tl-probe-hud__g">G:{hoverPixel.g} ({(hoverPixel.g / 255).toFixed(2)})</span>
             </div>
-            <div style={{ display: 'flex', gap: 5 }}>
-              <span style={{ color: 'var(--pbr-metal)' }}>B:{hoverPixel.b} ({(hoverPixel.b / 255).toFixed(2)})</span>
-              <span style={{ color: 'var(--pbr-height)' }}>A:{hoverPixel.a} ({(hoverPixel.a / 255).toFixed(2)})</span>
+            <div className="tl-probe-hud__row">
+              <span className="tl-probe-hud__b">B:{hoverPixel.b} ({(hoverPixel.b / 255).toFixed(2)})</span>
+              <span className="tl-probe-hud__a">A:{hoverPixel.a} ({(hoverPixel.a / 255).toFixed(2)})</span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Channel Isolation Bar */}
-      <div style={{ display: 'flex', gap: 3 }}>
-        {[
-          { key: 'RGBA' as const, label: 'RGBA', color: '#cbd5e1' },
-          { key: 'R' as const, label: 'R', color: 'var(--pbr-ao)' },
-          { key: 'G' as const, label: 'G', color: 'var(--pbr-rough)' },
-          { key: 'B' as const, label: 'B', color: 'var(--pbr-metal)' },
-          { key: 'A' as const, label: 'A', color: 'var(--pbr-height)' },
-        ].map((btn) => (
-          <button
-            key={btn.key}
-            onClick={() => setIsolatedChannel(btn.key)}
-            style={{
-              flex: 1,
-              height: 22,
-              backgroundColor: isolatedChannel === btn.key ? 'rgba(56, 189, 248, 0.2)' : 'rgba(32, 36, 46, 0.6)',
-              border: isolatedChannel === btn.key ? `1px solid ${btn.color}` : '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: 3,
-              color: isolatedChannel === btn.key ? '#fff' : btn.color,
-              fontSize: 9,
-              fontWeight: 700,
-              cursor: 'pointer',
-            }}
-          >
-            {btn.label}
-          </button>
-        ))}
+      {/* Channel Isolation Bar: RGBA | R | G | B | A */}
+      <div className="tl-viewport-controls-row">
+        <Segmented<ChannelKey>
+          items={[
+            { value: 'RGBA', label: 'RGBA', title: 'Full RGBA color' },
+            { value: 'R', label: 'R', title: 'Isolate Red channel' },
+            { value: 'G', label: 'G', title: 'Isolate Green channel' },
+            { value: 'B', label: 'B', title: 'Isolate Blue channel' },
+            { value: 'A', label: 'A', title: 'Isolate Alpha channel' },
+          ]}
+          value={isolatedChannel}
+          onChange={setIsolatedChannel}
+        />
+
+        {/* Tiling repeat control (1x, 2x, 3x, 4x) */}
+        <div className="tl-viewport-tiling" title="Tiling repeat (seam check)">
+          <Grid size={11} color="var(--text-muted)" />
+          <Segmented<string>
+            items={[
+              { value: '1', label: '1x' },
+              { value: '2', label: '2x' },
+              { value: '3', label: '3x' },
+              { value: '4', label: '4x' },
+            ]}
+            value={tilingRepeat.toString()}
+            onChange={(val) => setTilingRepeat(Number(val) as 1 | 2 | 3 | 4)}
+          />
+        </div>
+      </div>
+
+      {/* A/B Compare Tools (Replaces Compare Node per D-05) */}
+      <div className="tl-viewport-compare">
+        <div className="tl-viewport-compare__header">
+          <div className="tl-viewport-compare__title">
+            <Sliders size={12} color="var(--accent)" />
+            <span>A/B Compare Tool</span>
+          </div>
+
+          {pinnedBufferA ? (
+            <Button size="sm" variant="ghost" onClick={handleClearPinA}>
+              Clear Pin A
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Pin size={11} />}
+              onClick={handlePinA}
+              disabled={!activeBuffer}
+            >
+              Pin A Reference
+            </Button>
+          )}
+        </div>
+
+        {pinnedBufferA && (
+          <div className="tl-viewport-compare__slider">
+            <Slider
+              label="Wipe A / B"
+              value={Number(wipeProgress.toFixed(2))}
+              min={0}
+              max={1}
+              step={0.01}
+              onChange={setWipeProgress}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

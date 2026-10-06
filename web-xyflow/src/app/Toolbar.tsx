@@ -11,364 +11,273 @@ import {
   Sparkles,
   FilePlus,
   Save,
+  Settings,
+  Wand2,
+  PanelLeft,
+  PanelRight,
 } from 'lucide-react';
+import { IconButton } from '../ui/IconButton';
+import { Button } from '../ui/Button';
+import { Tooltip } from '../ui/Tooltip';
 
 export interface ToolbarProps {
+  projectName?: string;
+  isDirty?: boolean;
+  onNewProject?: () => void;
+  onOpenProject?: () => void;
+  onSaveProject?: () => void;
   onLoadBatchPipeline: () => void;
   onLoadBenchmark: () => void;
   onUndo: () => void;
   canUndo: boolean;
   onRedo: () => void;
   canRedo: boolean;
-  onSpawnCommentBox: () => void;
+  onOpenPackWizard: () => void;
   onOpenExportModal: () => void;
+  onOpenSettings: () => void;
   onOpenShortcuts: () => void;
+  onSpawnCommentBox: () => void;
   onFitView: () => void;
   onClearGraph: () => void;
-  onNewProject?: () => void;
-  onOpenProject?: () => void;
-  onSaveProject?: () => void;
-  projectName?: string;
-  isDirty?: boolean;
+  isLibraryOpen?: boolean;
+  onToggleLibrary?: () => void;
+  isInspectorOpen?: boolean;
+  onToggleInspector?: () => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
+  projectName,
+  isDirty,
+  onNewProject,
+  onOpenProject,
+  onSaveProject,
   onLoadBatchPipeline,
   onLoadBenchmark,
   onUndo,
   canUndo,
   onRedo,
   canRedo,
-  onSpawnCommentBox,
+  onOpenPackWizard,
   onOpenExportModal,
+  onOpenSettings,
   onOpenShortcuts,
+  onSpawnCommentBox,
   onFitView,
   onClearGraph,
-  onNewProject,
-  onOpenProject,
-  onSaveProject,
-  projectName,
-  isDirty,
+  isLibraryOpen = true,
+  onToggleLibrary,
+  isInspectorOpen = true,
+  onToggleInspector,
 }) => {
   return (
-    <header
-      style={{
-        height: 38,
-        backgroundColor: 'var(--bg-inset)',
-        borderBottom: '1px solid var(--border-subtle)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 14px',
-        zIndex: 30,
-        userSelect: 'none',
-      }}
-    >
-      {/* Left Branding: Minimalist Name & Project Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span
-          style={{
-            fontFamily: "'Geist', sans-serif",
-            fontWeight: 800,
-            fontSize: 13,
-            letterSpacing: '0.08em',
-            background: 'linear-gradient(135deg, #38bdf8 0%, #a855f7 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            marginRight: 4,
-          }}
-        >
-          TextureLAB
+    <header className="tl-workstation__header" role="banner">
+      {/* Left Branding & Project Info */}
+      <div className="tl-flex tl-items-center tl-gap-sm">
+        {onToggleLibrary && (
+          <Tooltip content="Toggle Node Library Dock (Ctrl+B)">
+            <IconButton
+              icon={<PanelLeft size={14} />}
+              label="Toggle Library"
+              size="sm"
+              variant={isLibraryOpen ? 'secondary' : 'ghost'}
+              onClick={onToggleLibrary}
+            />
+          </Tooltip>
+        )}
+
+        <span className="tl-font-bold tl-text-accent">
+          TEXTURELAB
         </span>
 
         {/* Project Name + Dirty Indicator */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            padding: '2px 7px',
-            backgroundColor: 'rgba(255, 255, 255, 0.04)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: 3,
-            fontSize: 9.5,
-            color: '#e4e4e7',
-          }}
-        >
-          <span style={{ fontWeight: 600 }}>{projectName || 'Untitled'}</span>
+        <div className="tl-badge tl-flex tl-items-center tl-gap-xs">
+          <span>{projectName || 'Untitled'}</span>
           {isDirty && (
             <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                backgroundColor: '#f59e0b',
-                display: 'inline-block',
-              }}
+              className="tl-statusbar__dot tl-statusbar__dot--busy"
               title="Unsaved changes"
+              aria-label="Unsaved changes"
             />
           )}
         </div>
 
         {/* File actions */}
-        {onNewProject && (
-          <button
-            type="button"
-            onClick={onNewProject}
-            title="New Project (Ctrl+N)"
-            className="tactical-tool-btn"
-            style={{ width: 22, height: 22 }}
-          >
-            <FilePlus size={11} color="#a1a1aa" />
-          </button>
-        )}
-        {onOpenProject && (
-          <button
-            type="button"
-            onClick={onOpenProject}
-            title="Open Project (Ctrl+O)"
-            className="tactical-tool-btn"
-            style={{ width: 22, height: 22 }}
-          >
-            <FolderOpen size={11} color="#a1a1aa" />
-          </button>
-        )}
-        {onSaveProject && (
-          <button
-            type="button"
-            onClick={onSaveProject}
-            title="Save Project (Ctrl+S)"
-            className="tactical-tool-btn"
-            style={{
-              width: 22,
-              height: 22,
-              color: isDirty ? '#f59e0b' : '#a1a1aa',
-              borderColor: isDirty ? 'rgba(245, 158, 11, 0.4)' : undefined,
-            }}
-          >
-            <Save size={11} />
-          </button>
-        )}
+        <div className="tl-flex tl-items-center tl-gap-xs">
+          {onNewProject && (
+            <Tooltip content="New Project (Ctrl+N)">
+              <IconButton
+                icon={<FilePlus size={13} />}
+                label="New Project"
+                size="sm"
+                variant="ghost"
+                onClick={onNewProject}
+              />
+            </Tooltip>
+          )}
+          {onOpenProject && (
+            <Tooltip content="Open Project (Ctrl+O)">
+              <IconButton
+                icon={<FolderOpen size={13} />}
+                label="Open Project"
+                size="sm"
+                variant="ghost"
+                onClick={onOpenProject}
+              />
+            </Tooltip>
+          )}
+          {onSaveProject && (
+            <Tooltip content="Save Project (Ctrl+S)">
+              <IconButton
+                icon={<Save size={13} />}
+                label="Save Project"
+                size="sm"
+                variant={isDirty ? 'primary' : 'ghost'}
+                onClick={onSaveProject}
+              />
+            </Tooltip>
+          )}
+        </div>
 
-        <div style={{ width: 1, height: 16, backgroundColor: 'rgba(255, 255, 255, 0.08)', margin: '0 2px' }} />
+        <div className="tl-statusbar__divider" aria-hidden="true" />
 
-        <button
-          type="button"
-          onClick={onLoadBatchPipeline}
-          title="Load Example Pipeline: Load Folder → For Each → Normalize/Resize → Batch Export"
-          style={{
-            background: 'rgba(56, 189, 248, 0.1)',
-            border: '1px solid rgba(56, 189, 248, 0.3)',
-            color: '#38bdf8',
-            borderRadius: 3,
-            padding: '2px 8px',
-            fontSize: 8.5,
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            transition: 'all 120ms ease',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.2)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.1)';
-          }}
-        >
-          <FolderOpen size={10} />
-          <span>Batch Pipeline Example</span>
-        </button>
+        {/* Quick Samples */}
+        <Tooltip content="Open Anthracite Concrete PBR benchmark graph">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Sparkles size={12} />}
+            onClick={onLoadBenchmark}
+          >
+            Sample
+          </Button>
+        </Tooltip>
 
-        <button
-          type="button"
-          onClick={onLoadBenchmark}
-          title="Load Anthracite Concrete (Benchmark Maps)"
-          style={{
-            background: 'rgba(168, 85, 247, 0.1)',
-            border: '1px solid rgba(168, 85, 247, 0.3)',
-            color: '#c084fc',
-            borderRadius: 3,
-            padding: '2px 8px',
-            fontSize: 8.5,
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            transition: 'all 120ms ease',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.2)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'rgba(168, 85, 247, 0.1)';
-          }}
-        >
-          <Sparkles size={10} />
-          <span>Load Benchmark</span>
-        </button>
+        <Tooltip content="Load Batch Pipeline Template">
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<FolderOpen size={12} />}
+            onClick={onLoadBatchPipeline}
+          >
+            Batch
+          </Button>
+        </Tooltip>
       </div>
 
-      {/* Right Toolbar Controls: 1:1 Square Icon-Only Buttons with Rich Hover Tooltip */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {/* Undo */}
-        <div className="tactical-btn-wrapper">
-          <button
-            type="button"
-            onClick={onUndo}
-            disabled={!canUndo}
-            className="tactical-tool-btn"
-            title="Undo (Ctrl+Z)"
+      {/* Center Primary Action: Pack Wizard */}
+      <div className="tl-flex tl-items-center tl-gap-sm">
+        <Tooltip content="Open Texture Pack & Unpack Wizard (Ctrl+W)">
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Wand2 size={13} />}
+            onClick={onOpenPackWizard}
           >
-            <Undo2 size={13} />
-          </button>
-          <div className="tactical-tooltip">
-            <div className="tactical-tooltip-header">
-              <span className="tactical-tooltip-title">Undo</span>
-              <span className="tactical-tooltip-badge">Ctrl+Z</span>
-            </div>
-            <span className="tactical-tooltip-desc">Revert last graph change</span>
-          </div>
-        </div>
+            Pack Wizard
+          </Button>
+        </Tooltip>
 
-        {/* Redo */}
-        <div className="tactical-btn-wrapper">
-          <button
-            type="button"
-            onClick={onRedo}
-            disabled={!canRedo}
-            className="tactical-tool-btn"
-            title="Redo (Ctrl+Y)"
-          >
-            <Redo2 size={13} />
-          </button>
-          <div className="tactical-tooltip">
-            <div className="tactical-tooltip-header">
-              <span className="tactical-tooltip-title">Redo</span>
-              <span className="tactical-tooltip-badge">Ctrl+Y</span>
-            </div>
-            <span className="tactical-tooltip-desc">Reapply undone change</span>
-          </div>
-        </div>
-
-        {/* Comment Box */}
-        <div className="tactical-btn-wrapper">
-          <button
-            type="button"
-            onClick={onSpawnCommentBox}
-            className="tactical-tool-btn"
-            title="Comment Box (C)"
-          >
-            <MessageSquare size={13} color="#38bdf8" />
-          </button>
-          <div className="tactical-tooltip">
-            <div className="tactical-tooltip-header">
-              <span className="tactical-tooltip-title">Comment Box</span>
-              <span className="tactical-tooltip-badge">C</span>
-            </div>
-            <span className="tactical-tooltip-desc">Enclose selected nodes in comment frame</span>
-          </div>
-        </div>
-
-        {/* Global Export Button */}
-        <div className="tactical-btn-wrapper">
-          <button
-            type="button"
+        <Tooltip content="Batch Export Hub (Ctrl+E)">
+          <Button
+            variant="outline"
+            size="sm"
+            icon={<Download size={13} />}
             onClick={onOpenExportModal}
-            className="tactical-tool-btn"
-            title="Export Textures Hub (Ctrl+E)"
-            style={{
-              backgroundColor: 'rgba(34, 197, 94, 0.15)',
-              border: '1px solid rgba(34, 197, 94, 0.35)',
-              color: '#4ade80',
-              width: 'auto',
-              padding: '0 8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 5,
-              fontWeight: 700,
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(34, 197, 94, 0.28)';
-              e.currentTarget.style.borderColor = '#4ade80';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
-              e.currentTarget.style.borderColor = 'rgba(34, 197, 94, 0.35)';
-            }}
           >
-            <Download size={12} strokeWidth={2.5} />
-            <span style={{ fontSize: 9.5 }}>Export</span>
-          </button>
-          <div className="tactical-tooltip">
-            <div className="tactical-tooltip-header">
-              <span className="tactical-tooltip-title">Export Hub</span>
-              <span className="tactical-tooltip-badge">Ctrl+E</span>
-            </div>
-            <span className="tactical-tooltip-desc">Batch export graph textures with token naming</span>
-          </div>
-        </div>
+            Export Hub
+          </Button>
+        </Tooltip>
+      </div>
 
-        <div style={{ width: 1, height: 16, backgroundColor: 'rgba(255, 255, 255, 0.08)' }} />
+      {/* Right Controls */}
+      <div className="tl-flex tl-items-center tl-gap-xs">
+        <Tooltip content="Undo (Ctrl+Z)">
+          <IconButton
+            icon={<Undo2 size={13} />}
+            label="Undo"
+            size="sm"
+            variant="ghost"
+            disabled={!canUndo}
+            onClick={onUndo}
+          />
+        </Tooltip>
 
-        {/* Shortcuts */}
-        <div className="tactical-btn-wrapper">
-          <button
-            type="button"
-            onClick={onOpenShortcuts}
-            className="tactical-tool-btn"
-            title="Shortcuts (?)"
-          >
-            <Keyboard size={13} color="#a855f7" />
-          </button>
-          <div className="tactical-tooltip">
-            <div className="tactical-tooltip-header">
-              <span className="tactical-tooltip-title">Keybindings</span>
-              <span className="tactical-tooltip-badge">?</span>
-            </div>
-            <span className="tactical-tooltip-desc">View keyboard shortcut cheatsheet</span>
-          </div>
-        </div>
+        <Tooltip content="Redo (Ctrl+Y)">
+          <IconButton
+            icon={<Redo2 size={13} />}
+            label="Redo"
+            size="sm"
+            variant="ghost"
+            disabled={!canRedo}
+            onClick={onRedo}
+          />
+        </Tooltip>
 
-        {/* Focus */}
-        <div className="tactical-btn-wrapper">
-          <button
-            type="button"
+        <div className="tl-statusbar__divider" aria-hidden="true" />
+
+        <Tooltip content="Add Comment Box (C)">
+          <IconButton
+            icon={<MessageSquare size={13} />}
+            label="Comment Box"
+            size="sm"
+            variant="ghost"
+            onClick={onSpawnCommentBox}
+          />
+        </Tooltip>
+
+        <Tooltip content="Focus View / Fit Extents (F)">
+          <IconButton
+            icon={<Maximize2 size={13} />}
+            label="Fit Extents"
+            size="sm"
+            variant="ghost"
             onClick={onFitView}
-            className="tactical-tool-btn"
-            title="Focus Extents (F)"
-          >
-            <Maximize2 size={13} color="#38bdf8" />
-          </button>
-          <div className="tactical-tooltip">
-            <div className="tactical-tooltip-header">
-              <span className="tactical-tooltip-title">Focus View</span>
-              <span className="tactical-tooltip-badge">F</span>
-            </div>
-            <span className="tactical-tooltip-desc">Fit all nodes to screen</span>
-          </div>
-        </div>
+          />
+        </Tooltip>
 
-        {/* Clear */}
-        <div className="tactical-btn-wrapper">
-          <button
-            type="button"
+        <Tooltip content="Clear Canvas (Delete all nodes)">
+          <IconButton
+            icon={<Trash2 size={13} />}
+            label="Clear Canvas"
+            size="sm"
+            variant="danger"
             onClick={onClearGraph}
-            className="tactical-tool-btn danger"
-            title="Clear Canvas (Del)"
-          >
-            <Trash2 size={13} color="#f87171" />
-          </button>
-          <div className="tactical-tooltip">
-            <div className="tactical-tooltip-header">
-              <span className="tactical-tooltip-title">Clear Graph</span>
-              <span className="tactical-tooltip-badge">Delete</span>
-            </div>
-            <span className="tactical-tooltip-desc">Remove all nodes and connections</span>
-          </div>
-        </div>
+          />
+        </Tooltip>
+
+        <div className="tl-statusbar__divider" aria-hidden="true" />
+
+        <Tooltip content="Preferences & Settings">
+          <IconButton
+            icon={<Settings size={13} />}
+            label="Settings"
+            size="sm"
+            variant="ghost"
+            onClick={onOpenSettings}
+          />
+        </Tooltip>
+
+        <Tooltip content="Keyboard Shortcuts (?)">
+          <IconButton
+            icon={<Keyboard size={13} />}
+            label="Shortcuts"
+            size="sm"
+            variant="ghost"
+            onClick={onOpenShortcuts}
+          />
+        </Tooltip>
+
+        {onToggleInspector && (
+          <Tooltip content="Toggle Inspector Dock (Ctrl+Alt+B)">
+            <IconButton
+              icon={<PanelRight size={14} />}
+              label="Toggle Inspector"
+              size="sm"
+              variant={isInspectorOpen ? 'secondary' : 'ghost'}
+              onClick={onToggleInspector}
+            />
+          </Tooltip>
+        )}
       </div>
     </header>
   );

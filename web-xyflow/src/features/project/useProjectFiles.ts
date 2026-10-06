@@ -171,7 +171,6 @@ export function useProjectFiles() {
         const res = deserializeProject(jsonStr);
         if (!res.ok) {
           setStatusMessage(`Failed to open project: ${res.error}`);
-          window.alert(res.error);
           return false;
         }
 

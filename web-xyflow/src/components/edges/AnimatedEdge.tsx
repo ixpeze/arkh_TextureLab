@@ -1,14 +1,18 @@
-import React from 'react';
+// src/components/edges/AnimatedEdge.tsx
+import React, { useState } from 'react';
 import { getBezierPath, type EdgeProps } from '@xyflow/react';
 
 export interface CustomEdgeData {
   channelType?: 'rgba' | 'r' | 'g' | 'b' | 'a' | 'scalar';
   color?: string;
-  wireStyle?: 'dual-marching' | 'triple-marching' | 'pulsing-single' | 'dotted';
+  wireStyle?: 'dual-marching' | 'pulsing-single';
+  isRecomputing?: boolean;
 }
 
 /**
- * Dual Line with Marching Ants Animation (Used for RGBA composite streams)
+ * Static 1.5px wire by default; 2.5px amber when hovered/selected;
+ * Animates (dashes) ONLY when selected or recomputing.
+ * No drop-shadow filter (closes F-17, satisfies P5-T3).
  */
 export const DualMarchingAntsEdge: React.FC<EdgeProps> = ({
   id,
@@ -21,27 +25,9 @@ export const DualMarchingAntsEdge: React.FC<EdgeProps> = ({
   style = {},
   markerEnd,
   selected,
+  data,
 }) => {
-  // Offset paths by +/- 3px for genuine dual-rail wires
-  const [pathTop] = getBezierPath({
-    sourceX,
-    sourceY: sourceY - 3,
-    sourcePosition,
-    targetX,
-    targetY: targetY - 3,
-    targetPosition,
-    curvature: 0.25,
-  });
-
-  const [pathBottom] = getBezierPath({
-    sourceX,
-    sourceY: sourceY + 3,
-    sourcePosition,
-    targetX,
-    targetY: targetY + 3,
-    targetPosition,
-    curvature: 0.25,
-  });
+  const [isHovered, setIsHovered] = useState(false);
 
   const [centerPath] = getBezierPath({
     sourceX,
@@ -53,10 +39,19 @@ export const DualMarchingAntsEdge: React.FC<EdgeProps> = ({
     curvature: 0.25,
   });
 
-  const strokeColor = (style?.stroke as string) || '#a855f7'; // NanoFlow purple default for composite
+  const baseColor = (style?.stroke as string) || 'var(--pbr-packed, #B79CF5)';
+  const activeColor = 'var(--accent, #FFB02E)';
+  const isHighlighted = selected || isHovered;
+  const strokeColor = isHighlighted ? activeColor : baseColor;
+  const strokeWidth = isHighlighted ? 2.5 : 1.5;
+  const isAnimated = selected || Boolean((data as CustomEdgeData)?.isRecomputing);
 
   return (
-    <g className={`react-flow__edge-custom ${selected ? 'selected' : ''}`}>
+    <g
+      className={`react-flow__edge-custom ${selected ? 'selected' : ''}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       {/* Invisible thicker hit-box path for easy clicking / selecting */}
       <path
         d={centerPath}
@@ -66,45 +61,22 @@ export const DualMarchingAntsEdge: React.FC<EdgeProps> = ({
         className="react-flow__edge-interaction"
       />
 
-      {/* Subtle background glow rail */}
+      {/* Static clean wire (P5-T3) */}
       <path
+        id={id}
         d={centerPath}
         fill="none"
         stroke={strokeColor}
-        strokeWidth={selected ? 8 : 6}
-        strokeOpacity={0.15}
+        strokeWidth={strokeWidth}
+        strokeOpacity={isHighlighted ? 1 : 0.85}
         strokeLinecap="round"
-      />
-
-      {/* Rail 1: Top Track */}
-      <path
-        id={`${id}_top`}
-        d={pathTop}
-        fill="none"
-        stroke={strokeColor}
-        strokeWidth={1.8}
-        strokeOpacity={0.85}
-        className="marching-ants-path"
-      />
-
-      {/* Rail 2: Bottom Track */}
-      <path
-        id={`${id}_bottom`}
-        d={pathBottom}
-        fill="none"
-        stroke={strokeColor}
-        strokeWidth={1.8}
-        strokeOpacity={0.85}
-        className="marching-ants-path"
+        className={isAnimated ? 'marching-ants-path' : ''}
         markerEnd={markerEnd}
       />
     </g>
   );
 };
 
-/**
- * Pulsing Single Channel Edge (Used for R, G, B, A, Scalar channels)
- */
 export const PulsingChannelEdge: React.FC<EdgeProps> = ({
   id,
   sourceX,
@@ -116,7 +88,10 @@ export const PulsingChannelEdge: React.FC<EdgeProps> = ({
   style = {},
   markerEnd,
   selected,
+  data,
 }) => {
+  const [isHovered, setIsHovered] = useState(false);
+
   const [edgePath] = getBezierPath({
     sourceX,
     sourceY,
@@ -127,10 +102,19 @@ export const PulsingChannelEdge: React.FC<EdgeProps> = ({
     curvature: 0.25,
   });
 
-  const strokeColor = (style?.stroke as string) || '#38bdf8';
+  const baseColor = (style?.stroke as string) || 'var(--info, #5CC8E8)';
+  const activeColor = 'var(--accent, #FFB02E)';
+  const isHighlighted = selected || isHovered;
+  const strokeColor = isHighlighted ? activeColor : baseColor;
+  const strokeWidth = isHighlighted ? 2.5 : 1.5;
+  const isAnimated = selected || Boolean((data as CustomEdgeData)?.isRecomputing);
 
   return (
-    <g className={`react-flow__edge-custom ${selected ? 'selected' : ''}`}>
+    <g
+      className={`react-flow__edge-custom ${selected ? 'selected' : ''}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
       {/* Invisible click hit area */}
       <path
         d={edgePath}
@@ -140,26 +124,17 @@ export const PulsingChannelEdge: React.FC<EdgeProps> = ({
         className="react-flow__edge-interaction"
       />
 
-      {/* Base wire track */}
-      <path
-        d={edgePath}
-        fill="none"
-        stroke={strokeColor}
-        strokeWidth={selected ? 2.5 : 1.8}
-        strokeOpacity={0.4}
-        strokeLinecap="round"
-      />
-
-      {/* Animated directional pulsing dash */}
+      {/* Single clean wire */}
       <path
         id={id}
         d={edgePath}
         fill="none"
         stroke={strokeColor}
-        strokeWidth={selected ? 2.5 : 1.8}
-        strokeDasharray="4 6"
-        className="channel-flow-path"
+        strokeWidth={strokeWidth}
+        strokeOpacity={isHighlighted ? 1 : 0.85}
         strokeLinecap="round"
+        strokeDasharray={isAnimated ? '4 6' : undefined}
+        className={isAnimated ? 'channel-flow-path' : ''}
         markerEnd={markerEnd}
       />
     </g>
