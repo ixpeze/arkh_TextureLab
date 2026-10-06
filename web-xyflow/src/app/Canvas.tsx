@@ -13,6 +13,7 @@ import {
   type OnNodeDrag,
   type NodeTypes,
   type EdgeTypes,
+  type OnConnectStartParams,
 } from '@xyflow/react';
 
 const PAN_ON_DRAG_BUTTONS = [1, 2];
@@ -31,6 +32,8 @@ export interface CanvasProps {
   onNodeDragStart?: OnNodeDrag<Node>;
   onNodeDragStop?: OnNodeDrag<Node>;
   onConnect: (connection: Connection) => void;
+  onConnectStart?: (event: MouseEvent | TouchEvent, params: OnConnectStartParams) => void;
+  onConnectEnd?: (event: MouseEvent | TouchEvent) => void;
   onReconnectStart: () => void;
   onReconnect: (oldEdge: Edge, newConnection: Connection) => void;
   onReconnectEnd: (event: MouseEvent | TouchEvent, edge: Edge) => void;
@@ -55,6 +58,8 @@ export const Canvas: React.FC<CanvasProps> = ({
   onNodeDragStart,
   onNodeDragStop,
   onConnect,
+  onConnectStart,
+  onConnectEnd,
   onReconnectStart,
   onReconnect,
   onReconnectEnd,
@@ -101,6 +106,8 @@ export const Canvas: React.FC<CanvasProps> = ({
           onNodeDragStart={onNodeDragStart}
           onNodeDragStop={onNodeDragStop}
           onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
           onReconnectStart={onReconnectStart}
           onReconnect={onReconnect}
           onReconnectEnd={onReconnectEnd}

@@ -97,25 +97,37 @@ body, html, #root {
   width: 12px;
   height: 12px;
   border: 1.5px solid #131211;
-  transition: transform 0.12s ease, border-color 0.12s ease;
+  transition: transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
   z-index: 15;
 }
 
 .react-flow__handle:hover {
-  transform: scale(1.3) !important;
+  transform: translateY(-50%) scale(1.25) !important;
   border-color: #ffffff !important;
+}
+
+.react-flow__handle:hover.handle-diamond {
+  transform: translateY(-50%) rotate(45deg) scale(1.25) !important;
 }
 
 /* Source Handle while Connecting */
 .react-flow__handle-connecting {
-  transform: scale(1.35) !important;
+  transform: translateY(-50%) scale(1.3) !important;
   border-color: #ffffff !important;
+}
+
+.react-flow__handle-connecting.handle-diamond {
+  transform: translateY(-50%) rotate(45deg) scale(1.3) !important;
 }
 
 /* Valid Target Handles when dragged nearby */
 .react-flow__handle-valid {
-  transform: scale(1.35) !important;
+  transform: translateY(-50%) scale(1.3) !important;
   border-color: var(--ok) !important;
+}
+
+.react-flow__handle-valid.handle-diamond {
+  transform: translateY(-50%) rotate(45deg) scale(1.3) !important;
 }
 
 /* Connection Line during Drag */
@@ -137,11 +149,11 @@ body, html, #root {
 
 .handle-diamond {
   border-radius: 2px !important;
-  transform: rotate(45deg);
+  transform: translateY(-50%) rotate(45deg);
 }
 
 .handle-diamond:hover {
-  transform: rotate(45deg) scale(1.3);
+  transform: translateY(-50%) rotate(45deg) scale(1.25) !important;
 }
 
 /* Selection Marquee Box */

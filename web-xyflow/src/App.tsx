@@ -82,6 +82,8 @@ function Workbench() {
     handleDelete,
     handleClearGraph,
     onConnect,
+    onConnectStart,
+    onConnectEnd,
     onReconnectStart,
     onReconnect,
     onReconnectEnd,
@@ -287,6 +289,8 @@ function Workbench() {
             onNodeDragStart={onNodeDragStart}
             onNodeDragStop={onNodeDragStop}
             onConnect={onConnect}
+            onConnectStart={onConnectStart}
+            onConnectEnd={onConnectEnd}
             onReconnectStart={onReconnectStart}
             onReconnect={onReconnect}
             onReconnectEnd={onReconnectEnd}

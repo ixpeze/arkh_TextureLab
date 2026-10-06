@@ -1,5 +1,12 @@
 import { useCallback, useRef } from 'react';
-import { addEdge, reconnectEdge, type Connection, type Edge, type Node } from '@xyflow/react';
+import {
+  addEdge,
+  reconnectEdge,
+  type Connection,
+  type Edge,
+  type Node,
+  type OnConnectStartParams,
+} from '@xyflow/react';
 import { validateConnection } from '../graph/validate';
 import { getEdgeConfig } from './autoWire';
 import { duplicateNodes, deleteNodes } from './graphActions';
@@ -26,6 +33,8 @@ export function useGraphActions({
   setActiveNodeId,
 }: UseGraphActionsProps) {
   const edgeReconnectSuccessful = useRef(true);
+  const connectingParamsRef = useRef<OnConnectStartParams | null>(null);
+  const didConnectRef = useRef(false);
 
   // Bi-directional node data updater for node card controls
   const handleUpdateNodeData = useCallback(
@@ -114,6 +123,8 @@ export function useGraphActions({
   // Connect wires
   const onConnect = useCallback(
     (params: Connection) => {
+      didConnectRef.current = true;
+      connectingParamsRef.current = null;
       const validation = validateConnection(params, edges);
       if (!validation.isValid) {
         setStatusMessage(`Wire rejected: ${validation.reason}`);
@@ -139,6 +150,58 @@ export function useGraphActions({
       setStatusMessage(`Connected wire from ${params.source} to ${params.target}`);
     },
     [edges, pushSnapshot, setEdges, setStatusMessage]
+  );
+
+  const onConnectStart = useCallback((_e: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
+    didConnectRef.current = false;
+    connectingParamsRef.current = params;
+  }, []);
+
+  const onConnectEnd = useCallback(
+    (event: MouseEvent | TouchEvent) => {
+      if (didConnectRef.current) {
+        connectingParamsRef.current = null;
+        return;
+      }
+      const from = connectingParamsRef.current;
+      connectingParamsRef.current = null;
+      if (!from || !from.nodeId || !from.handleId) return;
+
+      const clientX = 'clientX' in event ? event.clientX : (event as TouchEvent).changedTouches?.[0]?.clientX;
+      const clientY = 'clientY' in event ? event.clientY : (event as TouchEvent).changedTouches?.[0]?.clientY;
+      if (typeof clientX !== 'number' || typeof clientY !== 'number') return;
+
+      const el = document.elementFromPoint(clientX, clientY);
+      if (!el) return;
+
+      const targetRow = el.closest<HTMLElement>('[data-socket-row]');
+      if (!targetRow) return;
+
+      const targetNodeId =
+        targetRow.getAttribute('data-node-id') ||
+        targetRow.closest('.react-flow__node')?.getAttribute('data-id');
+      const targetHandleId = targetRow.getAttribute('data-handle-id');
+      const targetHandleType = targetRow.getAttribute('data-handle-type') as 'target' | 'source' | null;
+
+      if (!targetNodeId || !targetHandleId || targetNodeId === from.nodeId) return;
+
+      if (from.handleType === 'source' && (!targetHandleType || targetHandleType === 'target')) {
+        onConnect({
+          source: from.nodeId,
+          sourceHandle: from.handleId,
+          target: targetNodeId,
+          targetHandle: targetHandleId,
+        });
+      } else if (from.handleType === 'target' && targetHandleType === 'source') {
+        onConnect({
+          source: targetNodeId,
+          sourceHandle: targetHandleId,
+          target: from.nodeId,
+          targetHandle: from.handleId,
+        });
+      }
+    },
+    [onConnect]
   );
 
   const onReconnectStart = useCallback(() => {
@@ -220,6 +283,8 @@ export function useGraphActions({
     handleDelete,
     handleClearGraph,
     onConnect,
+    onConnectStart,
+    onConnectEnd,
     onReconnectStart,
     onReconnect,
     onReconnectEnd,

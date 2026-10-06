@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useNodeId } from '@xyflow/react';
 import type { SocketShape } from './NodeSocket';
 
 export interface DualSocketEndpoint {
@@ -34,6 +34,7 @@ export const NodeDualSocket: React.FC<NodeDualSocketProps> = ({
   const [hoverSide, setHoverSide] = useState<'left' | 'right' | null>(null);
   const inputRef = useRef<HTMLDivElement>(null);
   const outputRef = useRef<HTMLDivElement>(null);
+  const nodeId = useNodeId();
 
   const inColor = input.color || 'var(--pbr-rough)';
   const outColor = output.color || 'var(--pbr-rough)';
@@ -56,6 +57,7 @@ export const NodeDualSocket: React.FC<NodeDualSocketProps> = ({
     const targetRef = side === 'left' ? inputRef : outputRef;
     if (!targetRef.current) return;
     if (e.target === targetRef.current) return;
+    if (e.button !== 0) return;
 
     e.stopPropagation();
     const event = new PointerEvent('pointerdown', {
@@ -65,8 +67,8 @@ export const NodeDualSocket: React.FC<NodeDualSocketProps> = ({
       clientY: e.clientY,
       screenX: e.screenX,
       screenY: e.screenY,
-      button: e.button,
-      buttons: e.buttons,
+      button: 0,
+      buttons: 1,
       pointerId: e.pointerId,
       pointerType: e.pointerType,
       isPrimary: e.isPrimary,
@@ -76,8 +78,9 @@ export const NodeDualSocket: React.FC<NodeDualSocketProps> = ({
 
   return (
     <div
-      className="node-socket-row is-dual-row"
+      className="node-socket-row is-dual-row nodrag nopan"
       style={{
+        boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -96,11 +99,16 @@ export const NodeDualSocket: React.FC<NodeDualSocketProps> = ({
     >
       {/* ── LEFT HALF: INPUT (Target) ── */}
       <div
-        className="dual-side-left"
+        className="dual-side-left nodrag nopan"
+        data-socket-row="true"
+        data-node-id={nodeId || undefined}
+        data-handle-id={input.id}
+        data-handle-type="target"
         onMouseEnter={() => setHoverSide('left')}
         onMouseLeave={() => setHoverSide(null)}
         onPointerDown={(e) => handlePointerDown(e, 'left')}
         style={{
+          boxSizing: 'border-box',
           display: 'flex',
           alignItems: 'center',
           gap: 4,
@@ -111,43 +119,28 @@ export const NodeDualSocket: React.FC<NodeDualSocketProps> = ({
           position: 'relative',
         }}
       >
-        <div
+        <Handle
           ref={inputRef}
+          id={input.id}
+          type="target"
+          position={Position.Left}
+          className={`socket-handle ${inShapeClass}`}
           style={{
             position: 'absolute',
             left: -5,
             top: '50%',
             transform: 'translateY(-50%)',
-            width: 10,
-            height: 10,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10,
-            pointerEvents: 'auto',
+            width: 8,
+            height: 8,
+            backgroundColor: hoverSide === 'left' ? '#ffffff' : inColor,
+            borderColor: hoverSide === 'left' ? inColor : '#131211',
+            borderWidth: 1.5,
+            borderStyle: 'solid',
+            boxShadow: hoverSide === 'left' ? `0 0 6px ${inColor}` : 'none',
+            transition: 'background-color 0.12s, box-shadow 0.12s',
+            zIndex: 15,
           }}
-        >
-          <Handle
-            id={input.id}
-            type="target"
-            position={Position.Left}
-            className={`socket-handle ${inShapeClass}`}
-            style={{
-              position: 'relative',
-              left: 0,
-              top: 0,
-              transform: 'none',
-              width: 8,
-              height: 8,
-              backgroundColor: hoverSide === 'left' ? '#ffffff' : inColor,
-              borderColor: hoverSide === 'left' ? inColor : '#0f172a',
-              borderWidth: 1.5,
-              borderStyle: 'solid',
-              boxShadow: hoverSide === 'left' ? `0 0 6px ${inColor}` : 'none',
-              transition: 'background-color 0.12s, box-shadow 0.12s',
-            }}
-          />
-        </div>
+        />
 
         <div
           style={{
@@ -192,11 +185,16 @@ export const NodeDualSocket: React.FC<NodeDualSocketProps> = ({
 
       {/* ── RIGHT HALF: OUTPUT (Source) ── */}
       <div
-        className="dual-side-right"
+        className="dual-side-right nodrag nopan"
+        data-socket-row="true"
+        data-node-id={nodeId || undefined}
+        data-handle-id={output.id}
+        data-handle-type="source"
         onMouseEnter={() => setHoverSide('right')}
         onMouseLeave={() => setHoverSide(null)}
         onPointerDown={(e) => handlePointerDown(e, 'right')}
         style={{
+          boxSizing: 'border-box',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'flex-end',
@@ -208,43 +206,28 @@ export const NodeDualSocket: React.FC<NodeDualSocketProps> = ({
           position: 'relative',
         }}
       >
-        <div
+        <Handle
           ref={outputRef}
+          id={output.id}
+          type="source"
+          position={Position.Right}
+          className={`socket-handle ${outShapeClass}`}
           style={{
             position: 'absolute',
             right: -5,
             top: '50%',
             transform: 'translateY(-50%)',
-            width: 10,
-            height: 10,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10,
-            pointerEvents: 'auto',
+            width: 8,
+            height: 8,
+            backgroundColor: hoverSide === 'right' ? '#ffffff' : outColor,
+            borderColor: hoverSide === 'right' ? outColor : '#131211',
+            borderWidth: 1.5,
+            borderStyle: 'solid',
+            boxShadow: hoverSide === 'right' ? `0 0 6px ${outColor}` : 'none',
+            transition: 'background-color 0.12s, box-shadow 0.12s',
+            zIndex: 15,
           }}
-        >
-          <Handle
-            id={output.id}
-            type="source"
-            position={Position.Right}
-            className={`socket-handle ${outShapeClass}`}
-            style={{
-              position: 'relative',
-              right: 0,
-              top: 0,
-              transform: 'none',
-              width: 8,
-              height: 8,
-              backgroundColor: hoverSide === 'right' ? '#ffffff' : outColor,
-              borderColor: hoverSide === 'right' ? outColor : '#0f172a',
-              borderWidth: 1.5,
-              borderStyle: 'solid',
-              boxShadow: hoverSide === 'right' ? `0 0 6px ${outColor}` : 'none',
-              transition: 'background-color 0.12s, box-shadow 0.12s',
-            }}
-          />
-        </div>
+        />
 
         {output.secondaryText && (
           <span style={{ fontSize: 7, color: '#475569', marginRight: 1 }}>{output.secondaryText}</span>

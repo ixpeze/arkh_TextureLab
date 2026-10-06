@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useNodeId } from '@xyflow/react';
 
 export type SocketShape = 'circle' | 'diamond' | 'square';
 
@@ -35,6 +35,7 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const handleRef = useRef<HTMLDivElement>(null);
+  const nodeId = useNodeId();
   const isInput = type === 'target';
   const handlePosition = isInput ? Position.Left : Position.Right;
 
@@ -45,10 +46,11 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
       ? 'handle-square'
       : 'handle-circle';
 
-  // Forward clicks anywhere across the horizontal row to the border handle
+  // Forward clicks/drags anywhere across the horizontal row to the border handle
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!handleRef.current) return;
     if (e.target === handleRef.current) return;
+    if (e.button !== 0) return; // Left click only for wiring
 
     e.stopPropagation();
     const event = new PointerEvent('pointerdown', {
@@ -58,8 +60,8 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
       clientY: e.clientY,
       screenX: e.screenX,
       screenY: e.screenY,
-      button: e.button,
-      buttons: e.buttons,
+      button: 0,
+      buttons: 1,
       pointerId: e.pointerId,
       pointerType: e.pointerType,
       isPrimary: e.isPrimary,
@@ -80,11 +82,16 @@ export const NodeSocket: React.FC<NodeSocketProps> = ({
 
   return (
     <div
-      className={`node-socket-row ${isSection ? 'is-section-row' : ''}`}
+      className={`node-socket-row nodrag nopan ${isSection ? 'is-section-row' : ''}`}
+      data-socket-row="true"
+      data-node-id={nodeId || undefined}
+      data-handle-id={id}
+      data-handle-type={type}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       onPointerDown={handlePointerDown}
       style={{
+        boxSizing: 'border-box',
         display: 'flex',
         alignItems: 'center',
         justifyContent: isSection ? 'space-between' : isInput ? 'flex-start' : 'flex-end',
