@@ -72,7 +72,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   return (
     <header className="tl-workstation__header" role="banner">
       {/* Left Branding & Project Info */}
-      <div className="tl-flex tl-items-center tl-gap-sm">
+      <div className="tl-toolbar-left">
         {onToggleLibrary && (
           <Tooltip content="Toggle Node Library Dock (Ctrl+B)">
             <IconButton
@@ -85,13 +85,16 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           </Tooltip>
         )}
 
-        <span className="tl-font-bold tl-text-accent">
+        <span className="tl-toolbar__brand">
           TEXTURELAB
         </span>
 
         {/* Project Name + Dirty Indicator */}
-        <div className="tl-badge tl-flex tl-items-center tl-gap-xs">
-          <span>{projectName || 'Untitled'}</span>
+        <div
+          className="tl-badge tl-project-badge"
+          title={projectName ? `Project: ${projectName}${isDirty ? ' (unsaved)' : ''}` : 'Untitled Project'}
+        >
+          <span className="tl-project-badge__name">{projectName || 'Untitled'}</span>
           {isDirty && (
             <span
               className="tl-statusbar__dot tl-statusbar__dot--busy"
@@ -138,7 +141,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           )}
         </div>
 
-        <div className="tl-statusbar__divider" aria-hidden="true" />
+        <div className="tl-toolbar__divider" aria-hidden="true" />
 
         {/* Quick Samples */}
         <Tooltip content="Open Anthracite Concrete PBR benchmark graph">
@@ -165,7 +168,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       </div>
 
       {/* Center Primary Action: Pack Wizard */}
-      <div className="tl-flex tl-items-center tl-gap-sm">
+      <div className="tl-toolbar-center">
         <Tooltip content="Open Texture Pack & Unpack Wizard (Ctrl+W)">
           <Button
             variant="primary"
@@ -190,7 +193,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
       </div>
 
       {/* Right Controls */}
-      <div className="tl-flex tl-items-center tl-gap-xs">
+      <div className="tl-toolbar-right">
         <Tooltip content="Undo (Ctrl+Z)">
           <IconButton
             icon={<Undo2 size={13} />}
@@ -213,7 +216,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           />
         </Tooltip>
 
-        <div className="tl-statusbar__divider" aria-hidden="true" />
+        <div className="tl-toolbar__divider" aria-hidden="true" />
 
         <Tooltip content="Add Comment Box (C)">
           <IconButton
@@ -245,7 +248,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
           />
         </Tooltip>
 
-        <div className="tl-statusbar__divider" aria-hidden="true" />
+        <div className="tl-toolbar__divider" aria-hidden="true" />
 
         <Tooltip content="Preferences & Settings">
           <IconButton

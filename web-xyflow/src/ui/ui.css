@@ -124,6 +124,52 @@
   color: var(--accent);
 }
 
+.tl-icon-btn--primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.tl-icon-btn--primary:hover:not(:disabled) {
+  background-color: #ffbe4d;
+  color: var(--accent-text);
+}
+
+.tl-icon-btn--secondary {
+  background-color: var(--bg-surface);
+  border-color: var(--hairline-strong);
+  color: var(--text);
+}
+
+.tl-icon-btn--secondary:hover:not(:disabled) {
+  background-color: var(--bg-raised);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.tl-icon-btn--ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text-muted);
+}
+
+.tl-icon-btn--ghost:hover:not(:disabled) {
+  background-color: var(--bg-raised);
+  border-color: var(--hairline-strong);
+  color: var(--text);
+}
+
+.tl-icon-btn--danger {
+  color: var(--danger);
+  border-color: transparent;
+}
+
+.tl-icon-btn--danger:hover:not(:disabled) {
+  background-color: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* Slider */
 .tl-slider {
   display: flex;
@@ -1371,7 +1417,7 @@
 }
 
 .tl-workstation__header {
-  height: 38px;
+  height: 40px;
   background-color: var(--bg-panel);
   border-bottom: 1px solid var(--hairline);
   display: flex;
@@ -1381,6 +1427,150 @@
   z-index: 30;
   user-select: none;
   flex-shrink: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Toolbar Sections & Components */
+.tl-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.tl-toolbar-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.tl-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.tl-toolbar__divider {
+  width: 1px;
+  height: 16px;
+  background-color: var(--hairline-strong);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+.tl-toolbar__brand {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  user-select: none;
+  padding-right: 2px;
+}
+
+.tl-project-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-project-badge__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Badge Component */
+.tl-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  color: var(--text);
+  background-color: var(--bg-surface);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* Layout and Flex Utilities */
+.tl-flex {
+  display: flex;
+}
+
+.tl-flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.tl-flex-nowrap {
+  flex-wrap: nowrap;
+}
+
+.tl-items-center {
+  align-items: center;
+}
+
+.tl-justify-between {
+  justify-content: space-between;
+}
+
+.tl-justify-end {
+  justify-content: flex-end;
+}
+
+.tl-justify-center {
+  justify-content: center;
+}
+
+.tl-gap-xs {
+  gap: 4px;
+}
+
+.tl-gap-sm {
+  gap: 8px;
+}
+
+.tl-gap-md {
+  gap: 12px;
+}
+
+.tl-gap-lg {
+  gap: 16px;
+}
+
+.tl-w-full {
+  width: 100%;
+}
+
+.tl-font-bold {
+  font-weight: 700;
+}
+
+.tl-font-medium {
+  font-weight: 500;
+}
+
+.tl-text-accent {
+  color: var(--accent);
+}
+
+.tl-text-muted {
+  color: var(--text-muted);
 }
 
 .tl-workstation__body {
