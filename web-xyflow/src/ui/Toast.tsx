@@ -1,7 +1,8 @@
 // src/ui/Toast.tsx
 import React, { useState, useCallback, useMemo } from 'react';
 import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
-import { ToastItem, ToastContext } from './toastContext';
+import type { ToastItem } from './toastContext';
+import { ToastContext } from './toastContext';
 
 export type { ToastItem };
 

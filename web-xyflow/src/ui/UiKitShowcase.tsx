@@ -11,7 +11,7 @@ import { Panel } from './Panel';
 import { Dialog } from './Dialog';
 import { Tooltip } from './Tooltip';
 import { Kbd } from './Kbd';
-import { useToast } from './Toast';
+import { useToast } from './toastContext';
 import { Sparkles, Info, Settings, HelpCircle, Layers } from 'lucide-react';
 
 export const UiKitShowcase: React.FC = () => {
