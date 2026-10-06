@@ -1,13 +1,25 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import type { Node, Edge } from '@xyflow/react';
 import type { TextureBuffer } from '../types/buffer';
 import type { AssetRecord } from '../types/project';
-import { PackWizardModal } from '../features/wizard/PackWizardModal';
-import { SettingsModal } from '../features/project/SettingsModal';
-import { ShortcutsModal } from '../components/ShortcutsModal';
-import { ExportModal } from '../components/ExportModal';
-import { RelinkModal } from '../features/project/RelinkModal';
 import { DevHud } from '../features/perf/DevHud';
+
+// Code-split heavy modals (P6-T5)
+const PackWizardModal = lazy(() =>
+  import('../features/wizard/PackWizardModal').then((m) => ({ default: m.PackWizardModal }))
+);
+const SettingsModal = lazy(() =>
+  import('../features/project/SettingsModal').then((m) => ({ default: m.SettingsModal }))
+);
+const ShortcutsModal = lazy(() =>
+  import('../components/ShortcutsModal').then((m) => ({ default: m.ShortcutsModal }))
+);
+const ExportModal = lazy(() =>
+  import('../components/ExportModal').then((m) => ({ default: m.ExportModal }))
+);
+const RelinkModal = lazy(() =>
+  import('../features/project/RelinkModal').then((m) => ({ default: m.RelinkModal }))
+);
 
 export interface WorkbenchModalsProps {
   isPackWizardOpen: boolean;
@@ -52,39 +64,59 @@ export const WorkbenchModals: React.FC<WorkbenchModalsProps> = ({
 }) => {
   return (
     <>
-      <PackWizardModal
-        isOpen={isPackWizardOpen}
-        onClose={() => setIsPackWizardOpen(false)}
-        onOpenExportHub={() => setIsExportModalOpen(true)}
-      />
+      {isPackWizardOpen && (
+        <Suspense fallback={null}>
+          <PackWizardModal
+            isOpen={isPackWizardOpen}
+            onClose={() => setIsPackWizardOpen(false)}
+            onOpenExportHub={() => setIsExportModalOpen(true)}
+          />
+        </Suspense>
+      )}
 
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+      {isSettingsOpen && (
+        <Suspense fallback={null}>
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+          />
+        </Suspense>
+      )}
 
-      <ShortcutsModal
-        isOpen={isShortcutsOpen}
-        onClose={() => setIsShortcutsOpen(false)}
-      />
+      {isShortcutsOpen && (
+        <Suspense fallback={null}>
+          <ShortcutsModal
+            isOpen={isShortcutsOpen}
+            onClose={() => setIsShortcutsOpen(false)}
+          />
+        </Suspense>
+      )}
 
-      <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => setIsExportModalOpen(false)}
-        nodes={nodes}
-        edges={edges}
-        evaluatedBuffers={evaluatedBuffers}
-        primaryAsset={primaryAsset}
-        onAssetChange={onAssetChange}
-        onUpdateNodeData={onUpdateNodeData}
-        onExportComplete={(msg) => setStatusMessage(msg)}
-      />
+      {isExportModalOpen && (
+        <Suspense fallback={null}>
+          <ExportModal
+            isOpen={isExportModalOpen}
+            onClose={() => setIsExportModalOpen(false)}
+            nodes={nodes}
+            edges={edges}
+            evaluatedBuffers={evaluatedBuffers}
+            primaryAsset={primaryAsset}
+            onAssetChange={onAssetChange}
+            onUpdateNodeData={onUpdateNodeData}
+            onExportComplete={(msg) => setStatusMessage(msg)}
+          />
+        </Suspense>
+      )}
 
-      <RelinkModal
-        isOpen={isRelinkModalOpen}
-        onClose={() => setIsRelinkModalOpen(false)}
-        missingAssets={missingAssets}
-      />
+      {isRelinkModalOpen && (
+        <Suspense fallback={null}>
+          <RelinkModal
+            isOpen={isRelinkModalOpen}
+            onClose={() => setIsRelinkModalOpen(false)}
+            missingAssets={missingAssets}
+          />
+        </Suspense>
+      )}
 
       <DevHud />
     </>

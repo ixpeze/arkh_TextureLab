@@ -36,7 +36,7 @@ export class RootErrorBoundary extends Component<RootErrorBoundaryProps, RootErr
 
   handleCopyDiagnostics = async () => {
     try {
-      const report = await formatDiagnosticsText(this.state.error, this.state.errorInfo);
+      const report = await formatDiagnosticsText(this.state.error, this.state.errorInfo?.componentStack);
       await navigator.clipboard.writeText(report);
       this.setState({ copied: true });
       setTimeout(() => this.setState({ copied: false }), 2000);
