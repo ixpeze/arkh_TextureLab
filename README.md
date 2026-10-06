@@ -1,161 +1,138 @@
 # ARKH TextureLab — Interactive PBR Pack <=> Unpack Workstation
 
-> **Notice:** Pre-1.0 rewrite in progress — see [docs/roadmap](docs/roadmap/00_README_START_HERE.md).
-
-ARKH TextureLab is a high-performance web workstation for interactive PBR texture channel multiplexing / unmultiplexing (`pack <=> unpack`), featuring dictionary-driven naming normalization, token-based export naming, live 2D pixel inspection, and Unreal Engine 5 material editor navigation.
+ARKH TextureLab is a high-performance workstation for interactive PBR texture channel multiplexing and unmultiplexing (`pack <=> unpack`), featuring dictionary-driven naming normalization, token-based export naming, live 2D pixel inspection, and an asynchronous WebGL2 GPU evaluation engine.
 
 ---
 
-## 📦 Download Installer (Windows Desktop)
+## 📦 Downloads (Windows Desktop)
 
 You can run ARKH TextureLab as a native Windows desktop application with zero Node.js or terminal prerequisites:
 
 | Download Type | Filename | Description |
 |---|---|---|
-| **Installer** | `release/TextureLab-Setup-0.2.0.exe` | Clean per-user Windows NSIS installer (no admin rights needed, creates shortcuts). |
-| **Portable** | `release/TextureLab-0.2.0-portable.exe` | Standalone portable executable. Runs from any folder or USB drive. |
+| **Installer** | [`release/TextureLab-Setup-1.0.0.exe`](release/TextureLab-Setup-1.0.0.exe) | Clean per-user Windows NSIS installer (no admin rights needed, creates shortcuts). |
+| **Portable** | [`release/TextureLab-1.0.0-portable.exe`](release/TextureLab-1.0.0-portable.exe) | Standalone portable executable. Runs from any directory or USB drive. |
+| **Checksums** | [`release/SHA256SUMS.txt`](release/SHA256SUMS.txt) | SHA-256 cryptographic hashes to verify download integrity. |
 
-> [!NOTE]
-> **Windows SmartScreen Note (Free & Unsigned Software):**
-> ARKH TextureLab is distributed unsigned (per locked project decision D-10). On first launch, Windows SmartScreen may show a prompt saying *"Windows protected your PC"*. Simply click **"More info"** and then **"Run anyway"**.
+---
+
+## 🛡️ Windows SmartScreen Note ("Unknown Publisher")
+
+Because ARKH TextureLab is distributed as free, open-source software without an expensive annual enterprise code-signing certificate (per project decision D-10), Windows Defender SmartScreen may display a warning on first launch:
+
+```
+Windows protected your PC
+Microsoft Defender SmartScreen prevented an unrecognized app from starting.
+```
+
+### How to Run:
+1. Click **"More info"** on the SmartScreen dialog.
+2. Click **"Run anyway"**.
+
+*(Optional: To verify that your executable is authentic and has not been altered, compare its SHA-256 hash against the published hashes in [`release/SHA256SUMS.txt`](release/SHA256SUMS.txt).)*
+
+---
+
+## 🖥️ System Requirements
+
+- **Operating System:** Windows 10 (22H2 or newer) / Windows 11 (64-bit).
+- **GPU (Hardware Floor):** Dedicated GPU with WebGL2 support (NVIDIA GeForce RTX 3050 / GTX 1660 or AMD Radeon RX 5600 equivalent or better recommended). Systems with integrated graphics run in best-effort mode.
+- **Memory (RAM):** 8 GB minimum (16 GB recommended for multi-4K projects).
+- **Storage:** 500 MB available disk space.
+
+---
+
+## ⚡ Core Features & Architecture
+
+### 1. WebGL2 Demand-Driven GPU Engine
+- **Asynchronous GPU Pipeline:** Evaluations run on the GPU via optimized GLSL fragment shaders, completely offloading the main UI thread.
+- **VRAM Texture Pool:** Managed 1.5 GiB LRU texture pool for responsive memory reclamation during heavy 4K texture operations.
+- **Topological Compilation & Scheduler:** Frame-budgeted scheduler with generation cancellation and 120ms idle refinement to ensure 60 FPS viewport navigation during intense slider scrubbing.
+- **Fast GPU Readback:** Asynchronous Pixel Buffer Objects (PBOs) for zero-stutter readbacks.
+
+### 2. Byte-Exact PNG & TGA Codecs
+- **Pure-JS Codecs:** Eliminates browser Canvas2D premultiplied alpha data destruction (resolves audit F-01). Channel values in packed textures (e.g. RGB in textures with zero alpha) are preserved byte-for-byte.
+- **16-Bit Export:** Full support for true 16-bit PNG export for heightmaps and displacement.
+
+### 3. "Graphite Blueprint" Workstation UI
+- **Docked 3-Column Layout:** Obsidian `#0a0b10` tactical workstation theme with tokenized design system (`tokens.css`) passing 15/15 WCAG AA contrast tests.
+- **Zoom Level of Detail (LOD):** Node cards transition between full detail, compact mode (<0.6 zoom), and simplified block mode (<0.35 zoom) with 12px lettered sockets ('R', 'G', 'B', 'A', 'C', 'S').
+- **Non-Obtrusive Wires:** Crisp 1.5px orthogonal wires without glow filters or drop shadows; amber highlighting on selection.
+- **Status Bar Telemetry:** Real-time indicator showing active GPU renderer, VRAM usage, document modification state, and zoom.
+
+### 4. Pack & Unpack Wizard (<3 Clicks)
+- Drag and drop any texture folder onto the canvas or open the Wizard (`Ctrl+W`).
+- Autonomously recognizes industry naming conventions (`_AO`, `_Roughness`, `_Metallic`, `_Normal`, `_ORM`, `_RMA`).
+- Generates pre-wired packing or unpacking pipelines in under 3 clicks.
+
+### 5. Precision 2D Inspector Panel
+- **A/B Wipe Slider:** Live split-screen comparison slider between different nodes or channels.
+- **Tiling Repeat Test:** 2x2 and 3x3 repetition preview for instant texture seam verification.
+- **Channel Isolation:** Instant isolation of `[RGBA]`, `[R]`, `[G]`, `[B]`, and `[A]` in true monochrome space.
+- **Crosshair Pixel Probe:** Precision crosshair readout reporting coordinates `(X, Y)` and pixel values in both `0..255` integer and `0.00..1.00` normalized float space.
+
+### 6. Atomic File Persistence & Fault Tolerance
+- **Atomic `.tlab` Saves:** Staged `.tmp` writes with `fsync`, `.bak` backup preservation, and Windows `EBUSY` retry loops.
+- **Crash Recovery & Autosave:** 30-second autosave loop with automatic restore prompts after abnormal termination.
+- **Top-Level Error Boundaries:** Root and per-node React error boundaries with "Copy Diagnostics" (anonymized system telemetry, WebGL2 caps, and recent logs).
 
 ---
 
 ## 🚀 Development & Web Setup
 
-### 📋 Prerequisites
-- **Operating System**: Windows 10/11 (or macOS / Linux via terminal).
-- **Node.js**: **v20+ LTS** (v22+ or v24+ recommended).
-  - Download from: [nodejs.org](https://nodejs.org/)
-  - Verify installation in terminal:
-    ```powershell
-    node -v
-    npm -v
-    ```
+### Prerequisites
+- **Node.js:** v20+ LTS (v22+ recommended).
+- **PowerShell / Terminal:** Windows PowerShell 5.1+ or PowerShell 7+.
 
----
+### Quick Launchers (Root Directory)
 
-### 💻 Development Launchers
+- **`run_desktop_dev.bat`** — Launches Electron shell in development mode with hot module reloading.
+- **`run_web.bat`** — Launches the browser workstation at `http://localhost:5173`.
+- **`setup.bat`** — Verifies Node.js environment, installs packages, and runs test suites.
 
-You have convenient launchers to get up and running in development:
+### Terminal Commands
 
-#### Option 1: Desktop Shell in Development Mode
-Double-click:
 ```powershell
-run_desktop_dev.bat
-```
-> **What it does**: Compiles the desktop Electron process, launches the Vite HMR server, and opens the native TextureLab desktop window with live hot-reloading.
+# Navigate to the app directory
+cd app
 
-#### Option 2: Browser Workstation
-Double-click:
-```powershell
-run_web.bat
-```
-> **What it does**: Automatically checks your Node.js environment, installs packages if missing, launches the local Vite development server, and opens **`http://localhost:5173`** in your default web browser.
-
-#### Option 2: First-Time Installer (`setup.bat`)
-If you want an explicit setup and diagnostic test:
-```powershell
-setup.bat
-```
-> **What it does**: Validates Node.js & npm in PATH, installs dependencies in `web-xyflow/`, runs the 17-test Vitest pipeline suite to ensure 100% integrity, and prompts to launch the application.
-
-#### Option 3: Manual Terminal Setup
-```powershell
-# 1. Navigate to the frontend directory
-cd web-xyflow
-
-# 2. Install dependencies
+# Install dependencies
 npm install
 
-# 3. Launch local dev server and open browser
-npm run dev -- --open
+# Run Vite development server
+npm run dev
+
+# Run Vitest test suite (208+ unit & golden tests)
+npm test
+
+# Run Oxlint linter
+npm run lint
+
+# Build production bundle
+npm run build
+
+# Run Playwright Electron smoke tests
+npm run test:e2e
+
+# Run performance benchmarks against architecture budgets
+npm run perf
+
+# Build desktop installer and portable executable
+npm run dist
 ```
-Open **`http://localhost:5173`** in your browser.
 
 ---
 
-### ❓ Troubleshooting & FAQs
+## 📚 Documentation & Reference
 
-- **`'node' is not recognized as an internal or external command`**:
-  Node.js is not installed or not added to your system PATH. Download and run the installer from [nodejs.org](https://nodejs.org/), ensure the *"Add to PATH"* option is checked during installation, and restart your command prompt or PC.
-- **Port 5173 is already in use**:
-  Vite will automatically detect this and bind to the next open port (e.g. `http://localhost:5174`) and open your browser automatically.
-- **Clean reinstall**:
-  If you ever need a fresh start:
-  ```powershell
-  cd web-xyflow
-  Remove-Item -Recurse -Force node_modules, package-lock.json
-  npm install
-  ```
+- [**User Guide**](docs/USER_GUIDE.md) — Node catalog, Pack & Unpack Wizard walkthrough, export tokens, and shortcuts.
+- [**Developer & Maintenance Guide**](docs/MAINTENANCE.md) — Architecture, how to add a node in one file, release procedure, and test suites.
+- [**Product Roadmap**](docs/ROADMAP.md) — Completed v1.0 milestones and upcoming v1.1 scope (auto-update, EXR/TIFF, 3D viewport).
+- [**Known Issues**](docs/KNOWN_ISSUES.md) — Accepted gaps, SmartScreen details, and software GL fallback.
+- [**Third-Party Licenses**](THIRD_PARTY_LICENSES.txt) — Open-source software licenses and attributions.
 
 ---
 
-## 🎨 Unified Design Standard & UX Standards
+## 📄 License
 
-- **Aesthetic**: **Tactical DCC Workstation** (Plasticity CAD + Substance 3D aesthetic: `#090a0f` obsidian canvas with dot grid, `#12151c` matte cards, 1px hairline borders `rgba(255, 255, 255, 0.08)`, subtle hover indicators, and amber/cyan telemetry).
-- **Typography**: Bundled modern sans-serif **Geist Sans** (`assets/fonts/`).
-- **PBR Semantic Pastel Sockets**:
-  - `AO`: `#f87171` (Coral Red)
-  - `Roughness`: `#4ade80` (Mint Green)
-  - `Metallic`: `#60a5fa` (Sky Blue)
-  - `Height / Disp`: `#fbbf24` (Amber)
-  - `Scalar`: `#cbd5e1` (Slate)
-  - `Packed RGBA`: `#a78bfa` (Pastel Violet)
-
----
-
-## ⚡ Core Features & Capabilities
-
-### 1. Synchronous CPU Evaluation Engine
-- **Topological Graph Evaluator (`graphEvaluator.ts` & `pixelEngine.ts`)**: Evaluates texture node networks deterministically on the CPU using raw typed arrays (`Uint8ClampedArray` buffers) with memoized caching and content hashing.
-- **Resolution Policy**: Automatically resolves multi-input dimensions by adopting the largest connected input dimensions with bilinear resampling, and dynamically expands resolution-less constants.
-- *Note:* Dedicated Web Worker background offloading and live interactive proxy scrubbing are scheduled for the Phase 4 GPU & Performance rewrite (see [Target Architecture](docs/roadmap/02_TARGET_ARCHITECTURE.md)).
-
-### 2. Interactive Pack <=> Unpack Pipeline
-- **Pack (`ChannelCombinerNode`)**: Multiplexes up to 4 distinct channel maps (e.g. AO -> R, Roughness -> G, Metallic -> B, Height -> A) into a single packed RGBA texture.
-- **Unpack (`ChannelSplitterNode`)**: Takes a packed texture (e.g. `Wood_ORMH`, `Character_RMA`) and splits it into discrete single-channel streams for rerouting or adjusting.
-- **Adjustments with Live Inline Mini-Previews**:
-  - `LevelsNode`: Real-time Black Point, Midtone Gamma, and White Point remap with live interactive SVG transfer curve.
-  - `InvertNode`: 1 - x inversion (e.g. Glossiness to Roughness) with dynamic inversion gradient chip.
-  - `NormalFlipNode`: Green channel invert for DirectX (-Y) <=> OpenGL (+Y) normal maps with directional vector swatch.
-  - `NodeCard Mute/Bypass`: Toggle any node with `D` key or card header icon, rendering a tactical diagonal hatch overlay.
-
-### 3. Precision 2D Inspector Panel
-- **Real-Time Histogram Waveform**: 256-bin analytical canvas rendering real-time R, G, B, and Luminance waveforms.
-- **Channel Isolation**: Instant one-click isolation for `[RGBA]`, `[R]`, `[G]`, `[B]`, `[A]` channels in true grayscale pixel space.
-- **Crosshair Pixel Probe**: Hovering reveals exact `(X, Y)` coordinates with both integer `[0..255]` and normalized float `[0.00..1.00]` readouts.
-- **1:1 Native Pixel Space**: Toggle between responsive `Fit` and unscaled `1:1 Native` pixel viewports.
-- **Industry Packing Presets**: Quick dropdown switching between:
-  - `Unreal Engine ORMH` (R: AO, G: Roughness, B: Metallic, A: Height)
-  - `UE5 Standard ORM` (R: AO, G: Roughness, B: Metallic)
-  - `Unity HDRP Mask` (R: Metallic, G: AO, B: Detail Mask, A: Smoothness)
-  - `Godot / Blender PBR` (R: AO, G: Roughness, B: Metallic)
-
-### 4. Drag & Drop Autonomous Ingestion
-- Drop ANY texture file directly from Windows File Explorer onto the canvas.
-- The `LexicalNormalizer` autonomously matches filename patterns against industry dictionaries (e.g. `ambientocclusion`, `roughness`, `metallic`, `orm`, `rma`).
-- Spawns the node at the cursor drop location with preview thumbnails and labeled sockets.
-
-### 5. Token-Based Export Naming (`TokenEngine`)
-- Interactive token tags: `{prefix}`, `{asset}`, `{slot}`, `{res}`, `{ext}`.
-- Casing transforms: `UPPER_SNAKE`, `snake_case`, `PascalCase`, `camelCase`, and `original`.
-- Real browser download: Generates and downloads the merged PNG texture directly.
-
-### 6. Unreal Engine 5 Canvas Navigation & Productivity
-- **Undo / Redo (`Ctrl+Z` / `Ctrl+Y`)**: Full history snapshotting of graph nodes and connections.
-- **`C` Key Comment Boxes**: Select nodes and press `C` to wrap them in a resizable, color-coded UE5 Comment Box with inline editable title.
-- **`D` Key Bypass**: Toggle bypass/mute state on the selected node.
-- **RMB / MMB Drag**: Pan canvas smoothly.
-- **Mouse Wheel**: Smooth zoom (0.2x – 3.0x).
-- **Alt + Click Wire**: Cut connection wires (UE5 standard).
-- **Tab / RMB Click**: Searchable node spawn palette.
-- **`F` Key**: Focus extents / frame all nodes (`fitView`).
-- **Hotkeys**: `T` (Texture Input), `M` (Channel Combiner), `S` (Channel Splitter), `I` (Invert), `L` (Levels), `O` (Texture Output), `C` (Comment Box), `D` (Bypass/Mute).
-
----
-
-## 🧪 Benchmark Anthracite Concrete 4K
-
-Validated against real 4K PBR concrete textures located at `sample_textures/`:
-- Click **"Load Anthracite Concrete (Benchmark)"** in the top bar to auto-load the 4K maps, wire the ORMH combiner, and inspect the live composite buffer.
+ARKH TextureLab is proprietary software developed by ARKH LAB. Bundled third-party dependencies are licensed under their respective open-source licenses (MIT, ISC, OFL) as documented in `THIRD_PARTY_LICENSES.txt`.
