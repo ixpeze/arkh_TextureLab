@@ -248,6 +248,10 @@ export class WebPlatformService implements IPlatformService {
     document.title = title;
   }
 
+  public async getRecentLogs(_limit?: number): Promise<string[]> {
+    return ['[INFO] Web platform environment'];
+  }
+
   public onMenuCommand(_callback: (command: MenuCommand) => void): () => void {
     return () => {};
   }

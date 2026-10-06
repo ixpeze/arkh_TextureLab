@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react';
 import type { NodeProps, Node, Edge, NodeTypes } from '@xyflow/react';
 import type { TextureBuffer } from '../types/buffer';
+import { withNodeErrorBoundary } from '../app/withNodeErrorBoundary';
 
 export type NodeCategory =
   | 'Input'
@@ -162,13 +163,19 @@ export class NodeRegistry {
     const types: NodeTypes = {};
     for (const [type, def] of this.defs.entries()) {
       if (def.body) {
-        types[type] = def.body as unknown as ComponentType<NodeProps>;
+        types[type] = withNodeErrorBoundary(
+          def.body as unknown as ComponentType<NodeProps>,
+          def.label
+        );
       }
     }
     for (const [alias, canonical] of this.aliasMap.entries()) {
       const def = this.defs.get(canonical);
       if (def?.body) {
-        types[alias] = def.body as unknown as ComponentType<NodeProps>;
+        types[alias] = withNodeErrorBoundary(
+          def.body as unknown as ComponentType<NodeProps>,
+          def.label
+        );
       }
     }
     return types;

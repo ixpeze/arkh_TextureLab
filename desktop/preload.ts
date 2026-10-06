@@ -109,6 +109,10 @@ const labAPI: LabAPI = {
     return ipcRenderer.invoke('store:setUserData', key, value);
   },
 
+  getRecentLogs: (limit?: number): Promise<string[]> => {
+    return ipcRenderer.invoke('logs:getRecent', limit);
+  },
+
   onMenuCommand: (callback: (cmd: MenuCommand) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, cmd: MenuCommand) => {
       callback(cmd);

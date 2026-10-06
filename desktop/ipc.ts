@@ -36,8 +36,13 @@ function loadRecentProjects(): string[] {
   try {
     if (fs.existsSync(p)) {
       const data = fs.readFileSync(p, 'utf-8');
-      const list = JSON.parse(data);
-      if (Array.isArray(list)) return list.filter((item) => typeof item === 'string');
+      try {
+        const list = JSON.parse(data);
+        if (Array.isArray(list)) return list.filter((item) => typeof item === 'string');
+      } catch (parseErr) {
+        logger.warn('Corrupt recent.json ignored, returning empty list:', parseErr);
+        return [];
+      }
     }
   } catch (err) {
     logger.warn('Could not read recent.json:', err);
@@ -85,8 +90,21 @@ function loadSettings(): Record<string, unknown> {
   try {
     if (fs.existsSync(filePath)) {
       const data = fs.readFileSync(filePath, 'utf-8');
-      settingsCache = JSON.parse(data) as Record<string, unknown>;
-      return settingsCache;
+      try {
+        settingsCache = JSON.parse(data) as Record<string, unknown>;
+        return settingsCache;
+      } catch (parseErr) {
+        logger.warn('Corrupt settings.json detected (TC-605), restoring defaults and renaming bad file:', parseErr);
+        try {
+          const badPath = `${filePath}.bad`;
+          if (fs.existsSync(badPath)) {
+            fs.unlinkSync(badPath);
+          }
+          fs.renameSync(filePath, badPath);
+        } catch (renameErr) {
+          logger.error('Failed to rename corrupt settings.json:', renameErr);
+        }
+      }
     }
   } catch (err) {
     logger.warn('Could not read settings.json:', err);
@@ -365,6 +383,14 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
       const settings = loadSettings();
       settings[key] = value;
       saveSettings(settings);
+    }
+  );
+
+  // Get recent diagnostics logs (P6-T4: TC-601)
+  ipcMain.handle(
+    'logs:getRecent',
+    async (_event, limit?: number): Promise<string[]> => {
+      return logger.getRecentLogs(limit);
     }
   );
 }

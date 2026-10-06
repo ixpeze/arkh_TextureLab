@@ -108,6 +108,9 @@ export interface LabAPI {
   getUserData: <T = unknown>(key: string, defaultValue?: T) => Promise<T>;
   setUserData: <T = unknown>(key: string, value: T) => Promise<void>;
 
+  // Diagnostics & logging (P6-T4)
+  getRecentLogs?: (limit?: number) => Promise<string[]>;
+
   // Event listeners
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
   onOpenFile: (callback: (filePath: string) => void) => () => void;

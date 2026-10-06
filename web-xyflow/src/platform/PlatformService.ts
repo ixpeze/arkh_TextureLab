@@ -43,6 +43,7 @@ export interface IPlatformService {
   setDirtyState(dirty: boolean, projectName: string): Promise<void>;
   setTitle(title: string): Promise<void>;
   showCloseGuardDialog(projectName: string): Promise<'save' | 'dont-save' | 'cancel'>;
+  getRecentLogs(limit?: number): Promise<string[]>;
   onMenuCommand(callback: (command: MenuCommand) => void): () => void;
   onOpenFile(callback: (filePath: string) => void): () => void;
   exportFiles(

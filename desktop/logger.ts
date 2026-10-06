@@ -74,6 +74,11 @@ function writeLine(level: string, message: string, ...args: unknown[]): void {
   }
 
   const sanitized = redactSensitiveData(`[${timestamp}] [${level}] ${fullMessage}\n`);
+  recentLogsRingBuffer.push(sanitized.trimEnd());
+  if (recentLogsRingBuffer.length > MAX_RECENT_LOGS) {
+    recentLogsRingBuffer.shift();
+  }
+
   // Always log to stdout/stderr in dev/terminal
   if (level === 'ERROR') {
     process.stderr.write(sanitized);
@@ -90,6 +95,9 @@ function writeLine(level: string, message: string, ...args: unknown[]): void {
   }
 }
 
+const MAX_RECENT_LOGS = 200;
+const recentLogsRingBuffer: string[] = [];
+
 export const logger = {
   init: initLogger,
   info: (msg: string, ...args: unknown[]) => writeLine('INFO', msg, ...args),
@@ -97,6 +105,9 @@ export const logger = {
   error: (msg: string, ...args: unknown[]) => writeLine('ERROR', msg, ...args),
   getLogPath: (): string => currentLogFilePath || '',
   getLogDir: (): string => logDirectory || '',
+  getRecentLogs: (limit = 200): string[] => {
+    return recentLogsRingBuffer.slice(-Math.min(limit, MAX_RECENT_LOGS));
+  },
   openLogsFolder: (): void => {
     if (logDirectory && fs.existsSync(logDirectory)) {
       shell.openPath(logDirectory).catch((err) => {
@@ -105,3 +116,4 @@ export const logger = {
     }
   },
 };
+

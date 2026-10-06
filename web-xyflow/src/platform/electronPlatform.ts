@@ -145,6 +145,11 @@ export class ElectronPlatformService implements IPlatformService {
     await window.lab.setTitle(title);
   }
 
+  public async getRecentLogs(limit?: number): Promise<string[]> {
+    if (!window.lab || !window.lab.getRecentLogs) return [];
+    return await window.lab.getRecentLogs(limit);
+  }
+
   public onMenuCommand(callback: (command: MenuCommand) => void): () => void {
     if (!window.lab) return () => {};
     return window.lab.onMenuCommand(callback);
