@@ -7,6 +7,10 @@ use texturelab::core::buffer::TextureBuffer;
 use texturelab::core::colorspace::{linear_to_srgb_buffer, srgb_to_linear_buffer};
 use texturelab::export::codecs::{load_image, save_png};
 use texturelab::export::tga::{decode_tga, encode_tga_32, has_tga_2_0_footer, load_tga_file, save_tga_file, TgaHeader};
+use texturelab::graph::{
+    CompileError, Graph, GraphCompiler, GraphEvaluator, HistoryStack, Node, NodeId,
+    NodeParam, PinId, ProjectFile,
+};
 use texturelab::version;
 
 #[test]
@@ -231,4 +235,259 @@ fn test_colorspace_conversions() {
     assert!((orig[0] as i32 - rest[0] as i32).abs() <= 1);
     assert!((orig[1] as i32 - rest[1] as i32).abs() <= 1);
     assert!((orig[2] as i32 - rest[2] as i32).abs() <= 1);
+}
+
+// =========================================================================
+// Phase 2 Integration Tests (TC-201 .. TC-204, DAG & Reactive Engine)
+// =========================================================================
+
+/// TC-201: Topological Sort Ordering
+/// Verifies upstream nodes evaluated strictly before downstream dependents
+#[test]
+fn test_topological_sort() {
+    let mut graph = Graph::new();
+    let n1 = graph.create_node("TextureInput", "Albedo Map", [0.0, 0.0]);
+    let n2 = graph.create_node("Invert", "Invert Color", [200.0, 0.0]);
+    let n3 = graph.create_node("TextureOutput", "Final Output", [400.0, 0.0]);
+
+    graph
+        .connect(PinId::output(n1, "out"), PinId::input(n2, "in"))
+        .unwrap();
+    graph
+        .connect(PinId::output(n2, "out"), PinId::input(n3, "in"))
+        .unwrap();
+
+    let order = GraphCompiler::compile(&graph).expect("DAG compilation failed");
+    assert_eq!(order.len(), 3);
+    assert_eq!(order, vec![n1, n2, n3]);
+}
+
+/// TC-202: Cycle Detection Error
+/// Verifies adding a circular edge fails compilation gracefully with Err(CompileError::CycleDetected)
+#[test]
+fn test_cycle_detection() {
+    let mut graph = Graph::new();
+    let n1 = graph.create_node("NodeA", "A", [0.0, 0.0]);
+    let n2 = graph.create_node("NodeB", "B", [100.0, 0.0]);
+    let n3 = graph.create_node("NodeC", "C", [200.0, 0.0]);
+
+    graph
+        .connect(PinId::output(n1, "out"), PinId::input(n2, "in"))
+        .unwrap();
+    graph
+        .connect(PinId::output(n2, "out"), PinId::input(n3, "in"))
+        .unwrap();
+
+    // Verify predictive cycle detection
+    assert!(GraphCompiler::would_create_cycle(&graph, n3, n1));
+
+    // Force circular edge: 3 -> 1
+    let _ = graph.connect(PinId::output(n3, "out"), PinId::input(n1, "in"));
+
+    let compile_result = GraphCompiler::compile(&graph);
+    assert_eq!(compile_result, Err(CompileError::CycleDetected));
+}
+
+/// TC-203: Serde .tlab Serialization Roundtrip
+/// Verifies identical nodes, parameters, positions, and edges restored after deserialization
+#[test]
+fn test_graph_serialization_roundtrip() {
+    let mut graph = Graph::new();
+    let mut node1 = Node::new(NodeId(1), "TextureInput", "Base Roughness", [120.0, 340.0]);
+    node1.set_param("resolution", NodeParam::Resolution { width: 4096, height: 2048 });
+    node1.set_param("color", NodeParam::Color([0.8, 0.4, 0.2, 1.0]));
+    let p1_out = node1.add_output("output");
+    graph.add_node(node1);
+
+    let mut node2 = Node::new(NodeId(2), "Invert", "Glossiness To Roughness", [450.0, 340.0]);
+    let p2_in = node2.add_input("input");
+    let p2_out = node2.add_output("output");
+    graph.add_node(node2);
+
+    graph.connect(p1_out, p2_in).unwrap();
+
+    let project = ProjectFile::new(graph, "Roundtrip Project Test");
+    let json = project.to_json().expect("Failed to serialize ProjectFile");
+
+    let restored = ProjectFile::from_json(&json).expect("Failed to deserialize ProjectFile");
+    assert_eq!(restored.format_version, 1);
+    assert_eq!(restored.metadata.name, "Roundtrip Project Test");
+    assert_eq!(restored.graph.nodes.len(), 2);
+    assert_eq!(restored.graph.edges.len(), 1);
+
+    let r_n1 = restored.graph.get_node(NodeId(1)).unwrap();
+    assert_eq!(r_n1.position, [120.0, 340.0]);
+    assert_eq!(r_n1.get_color("color", [0.0; 4]), [0.8, 0.4, 0.2, 1.0]);
+    assert_eq!(
+        r_n1.get_param("resolution").unwrap().as_resolution(),
+        Some((4096, 2048))
+    );
+
+    let r_n2 = restored.graph.get_node(NodeId(2)).unwrap();
+    assert_eq!(r_n2.position, [450.0, 340.0]);
+    assert_eq!(r_n2.outputs, vec![p2_out]);
+}
+
+/// TC-204: Reactive Cache Invalidation
+/// Modifying node A re-evaluates B, but leaves independent C untouched
+#[test]
+fn test_cache_invalidation() {
+    let mut graph = Graph::new();
+
+    // Node A -> Node B
+    let mut a = Node::new(NodeId(1), "ConstantColor", "Node A", [0.0, 0.0]);
+    a.set_param("color", NodeParam::Color([0.1, 0.2, 0.3, 1.0]));
+    let a_out = a.add_output("output");
+    graph.add_node(a);
+
+    let mut b = Node::new(NodeId(2), "Invert", "Node B", [200.0, 0.0]);
+    let b_in = b.add_input("input");
+    let _b_out = b.add_output("output");
+    graph.add_node(b);
+    graph.connect(a_out, b_in).unwrap();
+
+    // Independent Node C
+    let mut c = Node::new(NodeId(3), "ConstantColor", "Node C", [0.0, 200.0]);
+    c.set_param("color", NodeParam::Color([0.9, 0.9, 0.9, 1.0]));
+    let _c_out = c.add_output("output");
+    graph.add_node(c);
+
+    let mut evaluator = GraphEvaluator::new((64, 64));
+
+    // First evaluation: all 3 evaluated
+    let r1 = evaluator.evaluate(&graph).unwrap();
+    assert_eq!(r1.evaluated_nodes.len(), 3);
+    assert_eq!(evaluator.node_exec_counts[&NodeId(1)], 1);
+    assert_eq!(evaluator.node_exec_counts[&NodeId(2)], 1);
+    assert_eq!(evaluator.node_exec_counts[&NodeId(3)], 1);
+
+    // Second evaluation: zero evaluated (cache hits)
+    let r2 = evaluator.evaluate(&graph).unwrap();
+    assert_eq!(r2.evaluated_nodes.len(), 0);
+    assert_eq!(evaluator.node_exec_counts[&NodeId(1)], 1);
+    assert_eq!(evaluator.node_exec_counts[&NodeId(2)], 1);
+    assert_eq!(evaluator.node_exec_counts[&NodeId(3)], 1);
+
+    // Modify Node A and mark dirty
+    evaluator.mark_dirty(&graph, NodeId(1));
+
+    // Third evaluation: A and B evaluated, independent C untouched
+    let r3 = evaluator.evaluate(&graph).unwrap();
+    assert_eq!(r3.evaluated_nodes, vec![NodeId(1), NodeId(2)]);
+    assert_eq!(evaluator.node_exec_counts[&NodeId(1)], 2);
+    assert_eq!(evaluator.node_exec_counts[&NodeId(2)], 2);
+    // Independent Node C remains completely untouched (cache hit)
+    assert_eq!(evaluator.node_exec_counts[&NodeId(3)], 1);
+}
+
+/// P2-T5: Transactional History Stack (100-step Undo/Redo)
+/// Exact node positions, parameters, and edges restored
+#[test]
+fn test_transactional_history_stack_undo_redo() {
+    let mut history = HistoryStack::with_capacity(100);
+    let mut graph = Graph::new();
+
+    let mut n1 = Node::new(NodeId(1), "ConstantColor", "Color", [50.0, 60.0]);
+    n1.set_param("color", NodeParam::Color([1.0, 0.0, 0.0, 1.0]));
+    let p1_out = n1.add_output("output");
+    graph.add_node(n1);
+
+    history.record(&graph, "Add Node 1");
+
+    // Mutate position and param
+    {
+        let n1_mut = graph.get_node_mut(NodeId(1)).unwrap();
+        n1_mut.position = [300.0, 400.0];
+        n1_mut.set_param("color", NodeParam::Color([0.0, 1.0, 0.0, 1.0]));
+    }
+    history.record(&graph, "Move Node 1 and change color");
+
+    // Add Node 2 and connect
+    let mut n2 = Node::new(NodeId(2), "Invert", "Invert", [600.0, 400.0]);
+    let p2_in = n2.add_input("input");
+    graph.add_node(n2);
+    graph.connect(p1_out, p2_in).unwrap();
+
+    // Verify current state
+    assert_eq!(graph.nodes.len(), 2);
+    assert_eq!(graph.edges.len(), 1);
+
+    // Undo 1: back to 1 node at [300, 400]
+    let g1 = history.undo(&graph).unwrap();
+    assert_eq!(g1.nodes.len(), 1);
+    assert_eq!(g1.edges.len(), 0);
+    assert_eq!(g1.get_node(NodeId(1)).unwrap().position, [300.0, 400.0]);
+
+    // Undo 2: back to initial state at [50, 60] with red color
+    let g0 = history.undo(&g1).unwrap();
+    assert_eq!(g0.nodes.len(), 1);
+    assert_eq!(g0.get_node(NodeId(1)).unwrap().position, [50.0, 60.0]);
+    assert_eq!(
+        g0.get_node(NodeId(1)).unwrap().get_color("color", [0.0; 4]),
+        [1.0, 0.0, 0.0, 1.0]
+    );
+
+    // Redo 1 & 2
+    let g_redone1 = history.redo(&g0).unwrap();
+    assert_eq!(g_redone1.get_node(NodeId(1)).unwrap().position, [300.0, 400.0]);
+
+    let g_redone2 = history.redo(&g_redone1).unwrap();
+    assert_eq!(g_redone2.nodes.len(), 2);
+    assert_eq!(g_redone2.edges.len(), 1);
+}
+
+/// P2-T4: Non-Square Working Resolution Propagation (e.g. 4096x2048)
+#[test]
+fn test_non_square_4k_aspect_propagation() {
+    let mut graph = Graph::new();
+
+    let mut n1 = Node::new(NodeId(1), "ConstantColor", "Panoramic Albedo", [0.0, 0.0]);
+    n1.set_param("resolution", NodeParam::Resolution { width: 4096, height: 2048 });
+    let p1_out = n1.add_output("output");
+    graph.add_node(n1);
+
+    let mut n2 = Node::new(NodeId(2), "Invert", "Panoramic Invert", [300.0, 0.0]);
+    let p2_in = n2.add_input("input");
+    let p2_out = n2.add_output("output");
+    graph.add_node(n2);
+    graph.connect(p1_out, p2_in).unwrap();
+
+    let mut evaluator = GraphEvaluator::new((1024, 1024));
+    evaluator.evaluate(&graph).unwrap();
+
+    let out = evaluator.get_output(&p2_out).unwrap();
+    assert_eq!(out.width, 4096);
+    assert_eq!(out.height, 2048);
+}
+
+/// P2-T6: Atomic `.tlab` File Save and Load to Disk
+#[test]
+fn test_tlab_atomic_file_save_and_load() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "texturelab_test_p2_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&temp_dir).expect("Failed to create temp directory");
+
+    let mut graph = Graph::new();
+    let n1 = graph.create_node("ConstantScalar", "Roughness Base", [100.0, 150.0]);
+    let project = ProjectFile::new(graph, "Disk Save Test");
+
+    let file_path = temp_dir.join("test_project.tlab");
+    assert!(!file_path.exists());
+
+    // Atomic save
+    project.save_to_file(&file_path).expect("Failed to save .tlab file");
+    assert!(file_path.exists());
+
+    // Load back
+    let loaded = ProjectFile::load_from_file(&file_path).expect("Failed to load .tlab file");
+    assert_eq!(loaded.metadata.name, "Disk Save Test");
+    assert!(loaded.graph.contains_node(n1));
+
+    // Clean up
+    let _ = fs::remove_dir_all(&temp_dir);
 }

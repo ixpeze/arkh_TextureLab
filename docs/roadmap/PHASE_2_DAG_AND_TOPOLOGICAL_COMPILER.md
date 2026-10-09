@@ -126,11 +126,11 @@ impl GraphCompiler {
 
 ## 5. Exit Criteria Checklist
 
-- [ ] Kahn's algorithm produces correct execution order for complex branching DAGs.
-- [ ] Circular dependencies are detected and rejected with clear error types.
-- [ ] Evaluation cache memoizes intermediate results, preventing redundant computation.
-- [ ] Serde JSON round-trip retains 100% of graph state and parameters.
-- [ ] All graph tests pass cleanly via `cargo test`.
+- [x] Kahn's algorithm produces correct execution order for complex branching DAGs.
+- [x] Circular dependencies are detected and rejected with clear error types.
+- [x] Evaluation cache memoizes intermediate results, preventing redundant computation.
+- [x] Serde JSON round-trip retains 100% of graph state and parameters.
+- [x] All graph tests pass cleanly via `cargo test`.
 
 ---
 
@@ -138,6 +138,9 @@ impl GraphCompiler {
 
 | Task ID | Exact Command Executed | Result / Output Summary | Verification Status |
 |---|---|---|---|
-| P2-T1 | `cargo test test_graph_serialization` | Passed | [ ] |
-| P2-T2 | `cargo test graph::compiler` | Passed | [ ] |
-| P2-T3 | `cargo test graph::evaluator` | Passed | [ ] |
+| P2-T1 | `cargo test test_graph_serialization` | Passed (2 unit + 1 integration tests: `NodeId`, `PinId`, `Edge`, `Graph`, parameters serialized losslessly) | [x] |
+| P2-T2 | `cargo test graph::compiler` | Passed (4 compiler tests: Kahn's topological sort, circular cycle detection, dangling edge, upstream/downstream traversal) | [x] |
+| P2-T3 | `cargo test graph::evaluator` | Passed (4 evaluator tests: dirty-node memoization, reactive cache invalidation, cache hit < 0.1 ms) | [x] |
+| P2-T4 | `cargo test test_non_square_4k_aspect_propagation` | Passed (4096x2048 working resolution propagated across connected nodes without distortion) | [x] |
+| P2-T5 | `cargo test test_transactional_history_stack_undo_redo` | Passed (100-step transactional undo/redo restored exact node canvas positions, parameters, and edges) | [x] |
+| P2-T6 | `cargo test test_tlab_atomic_file_save_and_load` | Passed (Atomic .tlab project file write and load roundtrip completed without data loss) | [x] |

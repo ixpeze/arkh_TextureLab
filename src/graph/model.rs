@@ -1,0 +1,622 @@
+//! Directed Acyclic Graph (DAG) Data Model & Serialization.
+//!
+//! Provides the primary primitives for nodes, pins, edges, graphs,
+//! and `.tlab` project file serialization (Phase 2).
+
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
+
+/// Unique identifier for a node within a graph.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct NodeId(pub u64);
+
+impl From<u64> for NodeId {
+    fn from(id: u64) -> Self {
+        NodeId(id)
+    }
+}
+
+impl std::fmt::Display for NodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Node#{}", self.0)
+    }
+}
+
+/// Identifies an input or output pin on a specific node.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PinId {
+    pub node_id: NodeId,
+    pub name: String,
+    pub is_input: bool,
+}
+
+impl PinId {
+    /// Creates an input pin identifier.
+    pub fn input(node_id: NodeId, name: impl Into<String>) -> Self {
+        Self {
+            node_id,
+            name: name.into(),
+            is_input: true,
+        }
+    }
+
+    /// Creates an output pin identifier.
+    pub fn output(node_id: NodeId, name: impl Into<String>) -> Self {
+        Self {
+            node_id,
+            name: name.into(),
+            is_input: false,
+        }
+    }
+}
+
+/// Data type associated with a pin socket.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PinType {
+    Scalar,
+    ColorRgba,
+    Texture,
+    Any,
+}
+
+/// Rich metadata for a node socket pin.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Pin {
+    pub id: PinId,
+    pub label: String,
+    pub pin_type: PinType,
+}
+
+/// Directed edge connecting an upstream output pin to a downstream input pin.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Edge {
+    pub from: PinId,
+    pub to: PinId,
+}
+
+impl Edge {
+    /// Creates a new directed edge from an output pin to an input pin.
+    pub fn new(from: PinId, to: PinId) -> Self {
+        Self { from, to }
+    }
+}
+
+/// Supported parameter value types stored on nodes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum NodeParam {
+    Float(f32),
+    Int(i64),
+    Bool(bool),
+    Color([f32; 4]),
+    String(String),
+    Vec2([f32; 2]),
+    Vec3([f32; 3]),
+    Resolution { width: u32, height: u32 },
+}
+
+impl NodeParam {
+    pub fn as_float(&self) -> Option<f32> {
+        match self {
+            NodeParam::Float(v) => Some(*v),
+            NodeParam::Int(v) => Some(*v as f32),
+            _ => None,
+        }
+    }
+
+    pub fn as_int(&self) -> Option<i64> {
+        match self {
+            NodeParam::Int(v) => Some(*v),
+            NodeParam::Float(v) => Some(*v as i64),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            NodeParam::Bool(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    pub fn as_color(&self) -> Option<[f32; 4]> {
+        match self {
+            NodeParam::Color(c) => Some(*c),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            NodeParam::String(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+
+    pub fn as_resolution(&self) -> Option<(u32, u32)> {
+        match self {
+            NodeParam::Resolution { width, height } => Some((*width, *height)),
+            NodeParam::Vec2(v) => Some((v[0] as u32, v[1] as u32)),
+            _ => None,
+        }
+    }
+}
+
+/// A node in the texture processing graph.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Node {
+    pub id: NodeId,
+    pub node_type: String,
+    pub label: String,
+    pub position: [f32; 2],
+    #[serde(default)]
+    pub inputs: Vec<PinId>,
+    #[serde(default)]
+    pub outputs: Vec<PinId>,
+    #[serde(default)]
+    pub params: HashMap<String, NodeParam>,
+}
+
+impl Node {
+    /// Creates a new node with the specified ID, type, label, and canvas position.
+    pub fn new(
+        id: NodeId,
+        node_type: impl Into<String>,
+        label: impl Into<String>,
+        position: [f32; 2],
+    ) -> Self {
+        Self {
+            id,
+            node_type: node_type.into(),
+            label: label.into(),
+            position,
+            inputs: Vec::new(),
+            outputs: Vec::new(),
+            params: HashMap::new(),
+        }
+    }
+
+    /// Adds an input pin to the node and returns its PinId.
+    pub fn add_input(&mut self, name: impl Into<String>) -> PinId {
+        let pin = PinId::input(self.id, name);
+        if !self.inputs.contains(&pin) {
+            self.inputs.push(pin.clone());
+        }
+        pin
+    }
+
+    /// Adds an output pin to the node and returns its PinId.
+    pub fn add_output(&mut self, name: impl Into<String>) -> PinId {
+        let pin = PinId::output(self.id, name);
+        if !self.outputs.contains(&pin) {
+            self.outputs.push(pin.clone());
+        }
+        pin
+    }
+
+    /// Sets a parameter on the node.
+    pub fn set_param(&mut self, name: impl Into<String>, value: NodeParam) {
+        self.params.insert(name.into(), value);
+    }
+
+    /// Retrieves a parameter by name.
+    pub fn get_param(&self, name: &str) -> Option<&NodeParam> {
+        self.params.get(name)
+    }
+
+    /// Retrieves a float parameter or returns the provided default.
+    pub fn get_float(&self, name: &str, default: f32) -> f32 {
+        self.params
+            .get(name)
+            .and_then(|p| p.as_float())
+            .unwrap_or(default)
+    }
+
+    /// Retrieves a color parameter or returns the provided default.
+    pub fn get_color(&self, name: &str, default: [f32; 4]) -> [f32; 4] {
+        self.params
+            .get(name)
+            .and_then(|p| p.as_color())
+            .unwrap_or(default)
+    }
+
+    /// Retrieves a string parameter or returns the provided default.
+    pub fn get_string(&self, name: &str, default: &str) -> String {
+        self.params
+            .get(name)
+            .and_then(|p| p.as_str())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| default.to_string())
+    }
+
+    /// Retrieves a bool parameter or returns the provided default.
+    pub fn get_bool(&self, name: &str, default: bool) -> bool {
+        self.params
+            .get(name)
+            .and_then(|p| p.as_bool())
+            .unwrap_or(default)
+    }
+}
+
+/// Graph manipulation errors.
+#[derive(Debug)]
+pub enum GraphError {
+    NodeNotFound(NodeId),
+    PinNotFound(PinId),
+    InvalidPinDirection { is_input: bool },
+    SelfConnection(NodeId),
+    CycleDetected,
+    Serialization(serde_json::Error),
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for GraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GraphError::NodeNotFound(id) => write!(f, "Node {} not found in graph", id),
+            GraphError::PinNotFound(pin) => write!(f, "Pin {:?} not found on node", pin),
+            GraphError::InvalidPinDirection { is_input } => {
+                write!(f, "Invalid pin direction (is_input: {})", is_input)
+            }
+            GraphError::SelfConnection(id) => {
+                write!(f, "Cannot connect node {} to itself", id)
+            }
+            GraphError::CycleDetected => write!(f, "Cycle detected in directed graph"),
+            GraphError::Serialization(e) => write!(f, "Serialization error: {}", e),
+            GraphError::Io(e) => write!(f, "I/O error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for GraphError {}
+
+impl From<serde_json::Error> for GraphError {
+    fn from(err: serde_json::Error) -> Self {
+        GraphError::Serialization(err)
+    }
+}
+
+impl From<std::io::Error> for GraphError {
+    fn from(err: std::io::Error) -> Self {
+        GraphError::Io(err)
+    }
+}
+
+/// The complete directed graph consisting of nodes and connecting edges.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Graph {
+    pub nodes: HashMap<NodeId, Node>,
+    pub edges: Vec<Edge>,
+    #[serde(default = "default_next_node_id")]
+    pub next_node_id: u64,
+}
+
+fn default_next_node_id() -> u64 {
+    1
+}
+
+impl Graph {
+    /// Creates a new empty graph.
+    pub fn new() -> Self {
+        Self {
+            nodes: HashMap::new(),
+            edges: Vec::new(),
+            next_node_id: 1,
+        }
+    }
+
+    /// Adds an existing node to the graph and updates `next_node_id`.
+    pub fn add_node(&mut self, node: Node) -> NodeId {
+        let id = node.id;
+        if id.0 >= self.next_node_id {
+            self.next_node_id = id.0 + 1;
+        }
+        self.nodes.insert(id, node);
+        id
+    }
+
+    /// Spawns and registers a new node with an auto-incremented ID.
+    pub fn create_node(
+        &mut self,
+        node_type: impl Into<String>,
+        label: impl Into<String>,
+        position: [f32; 2],
+    ) -> NodeId {
+        let id = NodeId(self.next_node_id);
+        self.next_node_id += 1;
+        let node = Node::new(id, node_type, label, position);
+        self.nodes.insert(id, node);
+        id
+    }
+
+    /// Removes a node from the graph and removes all associated edges.
+    pub fn remove_node(&mut self, id: NodeId) -> Option<Node> {
+        let removed = self.nodes.remove(&id);
+        if removed.is_some() {
+            self.edges
+                .retain(|edge| edge.from.node_id != id && edge.to.node_id != id);
+        }
+        removed
+    }
+
+    /// Retrieves an immutable reference to a node.
+    pub fn get_node(&self, id: NodeId) -> Option<&Node> {
+        self.nodes.get(&id)
+    }
+
+    /// Retrieves a mutable reference to a node.
+    pub fn get_node_mut(&mut self, id: NodeId) -> Option<&mut Node> {
+        self.nodes.get_mut(&id)
+    }
+
+    /// Returns true if the graph contains a node with the given ID.
+    pub fn contains_node(&self, id: NodeId) -> bool {
+        self.nodes.contains_key(&id)
+    }
+
+    /// Connects an output pin to an input pin, replacing any existing incoming edge on that input pin.
+    pub fn connect(&mut self, from: PinId, to: PinId) -> Result<(), GraphError> {
+        if from.node_id == to.node_id {
+            return Err(GraphError::SelfConnection(from.node_id));
+        }
+        if !self.nodes.contains_key(&from.node_id) {
+            return Err(GraphError::NodeNotFound(from.node_id));
+        }
+        if !self.nodes.contains_key(&to.node_id) {
+            return Err(GraphError::NodeNotFound(to.node_id));
+        }
+        if from.is_input {
+            return Err(GraphError::InvalidPinDirection { is_input: true });
+        }
+        if !to.is_input {
+            return Err(GraphError::InvalidPinDirection { is_input: false });
+        }
+
+        // In DCC graph workflows, input sockets accept only a single incoming connection.
+        // Replace existing incoming edge on `to`.
+        self.edges.retain(|e| e.to != to);
+
+        self.edges.push(Edge::new(from, to));
+        Ok(())
+    }
+
+    /// Disconnects a specific edge between two pins.
+    pub fn disconnect(&mut self, from: &PinId, to: &PinId) -> bool {
+        let initial_len = self.edges.len();
+        self.edges.retain(|e| !(e.from == *from && e.to == *to));
+        self.edges.len() < initial_len
+    }
+
+    /// Disconnects all edges touching a specific pin.
+    pub fn disconnect_pin(&mut self, pin: &PinId) -> usize {
+        let initial_len = self.edges.len();
+        self.edges.retain(|e| e.from != *pin && e.to != *pin);
+        initial_len - self.edges.len()
+    }
+
+    /// Returns all edges originating from a node.
+    pub fn edges_from(&self, node_id: NodeId) -> Vec<&Edge> {
+        self.edges
+            .iter()
+            .filter(|e| e.from.node_id == node_id)
+            .collect()
+    }
+
+    /// Returns all edges terminating at a node.
+    pub fn edges_to(&self, node_id: NodeId) -> Vec<&Edge> {
+        self.edges
+            .iter()
+            .filter(|e| e.to.node_id == node_id)
+            .collect()
+    }
+
+    /// Returns the incoming edge terminating at the given input pin.
+    pub fn incoming_edge(&self, pin: &PinId) -> Option<&Edge> {
+        self.edges.iter().find(|e| e.to == *pin)
+    }
+
+    /// Returns all outgoing edges originating from the given output pin.
+    pub fn outgoing_edges(&self, pin: &PinId) -> Vec<&Edge> {
+        self.edges.iter().filter(|e| e.from == *pin).collect()
+    }
+
+    /// Serializes the graph to a JSON string.
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    /// Deserializes a graph from a JSON string.
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+}
+
+/// Project-level metadata stored in `.tlab` files.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ProjectMetadata {
+    pub name: String,
+    #[serde(default)]
+    pub author: String,
+    #[serde(default = "default_timestamp")]
+    pub created_at: String,
+    #[serde(default = "default_timestamp")]
+    pub modified_at: String,
+    #[serde(default = "default_working_resolution")]
+    pub working_resolution: (u32, u32),
+}
+
+fn default_timestamp() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+fn default_working_resolution() -> (u32, u32) {
+    (2048, 2048)
+}
+
+fn default_format_version() -> u32 {
+    1
+}
+
+fn default_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Complete `.tlab` project file container.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ProjectFile {
+    #[serde(default = "default_format_version")]
+    pub format_version: u32,
+    #[serde(default = "default_app_version")]
+    pub app_version: String,
+    pub metadata: ProjectMetadata,
+    pub graph: Graph,
+}
+
+#[derive(Debug)]
+pub enum ProjectError {
+    Serialization(serde_json::Error),
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for ProjectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProjectError::Serialization(e) => write!(f, "Project JSON error: {}", e),
+            ProjectError::Io(e) => write!(f, "Project I/O error: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for ProjectError {}
+
+impl From<serde_json::Error> for ProjectError {
+    fn from(e: serde_json::Error) -> Self {
+        ProjectError::Serialization(e)
+    }
+}
+
+impl From<std::io::Error> for ProjectError {
+    fn from(e: std::io::Error) -> Self {
+        ProjectError::Io(e)
+    }
+}
+
+impl ProjectFile {
+    /// Creates a new ProjectFile from a graph and a project name.
+    pub fn new(graph: Graph, name: impl Into<String>) -> Self {
+        Self {
+            format_version: default_format_version(),
+            app_version: default_app_version(),
+            metadata: ProjectMetadata {
+                name: name.into(),
+                author: "User".to_string(),
+                created_at: default_timestamp(),
+                modified_at: default_timestamp(),
+                working_resolution: default_working_resolution(),
+            },
+            graph,
+        }
+    }
+
+    /// Serializes the project to formatted JSON string.
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+
+    /// Deserializes a project from JSON string with backwards compatibility.
+    /// Supports parsing full ProjectFile or raw Graph JSON.
+    pub fn from_json(json: &str) -> Result<Self, ProjectError> {
+        if let Ok(project) = serde_json::from_str::<ProjectFile>(json) {
+            return Ok(project);
+        }
+        // Fallback backward compatibility: raw Graph
+        if let Ok(graph) = serde_json::from_str::<Graph>(json) {
+            return Ok(ProjectFile::new(graph, "Imported Graph"));
+        }
+        let err = serde_json::from_str::<ProjectFile>(json).unwrap_err();
+        Err(ProjectError::Serialization(err))
+    }
+
+    /// Saves project atomically to disk (.tlab or .json).
+    pub fn save_to_file(&self, path: impl AsRef<Path>) -> Result<(), ProjectError> {
+        let path = path.as_ref();
+        let json = self.to_json()?;
+        
+        // Write to temporary file first for atomic durability
+        let temp_path = path.with_extension("tmp");
+        {
+            let mut file = File::create(&temp_path)?;
+            file.write_all(json.as_bytes())?;
+            file.sync_all()?;
+        }
+        std::fs::rename(&temp_path, path)?;
+        Ok(())
+    }
+
+    /// Loads project from disk.
+    pub fn load_from_file(path: impl AsRef<Path>) -> Result<Self, ProjectError> {
+        let mut file = File::open(path.as_ref())?;
+        let mut content = String::new();
+        file.read_to_string(&mut content)?;
+        Self::from_json(&content)
+    }
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_graph_serialization() {
+        let mut graph = Graph::new();
+        let n1 = graph.create_node("TextureInput", "Albedo Map", [100.0, 200.0]);
+        let n2 = graph.create_node("Invert", "Invert Color", [350.0, 200.0]);
+
+        let p1 = PinId::output(n1, "output");
+        let p2 = PinId::input(n2, "input");
+        graph.connect(p1, p2).expect("Failed to connect pins");
+
+        let json = graph.to_json().expect("Serialization failed");
+        let deserialized = Graph::from_json(&json).expect("Deserialization failed");
+
+        assert_eq!(graph.nodes.len(), deserialized.nodes.len());
+        assert_eq!(graph.edges.len(), deserialized.edges.len());
+        assert_eq!(graph.edges[0], deserialized.edges[0]);
+    }
+
+    #[test]
+    pub fn test_graph_serialization_roundtrip() {
+        let mut graph = Graph::new();
+        let mut node = Node::new(NodeId(1), "ConstantColor", "Color Source", [50.0, 75.0]);
+        node.set_param("color", NodeParam::Color([1.0, 0.5, 0.25, 1.0]));
+        node.set_param("resolution", NodeParam::Resolution { width: 4096, height: 2048 });
+        let pin_out = node.add_output("RGBA");
+        graph.add_node(node);
+
+        let mut node2 = Node::new(NodeId(2), "TextureOutput", "Output Target", [400.0, 75.0]);
+        let pin_in = node2.add_input("RGBA");
+        graph.add_node(node2);
+
+        graph.connect(pin_out, pin_in).expect("Connect failed");
+
+        let project = ProjectFile::new(graph, "Test PBR Project");
+        let json = project.to_json().expect("Serialize project failed");
+
+        let restored = ProjectFile::from_json(&json).expect("Deserialize project failed");
+        assert_eq!(restored.format_version, 1);
+        assert_eq!(restored.metadata.name, "Test PBR Project");
+        assert_eq!(restored.graph.nodes.len(), 2);
+        assert_eq!(restored.graph.edges.len(), 1);
+
+        let n1_restored = restored.graph.get_node(NodeId(1)).unwrap();
+        assert_eq!(n1_restored.position, [50.0, 75.0]);
+        assert_eq!(
+            n1_restored.get_color("color", [0.0; 4]),
+            [1.0, 0.5, 0.25, 1.0]
+        );
+        let res = n1_restored.get_param("resolution").unwrap().as_resolution();
+        assert_eq!(res, Some((4096, 2048)));
+    }
+}
