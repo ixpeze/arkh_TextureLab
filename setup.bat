@@ -1,112 +1,94 @@
 @echo off
 setlocal
-title ARKH TextureLab - First Time Installer
+title ARKH TextureLab - Environment Setup (Pure Rust)
 
 echo ===============================================================================
-echo                ARKH TextureLab - First Time Environment Installer
+echo                ARKH TextureLab - Pure Rust Environment Setup
 echo ===============================================================================
 echo.
 
-:: 1. Check Node.js installation
-echo [*] Checking Node.js installation...
-where node >nul 2>&1
-if %errorlevel% neq 0 goto :node_missing
+:: 1. Check Rust compiler (rustc)
+echo [*] Checking Rust toolchain (rustc)...
+where rustc >nul 2>&1
+if %errorlevel% neq 0 goto :rust_missing
 
-for /f "tokens=*" %%v in ('node -v 2^>nul') do set "NODE_VER=%%v"
-echo     Found Node.js %NODE_VER%
+for /f "tokens=*" %%v in ('rustc --version 2^>nul') do set "RUSTC_VER=%%v"
+echo     Found %RUSTC_VER%
 
-:: 2. Check npm installation
-echo [*] Checking npm installation...
-where npm >nul 2>&1
-if %errorlevel% neq 0 goto :npm_missing
+:: 2. Check Cargo package manager
+echo [*] Checking Cargo package manager...
+where cargo >nul 2>&1
+if %errorlevel% neq 0 goto :cargo_missing
 
-for /f "tokens=*" %%v in ('npm -v 2^>nul') do set "NPM_VER=%%v"
-echo     Found npm v%NPM_VER%
+for /f "tokens=*" %%v in ('cargo --version 2^>nul') do set "CARGO_VER=%%v"
+echo     Found %CARGO_VER%
 echo.
 
-:: 3. Navigate to app directory
-cd /d "%~dp0app"
-if %errorlevel% neq 0 goto :dir_missing
-
-:: 4. Install dependencies
-echo [*] Installing dependencies via npm install...
-echo     Please wait while npm installs packages...
+:: 3. Run cargo test baseline verification
+echo [*] Running test suite verification (cargo test)...
+echo     Please wait while crates are compiled and verified...
 echo.
-call npm install
-if %errorlevel% neq 0 goto :install_failed
-
-echo.
-echo [*] Verifying test suite...
-call npm test
-if %errorlevel% neq 0 (
-    echo.
-    echo [WARNING] Test suite reported warnings or errors. You may still proceed.
-    echo.
-)
+cd /d "%~dp0"
+call cargo test
+if %errorlevel% neq 0 goto :test_failed
 
 echo.
 echo ===============================================================================
 echo                ARKH TextureLab Setup Completed Successfully!
 echo ===============================================================================
 echo.
-echo You can now launch ARKH TextureLab anytime by running:
-echo    run_desktop_dev.bat   (Desktop App)
-echo    run_web.bat           (Web Browser)
+echo 100%% Pure Rust Desktop environment is verified and ready.
+echo You can launch ARKH TextureLab using:
+echo    run_desktop_dev.bat   (Fast Development Mode: cargo run)
+echo    run_desktop.bat       (Optimized Release Executable)
 echo.
-set /p "LAUNCH_NOW=Would you like to launch ARKH TextureLab now? (Y/N, default Y): "
+
+set /p "LAUNCH_NOW=Would you like to launch ARKH TextureLab in Dev Mode now? (Y/N, default Y): "
 if /i "%LAUNCH_NOW%"=="N" goto :skip_launch
 
 echo.
-echo [*] Launching ARKH TextureLab in your default browser...
-cd /d "%~dp0"
-call run_web.bat
+echo [*] Launching ARKH TextureLab Desktop (Dev Mode)...
+call run_desktop_dev.bat
 exit /b 0
 
 :skip_launch
-echo Exiting setup. Run run_web.bat when you are ready.
+echo Exiting setup. Run run_desktop_dev.bat or run_desktop.bat when ready.
 pause
 exit /b 0
 
-:node_missing
+:rust_missing
 echo.
 echo ===============================================================================
-echo [ERROR] Node.js is not found in your system PATH!
+echo [ERROR] Rust compiler (rustc) is not found in your system PATH!
 echo ===============================================================================
-echo Node.js LTS is required to run ARKH TextureLab.
-echo Please download and install Node.js from:
-echo    https://nodejs.org/
+echo ARKH TextureLab is a 100%% Pure Rust application requiring the Rust 2021 toolchain.
+echo Please install Rust via rustup:
+echo    https://rustup.rs/
 echo.
-echo After installing Node.js, close and reopen your terminal or rerun setup.bat.
-echo ===============================================================================
-echo.
-pause
-exit /b 1
-
-:npm_missing
-echo.
-echo ===============================================================================
-echo [ERROR] npm is not found in your system PATH!
-echo ===============================================================================
-echo npm comes bundled with Node.js. Please verify your Node.js installation.
+echo Make sure "C++ Build Tools" (MSVC) are also selected during installation.
+echo After installation, reopen this terminal and rerun setup.bat.
 echo ===============================================================================
 echo.
 pause
 exit /b 1
 
-:dir_missing
+:cargo_missing
 echo.
-echo [ERROR] Could not find the 'app' directory at: "%~dp0app"
+echo ===============================================================================
+echo [ERROR] Cargo is not found in your system PATH!
+echo ===============================================================================
+echo Cargo is installed automatically with Rust. Please verify your rustup installation.
+echo ===============================================================================
+echo.
 pause
 exit /b 1
 
-:install_failed
+:test_failed
 echo.
 echo ===============================================================================
-echo [ERROR] npm install failed!
+echo [ERROR] Test suite verification failed!
 echo ===============================================================================
-echo Check your internet connection or proxy settings, or try running:
-echo    cd app
-echo    npm install --verbose
+echo Please review the compiler or test failure log above.
 echo ===============================================================================
 echo.
 pause

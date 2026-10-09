@@ -44,3 +44,6 @@ playwright-report/
 git_token.txt
 .git_credentials
 
+# Rust build artifacts
+target/
+*.pdb
