@@ -712,3 +712,232 @@ fn test_pot_rounding() {
     assert_eq!(prev_pot(1920), 1024);
 }
 
+// =========================================================================
+// Phase 4 Integration Tests (TC-401 .. TC-404 & Pack Wizard Pipeline)
+// =========================================================================
+
+/// TC-404: Vendor Prefix Stripping
+#[test]
+fn test_strip_vendor_prefix() {
+    use texturelab::normalizer::LexicalNormalizer;
+
+    assert_eq!(
+        LexicalNormalizer::strip_vendor_prefix("T_Anthracite_Concrete_Gloss"),
+        "Anthracite_Concrete_Gloss"
+    );
+    assert_eq!(
+        LexicalNormalizer::strip_vendor_prefix("TexturesCom_Cobblestone_Wall_4096x4096_roughness"),
+        "Cobblestone_Wall_4096x4096_roughness"
+    );
+    assert_eq!(
+        LexicalNormalizer::strip_vendor_prefix("ambientcg_WoodFloor_1K_Color"),
+        "WoodFloor_1K_Color"
+    );
+    assert_eq!(
+        LexicalNormalizer::strip_vendor_prefix("mat_iron_metal"),
+        "iron_metal"
+    );
+}
+
+/// TC-401: Sample Textures Classification (Megascans / Poly Haven real-world set)
+#[test]
+fn test_sample_textures_lexical_analysis() {
+    use texturelab::normalizer::{LexicalNormalizer, PbrRole};
+
+    let samples = [
+        ("anthracite smooth cast concrete basecolor 4k.png", PbrRole::BaseColor),
+        ("anthracite smooth cast concrete roughness 4k.png", PbrRole::Roughness),
+        ("anthracite smooth cast concrete metallic 4k.png", PbrRole::Metallic),
+        ("anthracite smooth cast concrete normal 4k.png", PbrRole::Normal),
+        ("anthracite smooth cast concrete ambientocclusion 4k.png", PbrRole::AmbientOcclusion),
+        ("anthracite smooth cast concrete gloss 4k.png", PbrRole::Glossiness),
+        ("anthracite smooth cast concrete height 4k.png", PbrRole::Height),
+    ];
+
+    for (filename, expected_role) in samples {
+        let meta = LexicalNormalizer::normalize(filename);
+        assert_eq!(
+            meta.inferred_role,
+            Some(expected_role),
+            "Failed classification for {}",
+            filename
+        );
+        assert_eq!(meta.detected_resolution.as_deref(), Some("4K"));
+    }
+
+    // Verify DirectX vs OpenGL normal flags
+    let gl_norm = LexicalNormalizer::normalize("anthracite smooth cast concrete normal gl 4k.png");
+    assert_eq!(gl_norm.inferred_role, Some(PbrRole::Normal));
+    assert!(gl_norm.is_opengl_normal);
+
+    let dx_norm = LexicalNormalizer::normalize("anthracite smooth cast concrete normal dx 4k.png");
+    assert_eq!(dx_norm.inferred_role, Some(PbrRole::Normal));
+    assert!(!dx_norm.is_opengl_normal);
+}
+
+/// TC-402: Pack Wizard Auto-Graph Generation (< 5ms latency, valid DAG)
+#[test]
+fn test_pack_wizard_auto_graph_generation() {
+    use texturelab::normalizer::{PackPreset, PackWizard};
+
+    let files = [
+        "concrete_ambientocclusion_4k.png",
+        "concrete_roughness_4k.png",
+        "concrete_metallic_4k.png",
+    ];
+
+    let start = std::time::Instant::now();
+    let graph = PackWizard::generate_pack_graph(&files, PackPreset::Ue5Orm)
+        .expect("PackWizard graph generation failed");
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed.as_millis() < 5,
+        "Graph generation took {:?}, exceeding 5ms target",
+        elapsed
+    );
+
+    // Verify census: 3 inputs + 1 combiner + 1 output = 5 nodes
+    assert_eq!(graph.nodes.len(), 5);
+    let inputs: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "TextureInput").collect();
+    let combiners: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "ChannelCombine").collect();
+    let outputs: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "TextureOutput").collect();
+
+    assert_eq!(inputs.len(), 3);
+    assert_eq!(combiners.len(), 1);
+    assert_eq!(outputs.len(), 1);
+
+    // Verify 4 edges (3 inputs -> combiner, 1 combiner -> output)
+    assert_eq!(graph.edges.len(), 4);
+
+    // Verify topological compilation produces valid order with no cycles
+    let order = GraphCompiler::compile(&graph).expect("Topological compilation failed");
+    assert_eq!(order.len(), 5);
+}
+
+/// TC-403: Glossiness Auto-Inversion Wiring
+#[test]
+fn test_pack_wizard_glossiness_auto_inversion() {
+    use texturelab::normalizer::{PackPreset, PackWizard};
+
+    let files = [
+        "concrete_ao_4k.png",
+        "concrete_gloss_4k.png",
+        "concrete_metallic_4k.png",
+    ];
+
+    let graph = PackWizard::generate_pack_graph(&files, PackPreset::Ue5Orm)
+        .expect("PackWizard graph generation failed");
+
+    // 1. Invert node must be present
+    let inverts: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "Invert").collect();
+    assert_eq!(inverts.len(), 1, "Expected exactly 1 Invert node in graph");
+    let invert_node = inverts[0];
+
+    // 2. Identify glossiness input node and combiner node
+    let gloss_node = graph
+        .nodes
+        .values()
+        .find(|n| n.node_type == "TextureInput" && n.label.contains("Gloss"))
+        .expect("Glossiness TextureInput node not found");
+
+    let combiner_node = graph
+        .nodes
+        .values()
+        .find(|n| n.node_type == "ChannelCombine")
+        .expect("ChannelCombine node not found");
+
+    // 3. Verify wire routing: Glossiness -> Invert
+    let wire_to_invert = graph
+        .edges
+        .iter()
+        .find(|e| e.from.node_id == gloss_node.id && e.to.node_id == invert_node.id);
+    assert!(wire_to_invert.is_some(), "Wire from Glossiness to Invert missing");
+
+    // 4. Verify wire routing: Invert -> Combiner G slot
+    let wire_to_combiner = graph
+        .edges
+        .iter()
+        .find(|e| e.from.node_id == invert_node.id && e.to.node_id == combiner_node.id && e.to.name == "G");
+    assert!(wire_to_combiner.is_some(), "Wire from Invert to ChannelCombine 'G' slot missing");
+}
+
+/// Pack Wizard Unity MaskMap generation & Roughness-to-Smoothness auto-inversion
+#[test]
+fn test_pack_wizard_unity_maskmap_generation() {
+    use texturelab::normalizer::{PackPreset, PackWizard};
+
+    let files = [
+        "iron_metallic_4k.png",
+        "iron_ao_4k.png",
+        "iron_roughness_4k.png",
+    ];
+
+    let graph = PackWizard::generate_pack_graph(&files, PackPreset::UnityMaskMap)
+        .expect("Unity MaskMap pack graph generation failed");
+
+    // In Unity MaskMap, Smoothness (slot A) = 1.0 - Roughness.
+    // Therefore an Invert node must be inserted for Roughness -> Smoothness.
+    let inverts: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "Invert").collect();
+    assert_eq!(inverts.len(), 1, "Expected 1 Invert node for Roughness -> Smoothness in Unity MaskMap");
+
+    let combiner = graph.nodes.values().find(|n| n.node_type == "ChannelCombine").unwrap();
+    // Roughness routes through Invert into slot "A"
+    assert!(graph.edges.iter().any(|e| e.to.node_id == combiner.id && e.to.name == "A"));
+    // Metallic routes into slot "R"
+    assert!(graph.edges.iter().any(|e| e.to.node_id == combiner.id && e.to.name == "R"));
+    // AO routes into slot "G"
+    assert!(graph.edges.iter().any(|e| e.to.node_id == combiner.id && e.to.name == "G"));
+}
+
+/// Pack Wizard Normal Map OpenGL green flip pipeline execution
+#[test]
+fn test_pack_wizard_normal_gl_flip_pipeline() {
+    use std::sync::Arc;
+    use texturelab::nodes::PbrNodeExecutor;
+    use texturelab::normalizer::{PackPreset, PackWizard};
+
+    let files = [
+        "cliff_ao_2k.png",
+        "cliff_rough_2k.png",
+        "cliff_metal_2k.png",
+        "cliff_normal_gl_2k.png",
+    ];
+
+    let graph = PackWizard::generate_pack_graph(&files, PackPreset::Ue5Orm)
+        .expect("Pack graph generation failed");
+
+    // Verify NormalFlipGreen node exists
+    let flip_nodes: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "NormalFlipGreen").collect();
+    assert_eq!(flip_nodes.len(), 1);
+    let flip_node = flip_nodes[0];
+
+    // Find normal input node
+    let norm_input = graph
+        .nodes
+        .values()
+        .find(|n| n.node_type == "TextureInput" && n.label.contains("N"))
+        .expect("Normal input node not found");
+
+    // Execute with real buffer: normal with green=64
+    let mut normal_buf = TextureBuffer::new(4, 4);
+    normal_buf.set_pixel(0, 0, [128, 64, 255, 255]);
+
+    let mut executor = PbrNodeExecutor::new();
+    executor.set_input_texture(norm_input.id, Arc::new(normal_buf));
+
+    let mut evaluator = GraphEvaluator::new((4, 4));
+    evaluator.set_executor(Box::new(executor));
+    evaluator.evaluate(&graph).expect("DAG evaluation failed");
+
+    // The NormalFlipGreen output should have green = 255 - 64 = 191
+    let flip_out_pin = PinId::output(flip_node.id, "output");
+    let result_buf = evaluator.get_output(&flip_out_pin).expect("Missing flip output buffer");
+    let px = result_buf.get_pixel(0, 0);
+
+    assert_eq!(px[0], 128);
+    assert_eq!(px[1], 191);
+    assert_eq!(px[2], 255);
+}
+
+

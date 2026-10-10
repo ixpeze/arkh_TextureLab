@@ -101,6 +101,11 @@ impl GraphCompiler {
         }
     }
 
+    /// Validates whether the graph has cycles using Kahn's topological compilation.
+    pub fn detect_cycles(graph: &Graph) -> Result<(), CompileError> {
+        Self::compile(graph).map(|_| ())
+    }
+
     /// Fast preflight check to determine if adding an edge from `from` to `to`
     /// would introduce a circular dependency cycle.
     pub fn would_create_cycle(graph: &Graph, from: NodeId, to: NodeId) -> bool {
