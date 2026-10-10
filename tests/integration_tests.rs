@@ -5,8 +5,12 @@ use std::path::PathBuf;
 use texturelab::app::TextureLabApp;
 use texturelab::core::buffer::TextureBuffer;
 use texturelab::core::colorspace::{linear_to_srgb_buffer, srgb_to_linear_buffer};
-use texturelab::export::codecs::{load_image, save_png};
-use texturelab::export::tga::{decode_tga, encode_tga_32, has_tga_2_0_footer, load_tga_file, save_tga_file, TgaHeader};
+use texturelab::export::codecs::load_image;
+use texturelab::export::tga::{decode_tga, encode_tga_32, has_tga_2_0_footer, load_tga_file, TgaHeader};
+use texturelab::export::{
+    is_windows_reserved_name, sanitize_filename, ExportItem, ExportPreset,
+    ExportWriter, TokenContext, TokenResolver,
+};
 use texturelab::graph::{
     CompileError, Graph, GraphCompiler, GraphEvaluator, HistoryStack, Node, NodeId,
     NodeParam, PinId, ProjectFile,
@@ -164,12 +168,13 @@ fn test_4k_pack_perf() {
     );
 }
 
-/// Owner Check test for Phase 1 direct disk export preflight and atomic write.
-/// Verifies writing 32-bit TGA (exact byte size 18+W*H*4+26) and PNG to disk.
+/// Owner Check test for direct disk export preflight and atomic write (Phases 1 & 6).
+/// Verifies preflight safety, Rayon atomic writing of 32-bit TGA (exact byte size 18+W*H*4+26)
+/// and PNG to disk, report census (2 files, 0 errors), and bit-exact pixel match with A=0 preserved.
 #[test]
 fn test_direct_disk_exporter_preflight_and_write() {
     let temp_dir = std::env::temp_dir().join(format!(
-        "texturelab_test_p1_{}",
+        "texturelab_test_p6_{}",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -181,12 +186,28 @@ fn test_direct_disk_exporter_preflight_and_write() {
     let tga_path: PathBuf = temp_dir.join("test_output.tga");
     let png_path: PathBuf = temp_dir.join("test_output.png");
 
-    // Preflight: ensure files do not exist prior to writing
+    let items = vec![
+        ExportItem::new(buf.clone(), &tga_path),
+        ExportItem::new(buf.clone(), &png_path),
+    ];
+
+    // Preflight: ensure files do not exist prior to writing and preflight passes
     assert!(!tga_path.exists());
     assert!(!png_path.exists());
 
-    // Write TGA 32-bit
-    save_tga_file(&buf, &tga_path, 32).expect("Writing TGA to disk failed");
+    let preflight = ExportWriter::preflight(&items);
+    assert!(preflight.is_valid, "Preflight validation must pass");
+    assert_eq!(preflight.items_checked, 2);
+    assert!(preflight.errors.is_empty());
+
+    // Execute atomic parallel export
+    let report = ExportWriter::execute_export(&items);
+    assert!(report.is_success(), "Export execution must succeed");
+    assert_eq!(report.files_written.len(), 2, "Report must track exactly 2 files written");
+    assert_eq!(report.errors.len(), 0, "Report must have 0 errors");
+    assert!(report.bytes_written > 0, "Report must record non-zero bytes written");
+
+    // Verify TGA file exists with exact 18 + W*H*4 + 26 byte size and valid footer
     assert!(tga_path.exists());
     let tga_metadata = fs::metadata(&tga_path).expect("Failed to read TGA metadata");
     let expected_tga_len = (18 + 64 * 64 * 4 + 26) as u64;
@@ -202,8 +223,7 @@ fn test_direct_disk_exporter_preflight_and_write() {
     assert_eq!(read_tga.height, 64);
     assert_eq!(read_tga.get_pixel(0, 0), [42, 84, 126, 0]);
 
-    // Write PNG
-    save_png(&buf, &png_path).expect("Writing PNG to disk failed");
+    // Verify PNG file exists and has non-zero size
     assert!(png_path.exists());
     let png_metadata = fs::metadata(&png_path).expect("Failed to read PNG metadata");
     assert!(png_metadata.len() > 0);
@@ -1095,5 +1115,116 @@ fn test_inspector_param_mutation_and_evaluator_reactivity() {
     assert_eq!(px[3], 255);
 }
 
+/// TC-601: Token String Expansion and Industry Presets
+#[test]
+fn test_token_resolution_and_industry_presets() {
+    let ctx = TokenContext::new("Concrete", "ORM")
+        .with_format("png")
+        .with_resolution("4K")
+        .with_project("TextureLab")
+        .with_colorspace("Linear");
 
+    // Acceptance: Token test expands T_{asset}_{slot} to T_Concrete_ORM.png
+    let resolved = TokenResolver::resolve("T_{asset}_{slot}", &ctx);
+    assert_eq!(resolved, "T_Concrete_ORM.png");
 
+    // Test UE5 preset
+    let ue5 = ExportPreset::find_by_id("ue5").expect("UE5 preset must exist");
+    assert_eq!(ue5.resolve_filename(&ctx), "T_Concrete_ORM.png");
+
+    // Test Substance preset
+    let substance = ExportPreset::find_by_id("substance").expect("Substance preset must exist");
+    assert_eq!(substance.resolve_filename(&ctx), "Concrete_ORM_4K.png");
+
+    // Test Unity preset
+    let unity = ExportPreset::find_by_id("unity").expect("Unity preset must exist");
+    assert_eq!(unity.resolve_filename(&ctx), "Concrete_ORM.png");
+
+    // Test Blender preset
+    let blender = ExportPreset::find_by_id("blender").expect("Blender preset must exist");
+    assert_eq!(blender.resolve_filename(&ctx), "Concrete_ORM.png");
+}
+
+/// TC-602: Windows Reserved Names Check and Sanitization
+#[test]
+fn test_windows_reserved_names() {
+    // Reserved names check
+    assert!(is_windows_reserved_name("aux.png"));
+    assert!(is_windows_reserved_name("con.tga"));
+    assert!(is_windows_reserved_name("PRN.png"));
+    assert!(is_windows_reserved_name("nul.jpg"));
+    assert!(is_windows_reserved_name("COM1.png"));
+    assert!(is_windows_reserved_name("LPT2.tga"));
+    assert!(!is_windows_reserved_name("T_Normal.png"));
+
+    // Sanitization check
+    let sanitized_aux = sanitize_filename("aux.png");
+    assert_eq!(sanitized_aux, "_aux.png");
+    assert!(!is_windows_reserved_name(&sanitized_aux));
+
+    let sanitized_con = sanitize_filename("con.tga");
+    assert_eq!(sanitized_con, "_con.tga");
+    assert!(!is_windows_reserved_name(&sanitized_con));
+
+    // Preflight rejection of reserved name
+    let buf = TextureBuffer::solid_color(16, 16, 100, 100, 100, 255);
+    let items = vec![ExportItem::new(buf, PathBuf::from("export/con.tga"))];
+    let preflight = ExportWriter::preflight(&items);
+    assert!(!preflight.is_valid);
+    assert_eq!(preflight.reserved_names.len(), 1);
+}
+
+/// TC-604: Parallel Export Throughput (4x 4K textures written in < 300 ms in release mode)
+#[test]
+fn test_batch_export_speed() {
+    let temp_dir = std::env::temp_dir().join(format!(
+        "texturelab_batch_perf_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir_all(&temp_dir).expect("Failed to create batch temp directory");
+
+    // Create 4x 4K (4096x4096) buffers
+    let buf1 = TextureBuffer::solid_color(4096, 4096, 255, 0, 0, 255);
+    let buf2 = TextureBuffer::solid_color(4096, 4096, 0, 255, 0, 255);
+    let buf3 = TextureBuffer::solid_color(4096, 4096, 0, 0, 255, 255);
+    let buf4 = TextureBuffer::solid_color(4096, 4096, 128, 128, 128, 255);
+
+    let items = vec![
+        ExportItem::new(buf1, temp_dir.join("T_Bench_Albedo.tga")),
+        ExportItem::new(buf2, temp_dir.join("T_Bench_Normal.tga")),
+        ExportItem::new(buf3, temp_dir.join("T_Bench_ORM.tga")),
+        ExportItem::new(buf4, temp_dir.join("T_Bench_Roughness.tga")),
+    ];
+
+    let start = std::time::Instant::now();
+    let report = ExportWriter::execute_export(&items);
+    let elapsed = start.elapsed();
+    let _ = elapsed;
+
+    assert!(report.is_success());
+    assert_eq!(report.files_written.len(), 4);
+    assert_eq!(report.errors.len(), 0);
+    assert!(report.bytes_written > 0);
+
+    for path in &report.files_written {
+        assert!(path.exists());
+        let meta = fs::metadata(path).expect("Failed to read metadata");
+        let expected_size = (18 + 4096 * 4096 * 4 + 26) as u64;
+        assert_eq!(meta.len(), expected_size);
+    }
+
+    // In release mode, enforce < 300ms performance budget
+    #[cfg(not(debug_assertions))]
+    {
+        assert!(
+            elapsed.as_millis() < 300,
+            "4x 4K parallel export in release mode must complete in < 300ms, took {:?}",
+            elapsed
+        );
+    }
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

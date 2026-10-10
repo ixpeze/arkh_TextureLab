@@ -17,6 +17,7 @@ use crate::nodes::{NodeDescriptor, NODE_CATALOG};
 use crate::ui::canvas::{CanvasAction, CanvasState};
 use crate::ui::inspector::{show_inspector, InspectorAction};
 use crate::ui::library::{show_library_panel, SearchPaletteState};
+use crate::export::{ExportItem, ExportPreset, ExportWriter, TokenContext};
 use crate::ui::theme::{apply_theme, create_dock_style, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY};
 use crate::ui::viewport::ViewportState;
 use crate::ui::Tab;
@@ -37,6 +38,10 @@ pub struct TextureLabApp {
     pub eval_time_ms: f64,
     pub project_file_path: Option<PathBuf>,
     pub show_about_dialog: bool,
+    pub export_preset_id: String,
+    pub export_asset_name: String,
+    pub export_target_dir: String,
+    pub export_report_summary: Option<String>,
 }
 
 impl TextureLabApp {
@@ -79,6 +84,10 @@ impl TextureLabApp {
             eval_time_ms,
             project_file_path: None,
             show_about_dialog: false,
+            export_preset_id: "ue5".to_string(),
+            export_asset_name: "Asset".to_string(),
+            export_target_dir: "exports".to_string(),
+            export_report_summary: None,
         }
     }
 
@@ -164,6 +173,10 @@ impl Default for TextureLabApp {
             eval_time_ms: 0.0,
             project_file_path: None,
             show_about_dialog: false,
+            export_preset_id: "ue5".to_string(),
+            export_asset_name: "Asset".to_string(),
+            export_target_dir: "exports".to_string(),
+            export_report_summary: None,
         }
     }
 }
@@ -249,6 +262,15 @@ impl eframe::App for TextureLabApp {
                         }
                     }
                 }
+                HotkeyAction::OpenExportDialog => {
+                    self.status_message = "Opened Export Preflight Drawer (Ctrl+E)".to_string();
+                    if let Some(mut dock) = self.dock_state.take() {
+                        if let Some(loc) = dock.find_tab(&Tab::ExportDrawer) {
+                            dock.set_active_tab(loc);
+                        }
+                        self.dock_state = Some(dock);
+                    }
+                }
             }
         }
 
@@ -305,6 +327,17 @@ impl eframe::App for TextureLabApp {
                             if project.save_to_file(&path).is_ok() {
                                 self.project_file_path = Some(path);
                             }
+                        }
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("Export Textures (Ctrl+E)...").clicked() {
+                        self.status_message = "Opened Export Preflight Drawer (Ctrl+E)".to_string();
+                        if let Some(mut dock) = self.dock_state.take() {
+                            if let Some(loc) = dock.find_tab(&Tab::ExportDrawer) {
+                                dock.set_active_tab(loc);
+                            }
+                            self.dock_state = Some(dock);
                         }
                         ui.close_menu();
                     }
@@ -468,6 +501,10 @@ impl eframe::App for TextureLabApp {
                 status_message: &mut self.status_message,
                 eval_time_ms: &mut self.eval_time_ms,
                 search_palette: &mut self.search_palette,
+                export_preset_id: &mut self.export_preset_id,
+                export_asset_name: &mut self.export_asset_name,
+                export_target_dir: &mut self.export_target_dir,
+                export_report_summary: &mut self.export_report_summary,
             };
 
             DockArea::new(&mut dock_state)
@@ -516,6 +553,10 @@ struct AppTabViewer<'a> {
     status_message: &'a mut String,
     eval_time_ms: &'a mut f64,
     search_palette: &'a mut SearchPaletteState,
+    export_preset_id: &'a mut String,
+    export_asset_name: &'a mut String,
+    export_target_dir: &'a mut String,
+    export_report_summary: &'a mut Option<String>,
 }
 
 impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
@@ -667,16 +708,45 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
 
             Tab::ExportDrawer => {
                 ui.vertical(|ui| {
-                    ui.heading(
-                        egui::RichText::new("Export Preflight Pipeline")
-                            .color(TEXT_PRIMARY)
-                            .size(16.0),
-                    );
-                    ui.label(
-                        egui::RichText::new("Direct disk exporter preflight validation & output census.")
-                            .color(TEXT_SECONDARY),
-                    );
+                    ui.horizontal(|ui| {
+                        ui.heading(
+                            egui::RichText::new("Export Preflight Pipeline")
+                                .color(TEXT_PRIMARY)
+                                .size(16.0),
+                        );
+                        ui.label(
+                            egui::RichText::new("Direct disk exporter preflight validation & output census.")
+                                .color(TEXT_SECONDARY),
+                        );
+                    });
                     ui.separator();
+
+                    // Preset selection & export target settings
+                    ui.horizontal(|ui| {
+                        ui.label("Preset:");
+                        let presets = ExportPreset::builtin_presets();
+                        for p in &presets {
+                            let is_selected = *self.export_preset_id == p.id;
+                            if ui.selectable_label(is_selected, &p.name).clicked() {
+                                *self.export_preset_id = p.id.clone();
+                            }
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Asset Name:");
+                        ui.add(egui::TextEdit::singleline(self.export_asset_name).desired_width(130.0));
+
+                        ui.add_space(8.0);
+                        ui.label("Target Directory:");
+                        ui.add(egui::TextEdit::singleline(self.export_target_dir).desired_width(200.0));
+                        if ui.button("📁 Browse...").clicked() {
+                            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                                *self.export_target_dir = dir.to_string_lossy().to_string();
+                            }
+                        }
+                    });
+                    ui.add_space(4.0);
 
                     let output_nodes: Vec<_> = self
                         .graph
@@ -698,42 +768,85 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                 self.graph.add_node(node);
                                 self.canvas_state.selected_node = Some(id);
                                 self.evaluator.invalidate_all();
-                                let _ = self.evaluator.evaluate(self.graph);
+                                let _ = self.evaluator.evaluate(&self.graph);
                             }
                         }
                     } else {
                         ui.label(format!("Found {} texture output targets:", output_nodes.len()));
                         ui.add_space(4.0);
 
+                        let current_preset = ExportPreset::find_by_id(self.export_preset_id)
+                            .unwrap_or_else(|| ExportPreset::builtin_presets().remove(0));
+
+                        let mut items_to_export = Vec::new();
+
                         egui::Grid::new("export_preflight_grid")
                             .striped(true)
-                            .min_col_width(100.0)
+                            .min_col_width(90.0)
                             .show(ui, |ui| {
                                 ui.strong("Node");
                                 ui.strong("Slot");
                                 ui.strong("Format");
                                 ui.strong("Dimensions");
+                                ui.strong("Resolved Filename");
                                 ui.strong("Preflight");
                                 ui.end_row();
 
                                 for node in &output_nodes {
                                     let slot = node.get_string("slot_name", "BaseColor");
                                     let fmt = node.get_string("format", "PNG");
-                                    let (w, h) = self.evaluator.resolve_node_dimensions(self.graph, node);
+                                    let (w, h) = self.evaluator.resolve_node_dimensions(&self.graph, node);
                                     let has_input = node.inputs.iter().any(|pin| self.graph.incoming_edge(pin).is_some());
 
+                                    let ctx = TokenContext::new(&*self.export_asset_name, &slot)
+                                        .with_format(&fmt)
+                                        .with_resolution(format!("{}x{}", w, h));
+                                    let resolved_file = current_preset.resolve_filename(&ctx);
+
                                     ui.label(format!("{} (#{})", node.label, node.id.0));
-                                    ui.label(slot);
-                                    ui.label(fmt);
+                                    ui.label(&slot);
+                                    ui.label(&fmt);
                                     ui.label(format!("{}x{}", w, h));
+                                    ui.label(&resolved_file);
                                     if has_input {
                                         ui.colored_label(crate::ui::theme::CAT_MATH, "✅ Ready");
+                                        let out_pin = PinId::output(node.id, "output");
+                                        if let Some(buf) = self.evaluator.get_output(&out_pin) {
+                                            let target_path = PathBuf::from(&*self.export_target_dir).join(&resolved_file);
+                                            items_to_export.push(ExportItem::new(buf.as_ref().clone(), target_path));
+                                        }
                                     } else {
                                         ui.colored_label(crate::ui::theme::CAT_CONSTANTS, "⚠ Unlinked");
                                     }
                                     ui.end_row();
                                 }
                             });
+
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            let can_export = !items_to_export.is_empty();
+                            if ui.add_enabled(can_export, egui::Button::new("🚀 Export All Ready Maps (Direct Disk Write)")).clicked() {
+                                let report = ExportWriter::execute_export(&items_to_export);
+                                if report.is_success() {
+                                    let msg = format!(
+                                        "✅ Successfully exported {} files ({:.2} MB) in {}ms",
+                                        report.files_written.len(),
+                                        report.bytes_written as f64 / 1_048_576.0,
+                                        report.elapsed_ms
+                                    );
+                                    *self.status_message = msg.clone();
+                                    *self.export_report_summary = Some(msg);
+                                } else {
+                                    let err_msg = format!("❌ Export error: {}", report.errors.join("; "));
+                                    *self.status_message = err_msg.clone();
+                                    *self.export_report_summary = Some(err_msg);
+                                }
+                            }
+
+                            if let Some(summary) = self.export_report_summary.as_ref() {
+                                ui.label(egui::RichText::new(summary).color(TEXT_PRIMARY));
+                            }
+                        });
                     }
                 });
             }

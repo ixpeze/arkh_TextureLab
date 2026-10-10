@@ -40,6 +40,8 @@ pub enum HotkeyAction {
     DeleteSelected,
     /// Save project file (`Ctrl + S`).
     SaveProject,
+    /// Open export dialog drawer (`Ctrl + E`).
+    OpenExportDialog,
 }
 
 /// Evaluates raw key and modifier states with an input-focus guard.
@@ -70,6 +72,9 @@ pub fn resolve_hotkey(
         }
         if key == Key::S {
             return Some(HotkeyAction::SaveProject);
+        }
+        if key == Key::E {
+            return Some(HotkeyAction::OpenExportDialog);
         }
         return None;
     }
@@ -117,6 +122,7 @@ pub fn dispatch_from_input(input: &InputState, text_input_active: bool) -> Optio
         Key::Z,
         Key::Y,
         Key::A,
+        Key::E,
     ] {
         if input.key_pressed(key) {
             if let Some(action) = resolve_hotkey(key, ctrl, shift, text_input_active) {
@@ -218,6 +224,10 @@ pub mod tests {
         assert_eq!(
             resolve_hotkey(Key::S, true, false, text_input_active),
             Some(HotkeyAction::SaveProject)
+        );
+        assert_eq!(
+            resolve_hotkey(Key::E, true, false, text_input_active),
+            Some(HotkeyAction::OpenExportDialog)
         );
     }
 }
