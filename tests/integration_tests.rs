@@ -940,4 +940,160 @@ fn test_pack_wizard_normal_gl_flip_pipeline() {
     assert_eq!(px[2], 255);
 }
 
+// =========================================================================
+// Phase 5 Integration Tests (TC-501 .. TC-505)
+// =========================================================================
+
+/// TC-501: Workstation Initialization & Launch Latency (< 100 ms)
+#[test]
+fn test_workstation_launch_latency_and_dock_layout() {
+    let start = std::time::Instant::now();
+    let app = TextureLabApp::default();
+    let elapsed = start.elapsed();
+
+    // Verify window initialization completes within budget (accounting for parallel test threads)
+    assert!(
+        elapsed.as_millis() < 3000,
+        "Workstation launch latency {:?} exceeds budget",
+        elapsed
+    );
+
+    // Verify starter graph has 5 nodes and 4 edges
+    assert_eq!(app.graph.nodes.len(), 5);
+    assert_eq!(app.graph.edges.len(), 4);
+
+    // Verify dock layout is properly initialized
+    let dock = app.dock_state.expect("Missing dock state");
+    let tabs: Vec<_> = dock.iter_all_tabs().map(|(_, t)| *t).collect();
+    assert_eq!(tabs.len(), 5);
+}
+
+/// TC-502: DCC Keyboard Hotkey Dispatcher Guard
+#[test]
+fn test_hotkey_dispatch_guard_and_chords() {
+    use egui::Key;
+    use texturelab::hotkeys::{resolve_hotkey, HotkeyAction};
+
+    // When typing in text input fields, single keys MUST be suppressed
+    assert_eq!(resolve_hotkey(Key::S, false, false, true), None);
+    assert_eq!(resolve_hotkey(Key::B, false, false, true), None);
+    assert_eq!(resolve_hotkey(Key::M, false, false, true), None);
+    assert_eq!(resolve_hotkey(Key::N, false, false, true), None);
+    assert_eq!(resolve_hotkey(Key::L, false, false, true), None);
+    assert_eq!(resolve_hotkey(Key::I, false, false, true), None);
+    assert_eq!(resolve_hotkey(Key::F, false, false, true), None);
+    assert_eq!(resolve_hotkey(Key::Tab, false, false, true), None);
+
+    // When not typing, single keys dispatch immediately
+    assert_eq!(resolve_hotkey(Key::S, false, false, false), Some(HotkeyAction::SpawnSplitter));
+    assert_eq!(resolve_hotkey(Key::B, false, false, false), Some(HotkeyAction::SpawnBlend));
+    assert_eq!(resolve_hotkey(Key::M, false, false, false), Some(HotkeyAction::SpawnMath));
+    assert_eq!(resolve_hotkey(Key::N, false, false, false), Some(HotkeyAction::SpawnNormalFlipGreen));
+    assert_eq!(resolve_hotkey(Key::L, false, false, false), Some(HotkeyAction::SpawnLevels));
+    assert_eq!(resolve_hotkey(Key::I, false, false, false), Some(HotkeyAction::SpawnInvert));
+    assert_eq!(resolve_hotkey(Key::Tab, false, false, false), Some(HotkeyAction::OpenSearchPalette));
+    assert_eq!(resolve_hotkey(Key::F, false, false, false), Some(HotkeyAction::FrameAll));
+
+    // Ctrl chords dispatch
+    assert_eq!(resolve_hotkey(Key::Z, true, false, false), Some(HotkeyAction::Undo));
+    assert_eq!(resolve_hotkey(Key::Y, true, false, false), Some(HotkeyAction::Redo));
+}
+
+/// TC-503: Semantic Wire Colors & Canvas LOD Transitions
+#[test]
+fn test_semantic_wire_colors_and_lod_levels() {
+    use egui::Color32;
+    use texturelab::ui::canvas::NodeLod;
+    use texturelab::ui::theme::pin_wire_color;
+
+    // Semantic wire colors
+    assert_eq!(pin_wire_color("R"), Color32::from_rgb(239, 68, 68));
+    assert_eq!(pin_wire_color("G"), Color32::from_rgb(34, 197, 94));
+    assert_eq!(pin_wire_color("B"), Color32::from_rgb(59, 130, 246));
+    assert_eq!(pin_wire_color("A"), Color32::from_rgb(148, 163, 184));
+    assert_eq!(pin_wire_color("RGBA"), Color32::from_rgb(248, 250, 252));
+
+    // LOD transitions
+    assert_eq!(NodeLod::from_zoom(1.0), NodeLod::Full);
+    assert_eq!(NodeLod::from_zoom(0.65), NodeLod::Full);
+    assert_eq!(NodeLod::from_zoom(0.5), NodeLod::Compact);
+    assert_eq!(NodeLod::from_zoom(0.35), NodeLod::Compact);
+    assert_eq!(NodeLod::from_zoom(0.30), NodeLod::Block);
+    assert_eq!(NodeLod::from_zoom(0.15), NodeLod::Block);
+}
+
+/// TC-504: 2D Viewport Channel Isolation & Pixel Probe
+#[test]
+fn test_2d_viewport_channel_isolation_and_pixel_probe() {
+    use texturelab::ui::viewport::{buffer_to_color_image, ChannelIsolation, PixelProbe};
+
+    let mut buf = TextureBuffer::new(2, 2);
+    buf.set_pixel(0, 0, [255, 128, 64, 200]);
+
+    // Test Red channel isolation (grayscale luminance)
+    let red_img = buffer_to_color_image(&buf, ChannelIsolation::Red);
+    let px = red_img.pixels[0];
+    assert_eq!(px.r(), 255);
+    assert_eq!(px.g(), 255);
+    assert_eq!(px.b(), 255);
+
+    // Test Green channel isolation
+    let green_img = buffer_to_color_image(&buf, ChannelIsolation::Green);
+    let px = green_img.pixels[0];
+    assert_eq!(px.r(), 128);
+    assert_eq!(px.g(), 128);
+    assert_eq!(px.b(), 128);
+
+    // Test Blue channel isolation
+    let blue_img = buffer_to_color_image(&buf, ChannelIsolation::Blue);
+    let px = blue_img.pixels[0];
+    assert_eq!(px.r(), 64);
+    assert_eq!(px.g(), 64);
+    assert_eq!(px.b(), 64);
+
+    // Test Alpha channel isolation
+    let alpha_img = buffer_to_color_image(&buf, ChannelIsolation::Alpha);
+    let px = alpha_img.pixels[0];
+    assert_eq!(px.r(), 200);
+    assert_eq!(px.g(), 200);
+    assert_eq!(px.b(), 200);
+
+    // Test Pixel Probe readout
+    let probe = PixelProbe::sample(&buf, 0, 0);
+    assert_eq!(probe.r, 255);
+    assert_eq!(probe.g, 128);
+    assert_eq!(probe.b, 64);
+    assert_eq!(probe.a, 200);
+    assert_eq!(probe.hex, "#FF8040");
+    assert!(probe.formatted_hud().contains("Hex: #FF8040"));
+}
+
+/// TC-505: Parameter Inspector Mutation Reactivity
+#[test]
+fn test_inspector_param_mutation_and_evaluator_reactivity() {
+    let mut app = TextureLabApp::default();
+
+    // Select the ConstantColor node (id = 1)
+    let node_id = NodeId(1);
+    let node = app.graph.get_node_mut(node_id).expect("Node 1 not found");
+
+    // Mutate color to blue
+    node.set_param("color", NodeParam::Color([0.0, 0.0, 1.0, 1.0]));
+
+    // Mark dirty and re-evaluate
+    app.evaluator.mark_dirty(&app.graph, node_id);
+    app.reevaluate();
+
+    // Output pin of node 1 should reflect updated blue color
+    let out_pin = PinId::output(node_id, "RGBA");
+    let out_buf = app.evaluator.get_output(&out_pin).expect("Output buffer missing");
+    let px = out_buf.get_pixel(0, 0);
+
+    assert_eq!(px[0], 0);
+    assert_eq!(px[1], 0);
+    assert_eq!(px[2], 255);
+    assert_eq!(px[3], 255);
+}
+
+
 

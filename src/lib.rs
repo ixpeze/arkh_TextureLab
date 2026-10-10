@@ -6,6 +6,7 @@ pub mod app;
 pub mod core;
 pub mod export;
 pub mod graph;
+pub mod hotkeys;
 pub mod nodes;
 pub mod normalizer;
 pub mod ui;
