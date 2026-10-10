@@ -1,153 +1,148 @@
 # ARKH TextureLab — User Guide
 
-Welcome to **ARKH TextureLab**, a high-performance workstation for interactive PBR texture channel packing, unpacking, and adjustments.
+Welcome to **ARKH TextureLab**, the 100% pure Rust native desktop workstation for interactive PBR texture channel packing, unpacking, normalization, and precision image authoring.
 
 ---
 
 ## 🚀 Getting Started
 
 ### Installation & Launch
+ARKH TextureLab requires no installers, no runtime prerequisites, and no background services:
 
-1. Download the latest installer (`TextureLab-Setup-1.0.0.exe`) or portable executable (`TextureLab-1.0.0-portable.exe`) from the releases folder or GitHub.
-2. Run the executable. TextureLab installs to your user profile without requiring administrator privileges.
-
-### 🛡️ Windows SmartScreen Note ("Unknown Publisher")
-
-Because ARKH TextureLab is distributed as free, open-source, local-first software without an expensive annual enterprise signing certificate (per project decision D-10), Windows Defender SmartScreen may display a warning on first launch:
-
-```
-Windows protected your PC
-Microsoft Defender SmartScreen prevented an unrecognized app from starting.
-```
-
-**How to open:**
-1. Click **"More info"** on the prompt.
-2. Click **"Run anyway"**.
-
-*(Optional: You can cryptographically verify that your download has not been tampered with by checking its SHA-256 hash against `release/SHA256SUMS.txt`.)*
+1. Download or copy `texturelab.exe` from the `release/` folder or build it with `cargo build --release`.
+2. Double-click `texturelab.exe` to launch immediately (< 80ms cold start).
+3. The application runs natively on Windows 10/11 using hardware-accelerated desktop graphics.
 
 ---
 
 ## 🎨 The Workstation Layout
 
-TextureLab features the **Graphite Blueprint** DCC workstation layout:
+TextureLab utilizes the **"Graphite Blueprint"** Obsidian workstation layout with dynamic docking (`egui_dock`):
 
-- **Left Panel (Library & Project Assets):** Search and drag nodes onto the canvas, browse project texture assets, or trigger the Pack & Unpack Wizard. Press `Ctrl+B` to toggle.
-- **Center Canvas (Node Graph):** Interactive node graph powered by XYFlow. Connect nodes, create UE5-style comment boxes, and organize your pipeline. Supports 3-tier zoom LOD (switches to compact mode when zoomed out).
-- **Right Panel (2D Inspector & Properties):** Inspect active texture nodes with 1:1 pixel accuracy, split-screen A/B comparisons, tiling seam tests, and channel isolation. Press `Ctrl+Alt+B` to toggle.
-- **Bottom Status Bar:** Live system telemetry showing active GPU renderer, VRAM usage, document modification status, and zoom level.
+### 1. Node Canvas (Center Workspace)
+- **Infinite Pan & Zoom:** Middle-click or right-click drag to pan; mouse wheel to zoom.
+- **Cubic Bezier Wiring:** Click and drag from any output pin socket to an input pin socket to connect wires.
+- **Semantic Wire Colors:**
+  - 🔴 **Red:** Single-channel Red / Scalar
+  - 🟢 **Green:** Single-channel Green
+  - 🔵 **Blue:** Single-channel Blue
+  - ⚪ **White / Amber:** Multi-channel RGBA / Active Wire
+  - ⚪ **Gray:** Alpha channel
+- **Zoom LOD Levels:**
+  - **Full LOD:** Complete parameters, labels, and sockets.
+  - **Compact LOD (< 0.7 zoom):** Simplified header with essential socket labels.
+  - **Block LOD (< 0.4 zoom):** High-density geometric blocks for massive multi-node graph overview.
+
+### 2. Dedicated 2D Viewport
+- **Channel Isolation:** Toggle between:
+  - `RGB` — Full color view
+  - `RGBA Checker` — Transparency checkerboard background
+  - `R (Grayscale)` — Pure red channel luminance
+  - `G (Grayscale)` — Pure green channel luminance
+  - `B (Grayscale)` — Pure blue channel luminance
+  - `A (Grayscale)` — Pure alpha channel luminance
+- **GPU UV Tiling Test:** Toggle `1x`, `2x`, or `4x` repeat tiling to immediately detect texture seams.
+- **Precision Pixel Probe:** Hover the mouse anywhere over the viewport to read out instant coordinate `(X, Y)`, byte `[0..255]`, normalized float `[0.00..1.00]`, and Hex values.
+- **1:1 Native Pixel View:** Click `1:1` to zoom to exact source pixels; click `Reset` to re-center.
+
+### 3. Properties Inspector
+- Inspect and mutate parameters of the currently selected node (sliders, color swatches, gamma remapping, slot names).
+- All changes trigger reactive topological DAG re-evaluation with intermediate cache updates.
+
+### 4. Library & Floating Quick Spawn Palette (`Tab`)
+- Press `Tab` anywhere to summon the instant fuzzy search palette.
+- Type any node name or shortcut (e.g., `split`, `rnm`, `levels`, `M`) and press `Enter` to spawn at cursor.
+- Docked **Library Panel** categorizes all 12 node families with 1-click addition.
+
+### 5. Status Bar Telemetry
+- Bottom status bar reports live evaluation time in milliseconds (`Eval: X.XX ms`), cache hits/misses, active graph resolution, and node/edge count.
 
 ---
 
-## 🧙‍♂️ Pack & Unpack Wizard (<3 Clicks)
+## 🧙‍♂️ Lexical Normalizer & Pack Wizard
 
-The **Pack & Unpack Wizard** automates repetitive node wiring by scanning texture folder names and building complete packing pipelines automatically.
+The **Pack Wizard** automates texture channel packing by scanning texture filenames and automatically constructing complete DAG pipelines:
 
-### How to use:
-1. Click the **"Wizard"** button in the top toolbar (or press `Ctrl+W`).
-2. Drag and drop a folder containing your texture maps (or select individual files).
-3. The wizard uses lexical matching to automatically classify your maps:
-   - `_AO`, `_AmbientOcclusion`, `_Occlusion` → Ambient Occlusion
-   - `_Roughness`, `_Rough`, `_Gloss` → Roughness
-   - `_Metallic`, `_Metal`, `_Metalness` → Metallic
-   - `_Height`, `_Displacement`, `_Disp` → Height / Displacement
-   - `_Normal`, `_Norm`, `_NRM` → Normal Map
-4. Select your target preset:
-   - **Unreal Engine ORM (R: AO, G: Roughness, B: Metallic)**
-   - **Unreal Engine ORMH (R: AO, G: Roughness, B: Metallic, A: Height)**
-   - **Unity HDRP Mask (R: Metallic, G: AO, B: Detail Mask, A: Smoothness)**
-   - **Unpack Mode (Deconstruct an existing packed texture into discrete channels)**
-5. Click **"Generate Pipeline"**. The complete node network is instantly constructed and wired on your canvas.
+1. Classifies naming conventions from 60+ industry standards:
+   - `_AO`, `_Occlusion`, `_AmbientOcclusion` $\rightarrow$ Ambient Occlusion
+   - `_Roughness`, `_Rough` $\rightarrow$ Roughness
+   - `_Glossiness`, `_Gloss` $\rightarrow$ Automatically flagged for Invert node insertion
+   - `_Metallic`, `_Metal`, `_Metalness` $\rightarrow$ Metallic
+   - `_Normal`, `_NRM` $\rightarrow$ Normal map
+   - `_Height`, `_Displacement`, `_Disp` $\rightarrow$ Height map
+2. **Normal Map Convention Auto-Detection:** Distinguishes DirectX (-Y) vs OpenGL (+Y) naming and automatically inserts green-channel flip nodes when necessary.
+3. Generates pre-wired pipelines for:
+   - **Unreal Engine 5 ORM** (`R: AO`, `G: Roughness`, `B: Metallic`)
+   - **Unity MaskMap** (`R: Metallic`, `G: AO`, `B: DetailMask`, `A: Smoothness`)
+   - **Custom Multi-Channel Packs**
 
 ---
 
 ## 📦 Complete Node Catalog
 
-TextureLab provides 12 specialized node families:
+TextureLab provides 12 canonical PBR node families:
 
-### Ingestion & Constants
-- **Texture Input (`TextureInput`):** Loads an external texture file (`.png`, `.tga`, `.jpg`, `.webp`). Supports switching color space between **sRGB** (for Albedo / Base Color) and **Linear** (for Normal, Roughness, Metallic, AO).
-- **Color Constant (`ColorConstant`):** Generates a solid RGBA color swatch. Useful for default base colors or mask tints.
-- **Scalar Constant (`ScalarConstant`):** Generates a single-channel floating-point value between `0.0` and `1.0`. Ideal for flat roughness or metallic values.
+### 1. Ingestion & Output
+- **Texture Input (`TextureInput`):** Solid procedural color or external texture buffer. Supports sRGB $\leftrightarrow$ Linear color space conversion.
+- **Texture Output (`TextureOutput`):** Target slot definition (BaseColor, Normal, ORM, Height) and format (`PNG`, `TGA`) for preflight export.
 
-### Packing & Multiplexing
-- **Channel Combiner (`ChannelCombiner`):** The primary packing hub. Multiplexes up to 4 input channels into a single RGBA texture. For each output channel (R, G, B, A), you can select which input node and which specific channel (Red, Green, Blue, Alpha, or Luminance) to route.
-- **Channel Splitter (`ChannelSplitter`):** Takes a packed multi-channel texture and splits it into discrete single-channel outputs (`R`, `G`, `B`, `A`) for individual filtering or rerouting.
+### 2. Constants
+- **Constant Scalar (`ConstantScalar` / Hotkey `1`):** Single-channel float (`0.0 .. 1.0`).
+- **Constant Color (`ConstantColor` / Hotkey `3`):** Full 4-channel RGBA color picker.
 
-### Adjustments & Conversions
-- **Levels (`Levels`):** Precision tonal range adjustment. Adjust Black Point, Midtone Gamma, and White Point with a real-time transfer curve display.
-- **Invert (`Invert`):** Calculates `1.0 - Value`. Ideal for converting Glossiness maps into Roughness maps, or inverting height/mask textures.
-- **Normal Flip (`NormalFlip`):** Inverts the Green channel (`Y`) to instantly convert tangent space normal maps between **DirectX (-Y)** and **OpenGL (+Y)** conventions.
-- **Normal Blend (`NormalBlend`):** Combines a base normal map with a detail normal map using Reoriented Normal Mapping (RNM) to preserve surface curvature.
-- **Math Operation (`MathOp`):** Performs mathematical blending between two textures: Add, Subtract, Multiply, Min, Max, and Power.
-- **Grayscale (`Grayscale`):** Converts color textures to single-channel scalar data using Rec. 709 Luminance weighting, Average, or Desaturation.
+### 3. Channel Multiplexing
+- **Channel Combine / Pack (`ChannelCombine` / Hotkey `C` or `P`):** Combines discrete R, G, B, A inputs into an RGBA texture.
+- **Channel Split / Unpack (`ChannelSplit` / Hotkey `S`):** Unpacks an RGBA input into separate R, G, B, A outputs.
+- **Channel Mixer / Swizzle (`ChannelMixer`):** Arbitrary 4x4 matrix swizzling with per-row channel inversions and constant overrides.
 
-### Export
-- **Export Output (`ExportOutput`):** Designates a node for project export. Define slot name, resolution override (e.g., 2048x2048, 4096x4096), bit depth (8-bit or 16-bit), and format (`.png` or `.tga`).
+### 4. Color & Adjust
+- **Invert (`Invert` / Hotkey `I`):** Computes `1.0 - input`. Converts Glossiness $\leftrightarrow$ Roughness.
+- **Levels (`Levels` / Hotkey `L`):** Black point, white point, gamma curve, and contrast adjustments.
+- **Brightness / Contrast (`BrightnessContrast`):** Linear brightness shift and contrast scaling.
 
----
+### 5. Normal Operations
+- **Normal Flip Green (`NormalFlipGreen` / Hotkey `N`):** Inverts tangent space green channel for DirectX $\leftrightarrow$ OpenGL.
+- **Normal Normalize (`NormalNormalize`):** Renormalizes normal map vectors to unit length $(X^2 + Y^2 + Z^2 = 1)$.
+- **Normal Strength (`NormalStrength`):** Scales normal map depth and tangent deviation.
 
-## 🔬 2D Inspector & Quality Inspection Tools
+### 6. Blending & Math
+- **Layer Blend (`LayerBlend` / Hotkey `B`):** Multi-mode Lerp blending with mask and opacity controls.
+- **Normal Blend RNM (`NormalBlendRNM` / Pro):** Reoriented Normal Mapping combining base and detail normals without flattening slope.
+- **Math (`Math` / Hotkey `M` / Pro):** 13 scalar and vector arithmetic operations (`Add`, `Subtract`, `Multiply`, `Divide`, `Power`, `Min`, `Max`, `Clamp`, `Abs`, `Step`, `Smoothstep`, `Modulo`).
 
-The Inspector panel on the right provides analytical viewing tools:
-
-- **Split View (A/B Wipe):** Drag the vertical divider bar across the preview to compare the current node against an upstream or reference node in real time.
-- **Tiling Repeat Test:** Switch from `1x1` to `2x2` or `3x3` tiling repeat to instantly verify that your textures are seamless without visible edge seams.
-- **Channel Isolation:** Click `[RGBA]`, `[R]`, `[G]`, `[B]`, or `[A]` to isolate individual channels in true monochrome space.
-- **Crosshair Pixel Probe:** Hover anywhere over the texture to inspect exact coordinates `(X, Y)`, RGB values `[0..255]`, and normalized float values `[0.00..1.00]`.
-- **View Modes:** Toggle between `Fit` (scales to inspector frame) and `1:1 Native` (actual unscaled pixel size with panning).
-
----
-
-## 🏷️ Export Hub & Token Engine
-
-Click **"Export All"** or press `Ctrl+E` to open the Export Hub.
-
-### File Naming Tokens
-Configure export filenames using dynamic tokens:
-- `{prefix}`: User-defined project prefix (e.g. `T_`).
-- `{asset}`: Primary asset name (e.g. `ConcreteWall`).
-- `{slot}`: Node output slot name (e.g. `ORM`, `Albedo`, `Normal`).
-- `{res}`: Output resolution (e.g. `2048`, `4096`).
-- `{ext}`: Output file extension (`png` or `tga`).
-- `{date}` / `{time}`: Current timestamp.
-
-### Casing Formats
-Choose from multiple standard naming conventions:
-- `UPPER_SNAKE`: `T_CONCRETE_WALL_ORM.PNG`
-- `snake_case`: `t_concrete_wall_orm.png`
-- `PascalCase`: `T_ConcreteWall_ORM.png`
-- `camelCase`: `t_concreteWall_orm.png`
+### 7. Transform
+- **Resize (`Resize`):** Power-of-Two (POT) dimension rounding, Lanczos3, and Bilinear resampling.
 
 ---
 
-## ⌨️ Keyboard Shortcuts Reference
+## 🎹 Keyboard Shortcuts Quick Reference
 
-| Shortcut | Action |
+| Key / Shortcut | Action |
 |---|---|
-| `Ctrl+Z` | Undo last action |
-| `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
-| `Ctrl+S` | Save project (`.tlab`) |
-| `Ctrl+Shift+S` | Save project as... |
-| `Ctrl+O` | Open project file |
-| `Ctrl+E` | Open Export Hub |
-| `Ctrl+W` | Open Pack & Unpack Wizard |
-| `Ctrl+B` | Toggle Left Panel (Library/Assets) |
-| `Ctrl+Alt+B` | Toggle Right Panel (Inspector) |
-| `C` | Wrap selected nodes in a Comment Box |
-| `D` | Toggle Bypass/Mute on selected node |
-| `Delete` / `Backspace` | Delete selected nodes or edges |
-| `Space` + Drag / MMB Drag | Pan canvas |
-| Mouse Wheel | Zoom canvas (0.2x to 3.0x) |
-| `F` | Frame selected nodes or entire graph |
-| `F12` | Toggle Developer Tools (Dev builds) |
+| `Tab` | Open Quick Search Palette |
+| `F` | Frame All Nodes / Focus View |
+| `S` | Spawn Channel Splitter (Unpack) |
+| `C` / `P` | Spawn Channel Combiner (Pack) |
+| `M` | Spawn Math Node *(Pro)* |
+| `B` | Spawn Layer Blend Node |
+| `N` | Spawn Normal Flip Green Node |
+| `L` | Spawn Levels Node |
+| `I` | Spawn Invert Node |
+| `1` | Spawn Constant Scalar |
+| `3` | Spawn Constant Color |
+| `Delete` / `Backspace` | Delete Selected Node or Edge |
+| `Ctrl + Z` | Undo Transaction |
+| `Ctrl + Y` | Redo Transaction |
+| `Ctrl + A` | Select All Nodes |
+| `Ctrl + S` | Save Project (`.tlab`) |
+| `Ctrl + E` | Open Export Preflight Drawer |
 
 ---
 
-## 🛠️ Diagnostics & Support
+## 🏷️ Export Preflight Drawer (`Ctrl+E`)
 
-If you encounter unexpected behavior:
-1. Open **Help → About TextureLab** to view version, GPU acceleration status, and system info.
-2. In the event of an unhandled UI error, click **"Copy Diagnostics"** in the recovery overlay to copy anonymized system information, WebGL2 capabilities, and the last 200 log lines to your clipboard.
-3. Desktop logs are saved to:
-   - Windows: `%APPDATA%\TextureLab\logs\app.log`
+The direct disk exporter writes evaluated textures directly to disk:
+- **Game Engine Presets:** Unreal Engine 5 (`T_{asset}_{slot}`), Unity MaskMap, Substance Painter, Blender Principled, CryEngine.
+- **Dynamic Token Expansion:** `{project}`, `{asset}`, `{slot}`, `{res}`, `{colorspace}`, `{format}`.
+- **Preflight Path Validation:** Sanitizes Windows reserved device names (`CON`, `PRN`, `AUX`, etc.) and detects case-insensitive collisions before writing.
+- **Atomic Disk Writes:** Writes to temporary files and atomically renames to prevent partial or empty files.

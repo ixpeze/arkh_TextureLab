@@ -11,6 +11,8 @@ pub mod nodes;
 pub mod normalizer;
 pub mod ui;
 
+pub use app::Edition;
+
 /// Returns the compile-time crate version.
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

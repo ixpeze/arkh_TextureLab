@@ -15,7 +15,7 @@ use texturelab::graph::{
     CompileError, Graph, GraphCompiler, GraphEvaluator, HistoryStack, Node, NodeId,
     NodeParam, PinId, ProjectFile,
 };
-use texturelab::version;
+use texturelab::{version, Edition};
 
 #[test]
 fn test_crate_version_and_metadata() {
@@ -1227,4 +1227,71 @@ fn test_batch_export_speed() {
     }
 
     let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_edition_capability_matrix_and_enforcement() {
+    // 1. Lite edition verification
+    let mut lite_app = TextureLabApp::default().with_edition(Edition::Lite);
+    assert_eq!(lite_app.edition, Edition::Lite);
+    assert_eq!(lite_app.edition.name(), "TextureLAB Lite");
+    assert!(!lite_app.edition.is_pro());
+
+    // Basic nodes allowed in Lite
+    assert!(lite_app.edition.is_node_allowed("ChannelCombine"));
+    assert!(lite_app.edition.is_node_allowed("ChannelSplit"));
+    assert!(lite_app.edition.is_node_allowed("ConstantScalar"));
+    assert!(lite_app.edition.is_node_allowed("ConstantColor"));
+    assert!(lite_app.edition.is_node_allowed("Invert"));
+    assert!(lite_app.edition.is_node_allowed("Levels"));
+    assert!(lite_app.edition.is_node_allowed("NormalFlipGreen"));
+    assert!(lite_app.edition.is_node_allowed("LayerBlend"));
+    assert!(lite_app.edition.is_node_allowed("TextureInput"));
+    assert!(lite_app.edition.is_node_allowed("TextureOutput"));
+
+    // Advanced Pro-only nodes locked in Lite
+    assert!(!lite_app.edition.is_node_allowed("NormalBlendRNM"));
+    assert!(!lite_app.edition.is_node_allowed("Math"));
+
+    // Codecs locked in Lite
+    assert!(lite_app.edition.is_format_allowed("PNG"));
+    assert!(lite_app.edition.is_format_allowed("TGA"));
+    assert!(!lite_app.edition.is_format_allowed("EXR"));
+    assert!(!lite_app.edition.is_format_allowed("TIFF"));
+
+    // Viewport capabilities locked in Lite
+    assert!(!lite_app.edition.allows_ab_split());
+    assert!(!lite_app.edition.allows_histogram());
+
+    // Spawning Pro nodes in Lite must be rejected with feedback
+    let math_node = lite_app.spawn_node_by_type("Math");
+    assert!(math_node.is_none(), "Math node must not spawn in Lite edition");
+    assert!(lite_app.status_message.contains("TextureLAB Pro"));
+
+    let rnm_node = lite_app.spawn_node_by_type("NormalBlendRNM");
+    assert!(rnm_node.is_none(), "RNM node must not spawn in Lite edition");
+    assert!(lite_app.status_message.contains("TextureLAB Pro"));
+
+    // Standard node spawning succeeds in Lite
+    let split_node = lite_app.spawn_node_by_type("ChannelSplit");
+    assert!(split_node.is_some(), "ChannelSplit must succeed in Lite edition");
+
+    // 2. Pro edition verification
+    let mut pro_app = TextureLabApp::default().with_edition(Edition::Pro);
+    assert_eq!(pro_app.edition, Edition::Pro);
+    assert_eq!(pro_app.edition.name(), "TextureLAB Pro");
+    assert!(pro_app.edition.is_pro());
+
+    assert!(pro_app.edition.is_node_allowed("NormalBlendRNM"));
+    assert!(pro_app.edition.is_node_allowed("Math"));
+    assert!(pro_app.edition.is_format_allowed("EXR"));
+    assert!(pro_app.edition.is_format_allowed("TIFF"));
+    assert!(pro_app.edition.allows_ab_split());
+    assert!(pro_app.edition.allows_histogram());
+
+    let pro_math = pro_app.spawn_node_by_type("Math");
+    assert!(pro_math.is_some(), "Math node must spawn successfully in Pro edition");
+
+    let pro_rnm = pro_app.spawn_node_by_type("NormalBlendRNM");
+    assert!(pro_rnm.is_some(), "RNM node must spawn successfully in Pro edition");
 }

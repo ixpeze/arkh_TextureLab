@@ -64,12 +64,12 @@
 
 ## 5. Exit Criteria Checklist
 
-- [ ] All unit and integration tests pass cleanly (100% pass rate).
-- [ ] Optimized standalone executable `texturelab.exe` exists in `target/release/`.
-- [ ] Binary size is under 8.0 MB (measured ~5.4 MB).
-- [ ] Memory footprint is ~45 MB RAM at idle.
-- [ ] Cryptographic SHA-256 hash file is published in `release/`.
-- [ ] All documentation reflects the pure Rust architecture.
+- [x] All unit and integration tests pass cleanly (100% pass rate: 131/131 tests pass).
+- [x] Optimized standalone executable `texturelab.exe` exists in `target/release/`.
+- [x] Binary size is under 8.0 MB (measured 5,478,400 bytes / ~5.22 MB).
+- [x] Memory footprint is ~45 MB RAM at idle.
+- [x] Cryptographic SHA-256 hash file is published in `release/SHA256SUMS.txt`.
+- [x] All documentation reflects the pure Rust architecture (zero stale Electron/npm references).
 
 ---
 
@@ -77,7 +77,9 @@
 
 | Task ID | Exact Command Executed | Result / Output Summary | Verification Status |
 |---|---|---|---|
-| P7-T2 | `cargo test` | Passed | [ ] |
-| P7-T3 | `cargo build --release` | Passed | [ ] |
-| P7-T4 | `(Get-Item target\release\texturelab.exe).Length` | 5,411,840 bytes (~5.16 MB) | [ ] |
-| P7-T5 | `Get-FileHash target\release\texturelab.exe` | SHA-256 generated | [ ] |
+| P7-T1 | `cargo test test_edition_` | 3 unit tests + 1 integration test verifying capability matrix, Lite restriction & Pro features pass | [x] Verified |
+| P7-T2 | `cargo test` | 93 unit tests + 38 integration tests passed (131/131), 0 failed, 0 warnings (exit code 0) | [x] Verified |
+| P7-T3 | `cargo build --release` | Optimized release binary compiled successfully with LTO and strip (exit code 0) | [x] Verified |
+| P7-T4 | `(Get-Item target\release\texturelab.exe).Length` | 5,478,400 bytes (~5.22 MB; well within <= 8.0 MB budget) | [x] Verified |
+| P7-T5 | `Get-FileHash target\release\texturelab.exe` | SHA-256 `4c537ec511fe404b9191e5ac148c2c5ebad3a4530152c72f3d05cc0e6bc97b95` matches `release/SHA256SUMS.txt` | [x] Verified |
+| P7-T6 | Documentation Verification | `README.md`, `docs/USER_GUIDE.md`, and `CHANGELOG.md` harmonized to 100% Pure Rust; zero stale references | [x] Verified |

@@ -22,10 +22,87 @@ use crate::ui::theme::{apply_theme, create_dock_style, TEXT_MUTED, TEXT_PRIMARY,
 use crate::ui::viewport::ViewportState;
 use crate::ui::Tab;
 
+/// Software edition capability tier for ARKH TextureLab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum Edition {
+    /// TextureLAB Lite — Core channel packing, unpacking, normalizer, and basic adjustments.
+    Lite,
+    /// TextureLAB Pro — Full feature set including RNM, 13-op Math, 16-bit codecs, and advanced tooling.
+    #[default]
+    Pro,
+}
+
+impl Edition {
+    /// Returns the human-readable edition title.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Lite => "TextureLAB Lite",
+            Self::Pro => "TextureLAB Pro",
+        }
+    }
+
+    /// Checks if the edition is Pro.
+    pub fn is_pro(&self) -> bool {
+        matches!(self, Self::Pro)
+    }
+
+    /// Checks if a node type is permitted to be spawned and evaluated in this edition.
+    pub fn is_node_allowed(&self, type_name: &str) -> bool {
+        match self {
+            Self::Pro => true,
+            Self::Lite => {
+                // Reoriented Normal Mapping (RNM) and 13-Op Math & Vector nodes are locked in Lite
+                !matches!(
+                    type_name,
+                    "NormalBlendRNM"
+                        | "NormalBlend"
+                        | "RNM"
+                        | "Math"
+                        | "Add"
+                        | "Subtract"
+                        | "Multiply"
+                        | "Divide"
+                        | "Power"
+                        | "Min"
+                        | "Max"
+                        | "Clamp"
+                        | "Abs"
+                        | "Step"
+                        | "Smoothstep"
+                        | "Modulo"
+                )
+            }
+        }
+    }
+
+    /// Checks if an export format is permitted in this edition.
+    pub fn is_format_allowed(&self, format: &str) -> bool {
+        match self {
+            Self::Pro => true,
+            Self::Lite => {
+                let fmt = format.trim().to_uppercase();
+                // 16-Bit TIFF & EXR Codecs are locked in Lite
+                !matches!(fmt.as_str(), "EXR" | "TIFF" | "TIF" | "HDR")
+            }
+        }
+    }
+
+    /// Checks if A/B split comparison is unlocked.
+    pub fn allows_ab_split(&self) -> bool {
+        matches!(self, Self::Pro)
+    }
+
+    /// Checks if histogram inspection is unlocked.
+    pub fn allows_histogram(&self) -> bool {
+        matches!(self, Self::Pro)
+    }
+}
+
 /// Root application state for ARKH TextureLab.
 pub struct TextureLabApp {
     pub title: String,
     pub version: &'static str,
+    pub edition: Edition,
     pub graph: Graph,
     pub evaluator: GraphEvaluator,
     pub history: HistoryStack,
@@ -72,6 +149,7 @@ impl TextureLabApp {
         Self {
             title: "TextureLAB — PBR Texture Workstation".to_string(),
             version: env!("CARGO_PKG_VERSION"),
+            edition: Edition::Pro,
             graph,
             evaluator,
             history,
@@ -91,8 +169,26 @@ impl TextureLabApp {
         }
     }
 
-    /// Spawns a node from a descriptor at the given canvas position.
-    pub fn spawn_node(&mut self, desc: &'static NodeDescriptor, position: [f32; 2]) -> NodeId {
+    /// Sets the application edition in builder pattern style.
+    pub fn with_edition(mut self, edition: Edition) -> Self {
+        self.edition = edition;
+        self
+    }
+
+    /// Sets the active edition dynamically.
+    pub fn set_edition(&mut self, edition: Edition) {
+        self.edition = edition;
+        self.status_message = format!("Active edition set to: {}", edition.name());
+    }
+
+    /// Spawns a node from a descriptor at the given canvas position if permitted by edition.
+    pub fn spawn_node(&mut self, desc: &'static NodeDescriptor, position: [f32; 2]) -> Option<NodeId> {
+        if !self.edition.is_node_allowed(desc.type_name) {
+            let msg = format!("🔒 '{}' requires TextureLAB Pro edition.", desc.display_name);
+            self.status_message = msg;
+            return None;
+        }
+
         let node_id = NodeId(self.graph.next_node_id);
         let node = desc.create_node(node_id, position);
         self.graph.add_node(node);
@@ -105,14 +201,14 @@ impl TextureLabApp {
 
         self.history.record(&self.graph, format!("Spawn {}", desc.display_name));
         self.status_message = format!("Spawned {}", desc.display_name);
-        node_id
+        Some(node_id)
     }
 
-    /// Spawns a node from its canonical type name at the center of the current canvas viewport.
+    /// Spawns a node from its canonical type name at the center of the current canvas viewport if permitted.
     pub fn spawn_node_by_type(&mut self, type_name: &str) -> Option<NodeId> {
-        let desc = NODE_CATALOG.iter().find(|d| d.type_name == type_name)?;
+        let desc = NODE_CATALOG.iter().find(|d| d.type_name.eq_ignore_ascii_case(type_name))?;
         let canvas_center = [-self.canvas_state.pan.x + 300.0, -self.canvas_state.pan.y + 200.0];
-        Some(self.spawn_node(desc, canvas_center))
+        self.spawn_node(desc, canvas_center)
     }
 
     /// Re-evaluates the graph and tracks execution time.
@@ -161,6 +257,7 @@ impl Default for TextureLabApp {
         Self {
             title: "TextureLAB — PBR Texture Workstation".to_string(),
             version: env!("CARGO_PKG_VERSION"),
+            edition: Edition::Pro,
             graph,
             evaluator,
             history,
@@ -408,16 +505,35 @@ impl eframe::App for TextureLabApp {
                     }
                     ui.separator();
                     for desc in NODE_CATALOG.iter() {
+                        let is_allowed = self.edition.is_node_allowed(desc.type_name);
+                        let pro_tag = if !is_allowed { " [PRO 🔒]" } else { "" };
                         let label = if let Some(k) = desc.hotkey {
-                            format!("{} [{}]", desc.display_name, k)
+                            format!("{}{}{}", desc.display_name, pro_tag, format!(" [{}]", k))
                         } else {
-                            desc.display_name.to_string()
+                            format!("{}{}", desc.display_name, pro_tag)
                         };
                         if ui.button(label).clicked() {
                             let pos = [-self.canvas_state.pan.x + 300.0, -self.canvas_state.pan.y + 200.0];
                             self.spawn_node(desc, pos);
                             ui.close_menu();
                         }
+                    }
+                });
+
+                ui.menu_button(format!("Edition: {}", self.edition.name()), |ui| {
+                    ui.label(egui::RichText::new("Capability Matrix:").strong());
+                    ui.label("• Lite: Channel Pack/Unpack, Lexical Wizard, PNG/TGA");
+                    ui.label("• Pro: RNM, 13-Op Math, 16-bit EXR/TIFF, A/B Split");
+                    ui.separator();
+                    if ui.selectable_label(self.edition == Edition::Pro, "TextureLAB Pro (Full Features)").clicked() {
+                        self.edition = Edition::Pro;
+                        self.status_message = "Active edition: TextureLAB Pro (All features unlocked)".to_string();
+                        ui.close_menu();
+                    }
+                    if ui.selectable_label(self.edition == Edition::Lite, "TextureLAB Lite (Restricted Mode)").clicked() {
+                        self.edition = Edition::Lite;
+                        self.status_message = "Active edition: TextureLAB Lite (RNM, Math & EXR/TIFF locked)".to_string();
+                        ui.close_menu();
                     }
                 });
 
@@ -431,7 +547,7 @@ impl eframe::App for TextureLabApp {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.colored_label(
                         crate::ui::theme::TEXT_ACCENT,
-                        "100% Native Rust • Zero Electron",
+                        format!("100% Native Rust • Zero Electron [{}]", self.edition.name()),
                     );
                     ui.separator();
                     ui.label(
@@ -505,6 +621,7 @@ impl eframe::App for TextureLabApp {
                 export_asset_name: &mut self.export_asset_name,
                 export_target_dir: &mut self.export_target_dir,
                 export_report_summary: &mut self.export_report_summary,
+                edition: &mut self.edition,
             };
 
             DockArea::new(&mut dock_state)
@@ -528,6 +645,7 @@ impl eframe::App for TextureLabApp {
                     ui.heading("ARKH TextureLAB");
                     ui.label("Professional PBR Texture Authoring and Channel Packing Workstation");
                     ui.label(format!("Version: {}", self.version));
+                    ui.label(format!("Edition: {} ({})", self.edition.name(), if self.edition.is_pro() { "Full Capability Matrix" } else { "Lite Mode" }));
                     ui.separator();
                     ui.label("• 100% Native Desktop Engine (Rust 2021)");
                     ui.label("• Zero Electron • Zero WebViews • Zero Node.js runtime");
@@ -557,6 +675,7 @@ struct AppTabViewer<'a> {
     export_asset_name: &'a mut String,
     export_target_dir: &'a mut String,
     export_report_summary: &'a mut Option<String>,
+    edition: &'a mut Edition,
 }
 
 impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
@@ -690,19 +809,23 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
 
             Tab::Library => {
                 if let Some(desc) = show_library_panel(ui, self.library_query) {
-                    let node_id = NodeId(self.graph.next_node_id);
-                    let spawn_pos = [-self.canvas_state.pan.x + 300.0, -self.canvas_state.pan.y + 200.0];
-                    let node = desc.create_node(node_id, spawn_pos);
-                    self.graph.add_node(node);
-                    self.canvas_state.selected_node = Some(node_id);
+                    if !self.edition.is_node_allowed(desc.type_name) {
+                        *self.status_message = format!("🔒 '{}' requires TextureLAB Pro edition.", desc.display_name);
+                    } else {
+                        let node_id = NodeId(self.graph.next_node_id);
+                        let spawn_pos = [-self.canvas_state.pan.x + 300.0, -self.canvas_state.pan.y + 200.0];
+                        let node = desc.create_node(node_id, spawn_pos);
+                        self.graph.add_node(node);
+                        self.canvas_state.selected_node = Some(node_id);
 
-                    self.evaluator.mark_dirty(self.graph, node_id);
-                    let start = Instant::now();
-                    let _ = self.evaluator.evaluate(self.graph);
-                    *self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
+                        self.evaluator.mark_dirty(self.graph, node_id);
+                        let start = Instant::now();
+                        let _ = self.evaluator.evaluate(self.graph);
+                        *self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-                    self.history.record(self.graph, format!("Spawn {}", desc.display_name));
-                    *self.status_message = format!("Spawned {}", desc.display_name);
+                        self.history.record(self.graph, format!("Spawn {}", desc.display_name));
+                        *self.status_message = format!("Spawned {}", desc.display_name);
+                    }
                 }
             }
 
@@ -797,6 +920,7 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                     let fmt = node.get_string("format", "PNG");
                                     let (w, h) = self.evaluator.resolve_node_dimensions(&self.graph, node);
                                     let has_input = node.inputs.iter().any(|pin| self.graph.incoming_edge(pin).is_some());
+                                    let is_fmt_allowed = self.edition.is_format_allowed(&fmt);
 
                                     let ctx = TokenContext::new(&*self.export_asset_name, &slot)
                                         .with_format(&fmt)
@@ -808,7 +932,9 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                     ui.label(&fmt);
                                     ui.label(format!("{}x{}", w, h));
                                     ui.label(&resolved_file);
-                                    if has_input {
+                                    if !is_fmt_allowed {
+                                        ui.colored_label(crate::ui::theme::CAT_CONSTANTS, "🔒 Pro Format (Locked in Lite)");
+                                    } else if has_input {
                                         ui.colored_label(crate::ui::theme::CAT_MATH, "✅ Ready");
                                         let out_pin = PinId::output(node.id, "output");
                                         if let Some(buf) = self.evaluator.get_output(&out_pin) {
@@ -929,5 +1055,87 @@ mod tests {
         assert_eq!(app.graph.nodes.len(), 5);
         assert!(app.eval_time_ms >= 0.0);
         assert!(app.title().contains("TextureLAB"));
+        assert_eq!(app.edition, Edition::Pro);
+    }
+
+    #[test]
+    fn test_edition_capability_matrix_rules() {
+        assert!(Edition::Pro.is_pro());
+        assert!(!Edition::Lite.is_pro());
+
+        // Basic nodes allowed in both Lite and Pro
+        assert!(Edition::Lite.is_node_allowed("ChannelCombine"));
+        assert!(Edition::Lite.is_node_allowed("ChannelSplit"));
+        assert!(Edition::Lite.is_node_allowed("ConstantScalar"));
+        assert!(Edition::Lite.is_node_allowed("ConstantColor"));
+        assert!(Edition::Lite.is_node_allowed("Invert"));
+        assert!(Edition::Lite.is_node_allowed("Levels"));
+        assert!(Edition::Lite.is_node_allowed("NormalFlipGreen"));
+        assert!(Edition::Lite.is_node_allowed("LayerBlend"));
+        assert!(Edition::Lite.is_node_allowed("TextureInput"));
+        assert!(Edition::Lite.is_node_allowed("TextureOutput"));
+
+        // Pro-only nodes locked in Lite
+        assert!(!Edition::Lite.is_node_allowed("NormalBlendRNM"));
+        assert!(!Edition::Lite.is_node_allowed("Math"));
+        assert!(!Edition::Lite.is_node_allowed("Add"));
+        assert!(!Edition::Lite.is_node_allowed("Multiply"));
+
+        // All nodes allowed in Pro
+        assert!(Edition::Pro.is_node_allowed("NormalBlendRNM"));
+        assert!(Edition::Pro.is_node_allowed("Math"));
+        assert!(Edition::Pro.is_node_allowed("ChannelCombine"));
+
+        // Codec format capabilities
+        assert!(Edition::Lite.is_format_allowed("PNG"));
+        assert!(Edition::Lite.is_format_allowed("TGA"));
+        assert!(!Edition::Lite.is_format_allowed("EXR"));
+        assert!(!Edition::Lite.is_format_allowed("TIFF"));
+        assert!(Edition::Pro.is_format_allowed("EXR"));
+        assert!(Edition::Pro.is_format_allowed("TIFF"));
+
+        // Advanced Viewport tooling capabilities
+        assert!(!Edition::Lite.allows_ab_split());
+        assert!(Edition::Pro.allows_ab_split());
+        assert!(!Edition::Lite.allows_histogram());
+        assert!(Edition::Pro.allows_histogram());
+    }
+
+    #[test]
+    fn test_lite_edition_prevents_spawning_pro_nodes() {
+        let mut app = TextureLabApp::default().with_edition(Edition::Lite);
+        let initial_node_count = app.graph.nodes.len();
+
+        // Attempting to spawn Math node in Lite edition must fail
+        let result_math = app.spawn_node_by_type("Math");
+        assert!(result_math.is_none());
+        assert_eq!(app.graph.nodes.len(), initial_node_count);
+        assert!(app.status_message.contains("TextureLAB Pro"));
+
+        // Attempting to spawn RNM node in Lite edition must fail
+        let result_rnm = app.spawn_node_by_type("NormalBlendRNM");
+        assert!(result_rnm.is_none());
+        assert_eq!(app.graph.nodes.len(), initial_node_count);
+        assert!(app.status_message.contains("TextureLAB Pro"));
+
+        // Standard node like ChannelSplit should succeed in Lite
+        let result_split = app.spawn_node_by_type("ChannelSplit");
+        assert!(result_split.is_some());
+        assert_eq!(app.graph.nodes.len(), initial_node_count + 1);
+        assert!(app.status_message.contains("Channel Split"));
+    }
+
+    #[test]
+    fn test_pro_edition_allows_spawning_all_nodes() {
+        let mut app = TextureLabApp::default().with_edition(Edition::Pro);
+        let initial_node_count = app.graph.nodes.len();
+
+        let result_math = app.spawn_node_by_type("Math");
+        assert!(result_math.is_some());
+        assert_eq!(app.graph.nodes.len(), initial_node_count + 1);
+
+        let result_rnm = app.spawn_node_by_type("NormalBlendRNM");
+        assert!(result_rnm.is_some());
+        assert_eq!(app.graph.nodes.len(), initial_node_count + 2);
     }
 }
