@@ -248,7 +248,7 @@ impl GraphEvaluator {
             cache_hits: 0,
             cache_misses: 0,
             node_exec_counts: HashMap::new(),
-            executor: Box::new(DefaultNodeExecutor::new()),
+            executor: Box::new(crate::nodes::PbrNodeExecutor::new()),
         }
     }
 
@@ -260,10 +260,9 @@ impl GraphEvaluator {
 
     /// Registers a custom input texture for a node.
     pub fn set_input_texture(&mut self, node_id: NodeId, buffer: SharedTextureBuffer) {
-        // If using DefaultNodeExecutor, register with it
-        let mut def = DefaultNodeExecutor::new();
-        def.set_input_texture(node_id, Arc::clone(&buffer));
-        self.executor = Box::new(def);
+        let mut exec = crate::nodes::PbrNodeExecutor::new();
+        exec.set_input_texture(node_id, Arc::clone(&buffer));
+        self.executor = Box::new(exec);
         self.dirty_nodes.insert(node_id);
     }
 

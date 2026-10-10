@@ -1,1 +1,368 @@
-//! PBR node catalog and processing operations (Phase 3).
+//! PBR Node Catalog & Processing Math Engine (Phase 3).
+//!
+//! Provides all 12 canonical PBR node families in pure Rust with Rayon multithreaded execution:
+//! - **I/O:** `TextureInput`, `TextureOutput`
+//! - **Constants:** `ConstantScalar`, `ConstantColor`
+//! - **Channel Ops:** `ChannelCombine` (Pack), `ChannelSplit` (Unpack), `ChannelMixer` (4-row Swizzle)
+//! - **Color & Adjust:** `Invert`, `Levels`, `BrightnessContrast`
+//! - **Normal Ops:** `NormalFlipGreen` (DirectX <-> OpenGL), `NormalNormalize`, `NormalStrength`
+//! - **Blend Ops:** `LayerBlend` (Lerp with mask), `NormalBlendRNM` (Reoriented Normal Mapping)
+//! - **Math:** 13 scalar and vector operations (`Add`, `Subtract`, `Multiply`, `Divide`, etc.)
+//! - **Transform:** `Resize` (Power-of-Two POT enforcement, Bilinear / Lanczos3 resampling)
+
+pub mod adjust;
+pub mod blend;
+pub mod channel;
+pub mod constants;
+pub mod io;
+pub mod math;
+pub mod transform;
+
+pub use adjust::{
+    apply_brightness_contrast, apply_levels, flip_normal_green, invert_buffer,
+    normalize_normal_map, scale_normal_strength, LevelsNodeData,
+};
+pub use blend::{blend_layers, blend_normals_rnm, BlendMode};
+pub use channel::{
+    ChannelCombiner, ChannelMixerNodeData, ChannelMixerRow, ChannelSelector, ChannelSplitter,
+};
+pub use constants::{ConstantColorNodeData, ConstantScalarNodeData};
+pub use io::{
+    TextureBitDepth, TextureColorSpace, TextureFileFormat, TextureInputNodeData,
+    TextureOutputNodeData,
+};
+pub use math::MathOp;
+pub use transform::{
+    is_pot, nearest_pot, next_pot, prev_pot, resize_buffer, round_to_pot_dimensions,
+    PotRoundMode, ResizeFilter,
+};
+
+use crate::core::buffer::SharedTextureBuffer;
+use crate::graph::evaluator::{EvaluationError, NodeExecutor};
+use crate::graph::model::{Node, NodeId};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Comprehensive PBR Node Executor implementing `NodeExecutor` for the reactive DAG engine.
+pub struct PbrNodeExecutor {
+    custom_inputs: HashMap<NodeId, SharedTextureBuffer>,
+}
+
+impl Default for PbrNodeExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl PbrNodeExecutor {
+    pub fn new() -> Self {
+        Self {
+            custom_inputs: HashMap::new(),
+        }
+    }
+
+    /// Registers a custom input texture for a node ID.
+    pub fn set_input_texture(&mut self, node_id: NodeId, buffer: SharedTextureBuffer) {
+        self.custom_inputs.insert(node_id, buffer);
+    }
+}
+
+impl NodeExecutor for PbrNodeExecutor {
+    fn execute(
+        &self,
+        node: &Node,
+        inputs: &HashMap<String, SharedTextureBuffer>,
+        resolution: (u32, u32),
+    ) -> Result<HashMap<String, SharedTextureBuffer>, EvaluationError> {
+        match node.node_type.as_str() {
+            // I/O Nodes
+            "TextureInput" | "Input" => io::execute_texture_input(node, &self.custom_inputs, resolution),
+            "TextureOutput" | "Output" => io::execute_texture_output(node, inputs, resolution),
+
+            // Constants
+            "ConstantScalar" | "Scalar" => constants::execute_constant_scalar(node, resolution),
+            "ConstantColor" | "Color" => constants::execute_constant_color(node, resolution),
+
+            // Channel Operations
+            "ChannelCombine" | "ChannelPack" | "ChannelCombiner" => {
+                channel::execute_channel_combine(node, inputs, resolution)
+            }
+            "ChannelSplit" | "ChannelUnpack" | "ChannelSplitter" => {
+                channel::execute_channel_split(node, inputs, resolution)
+            }
+            "ChannelMixer" | "Swizzle" => channel::execute_channel_mixer(node, inputs, resolution),
+
+            // Adjustments
+            "Invert" => adjust::execute_invert(node, inputs, resolution),
+            "Levels" => adjust::execute_levels(node, inputs, resolution),
+            "BrightnessContrast" | "Brightness" => {
+                adjust::execute_brightness_contrast(node, inputs, resolution)
+            }
+
+            // Normal Operations
+            "NormalFlipGreen" | "FlipGreen" | "NormalInvertY" => {
+                adjust::execute_normal_flip_green(node, inputs, resolution)
+            }
+            "NormalNormalize" => adjust::execute_normal_normalize(node, inputs, resolution),
+            "NormalStrength" => adjust::execute_normal_strength(node, inputs, resolution),
+
+            // Blend Operations
+            "LayerBlend" | "Blend" => blend::execute_layer_blend(node, inputs, resolution),
+            "NormalBlendRNM" | "NormalBlend" | "RNM" => {
+                blend::execute_normal_blend_rnm(node, inputs, resolution)
+            }
+
+            // Math Operations
+            "Math" | "Add" | "Subtract" | "Multiply" | "Divide" | "Power" | "Min" | "Max"
+            | "Clamp" | "Abs" | "Step" | "Smoothstep" | "Modulo" => {
+                math::execute_math(node, inputs, resolution)
+            }
+
+            // Transform & Resizing
+            "Resize" | "Transform" => transform::execute_resize(node, inputs, resolution),
+
+            // Fallback: Passthrough first input or empty buffer
+            _ => {
+                let mut outputs = HashMap::new();
+                if let Some(first) = inputs.values().next() {
+                    outputs.insert("output".to_string(), Arc::clone(first));
+                } else {
+                    let blank = Arc::new(crate::core::buffer::TextureBuffer::new(resolution.0, resolution.1));
+                    outputs.insert("output".to_string(), blank);
+                }
+                Ok(outputs)
+            }
+        }
+    }
+}
+
+/// Category metadata for organizing nodes in library and search palettes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NodeCategory {
+    Io,
+    Constants,
+    ChannelOps,
+    ColorAdjust,
+    NormalOps,
+    BlendOps,
+    Math,
+    Transform,
+}
+
+impl std::fmt::Display for NodeCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Io => write!(f, "I/O"),
+            Self::Constants => write!(f, "Constants"),
+            Self::ChannelOps => write!(f, "Channel Operations"),
+            Self::ColorAdjust => write!(f, "Color & Adjust"),
+            Self::NormalOps => write!(f, "Normal Operations"),
+            Self::BlendOps => write!(f, "Blend Operations"),
+            Self::Math => write!(f, "Math"),
+            Self::Transform => write!(f, "Transform"),
+        }
+    }
+}
+
+/// Rich descriptor defining canonical sockets, hotkeys, and parameters for a node type.
+#[derive(Clone, Debug)]
+pub struct NodeDescriptor {
+    pub type_name: &'static str,
+    pub display_name: &'static str,
+    pub category: NodeCategory,
+    pub hotkey: Option<&'static str>,
+    pub default_inputs: &'static [&'static str],
+    pub default_outputs: &'static [&'static str],
+}
+
+impl NodeDescriptor {
+    /// Instantiates a new `Node` configured with this descriptor's default sockets.
+    pub fn create_node(&self, id: NodeId, position: [f32; 2]) -> Node {
+        let mut node = Node::new(id, self.type_name, self.display_name, position);
+        for &input in self.default_inputs {
+            node.add_input(input);
+        }
+        for &output in self.default_outputs {
+            node.add_output(output);
+        }
+        node
+    }
+}
+
+/// Master catalog defining all 12 canonical PBR node families.
+pub static NODE_CATALOG: &[NodeDescriptor] = &[
+    // 1. I/O
+    NodeDescriptor {
+        type_name: "TextureInput",
+        display_name: "Texture Input",
+        category: NodeCategory::Io,
+        hotkey: None,
+        default_inputs: &[],
+        default_outputs: &["output", "RGBA", "R", "G", "B", "A"],
+    },
+    NodeDescriptor {
+        type_name: "TextureOutput",
+        display_name: "Texture Output",
+        category: NodeCategory::Io,
+        hotkey: None,
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
+    // 2. Constants
+    NodeDescriptor {
+        type_name: "ConstantScalar",
+        display_name: "Constant Scalar",
+        category: NodeCategory::Constants,
+        hotkey: Some("1"),
+        default_inputs: &[],
+        default_outputs: &["output", "value"],
+    },
+    NodeDescriptor {
+        type_name: "ConstantColor",
+        display_name: "Constant Color",
+        category: NodeCategory::Constants,
+        hotkey: Some("3"),
+        default_inputs: &[],
+        default_outputs: &["output", "RGBA", "R", "G", "B", "A"],
+    },
+    // 3. Channel Operations
+    NodeDescriptor {
+        type_name: "ChannelCombine",
+        display_name: "Channel Combine (Pack)",
+        category: NodeCategory::ChannelOps,
+        hotkey: Some("C"),
+        default_inputs: &["R", "G", "B", "A"],
+        default_outputs: &["output", "RGBA"],
+    },
+    NodeDescriptor {
+        type_name: "ChannelSplit",
+        display_name: "Channel Split (Unpack)",
+        category: NodeCategory::ChannelOps,
+        hotkey: Some("S"),
+        default_inputs: &["input"],
+        default_outputs: &["R", "G", "B", "A"],
+    },
+    NodeDescriptor {
+        type_name: "ChannelMixer",
+        display_name: "Channel Mixer / Swizzle",
+        category: NodeCategory::ChannelOps,
+        hotkey: None,
+        default_inputs: &["input"],
+        default_outputs: &["output", "RGBA"],
+    },
+    // 4. Color & Adjust
+    NodeDescriptor {
+        type_name: "Invert",
+        display_name: "Invert",
+        category: NodeCategory::ColorAdjust,
+        hotkey: Some("I"),
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
+    NodeDescriptor {
+        type_name: "Levels",
+        display_name: "Levels",
+        category: NodeCategory::ColorAdjust,
+        hotkey: Some("L"),
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
+    NodeDescriptor {
+        type_name: "BrightnessContrast",
+        display_name: "Brightness / Contrast",
+        category: NodeCategory::ColorAdjust,
+        hotkey: None,
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
+    // 5. Normal Operations
+    NodeDescriptor {
+        type_name: "NormalFlipGreen",
+        display_name: "Normal Flip Green (DirectX <-> OpenGL)",
+        category: NodeCategory::NormalOps,
+        hotkey: Some("N"),
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
+    NodeDescriptor {
+        type_name: "NormalNormalize",
+        display_name: "Normal Normalize",
+        category: NodeCategory::NormalOps,
+        hotkey: None,
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
+    NodeDescriptor {
+        type_name: "NormalStrength",
+        display_name: "Normal Strength",
+        category: NodeCategory::NormalOps,
+        hotkey: None,
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
+    // 6. Blend Operations
+    NodeDescriptor {
+        type_name: "LayerBlend",
+        display_name: "Layer Blend (Lerp)",
+        category: NodeCategory::BlendOps,
+        hotkey: Some("B"),
+        default_inputs: &["base", "layer", "mask"],
+        default_outputs: &["output"],
+    },
+    NodeDescriptor {
+        type_name: "NormalBlendRNM",
+        display_name: "Normal Blend (RNM)",
+        category: NodeCategory::BlendOps,
+        hotkey: None,
+        default_inputs: &["base", "detail"],
+        default_outputs: &["output"],
+    },
+    // 7. Math
+    NodeDescriptor {
+        type_name: "Math",
+        display_name: "Math (13 Operations)",
+        category: NodeCategory::Math,
+        hotkey: Some("M"),
+        default_inputs: &["A", "B"],
+        default_outputs: &["output"],
+    },
+    // 8. Transform
+    NodeDescriptor {
+        type_name: "Resize",
+        display_name: "Resize & POT Transform",
+        category: NodeCategory::Transform,
+        hotkey: None,
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
+];
+
+/// Finds a node descriptor by type name.
+pub fn find_descriptor(type_name: &str) -> Option<&'static NodeDescriptor> {
+    NODE_CATALOG
+        .iter()
+        .find(|d| d.type_name.eq_ignore_ascii_case(type_name))
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+
+    #[test]
+    pub fn test_catalog_census() {
+        assert!(NODE_CATALOG.len() >= 12);
+        assert!(find_descriptor("ChannelMixer").is_some());
+        assert!(find_descriptor("NormalBlendRNM").is_some());
+        assert!(find_descriptor("Levels").is_some());
+        assert!(find_descriptor("Math").is_some());
+    }
+
+    #[test]
+    pub fn test_create_node_from_descriptor() {
+        let desc = find_descriptor("ChannelCombine").unwrap();
+        let node = desc.create_node(NodeId(42), [100.0, 200.0]);
+        assert_eq!(node.id, NodeId(42));
+        assert_eq!(node.inputs.len(), 4);
+        assert_eq!(node.outputs.len(), 2);
+    }
+}

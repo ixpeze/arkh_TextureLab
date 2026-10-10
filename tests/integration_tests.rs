@@ -491,3 +491,224 @@ fn test_tlab_atomic_file_save_and_load() {
     // Clean up
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+// =========================================================================
+// Phase 3 Integration Tests (TC-301 .. TC-306)
+// =========================================================================
+
+use texturelab::nodes::{
+    blend_layers, blend_normals_rnm, flip_normal_green, nearest_pot,
+    next_pot, prev_pot, round_to_pot_dimensions, BlendMode,
+    ChannelCombiner, ChannelSplitter, LevelsNodeData, MathOp, PotRoundMode,
+};
+
+/// TC-301: Channel Pack & Split Roundtrip
+#[test]
+fn test_combine_and_split() {
+    let r_in = TextureBuffer::solid_color(32, 32, 45, 45, 45, 255);
+    let g_in = TextureBuffer::solid_color(32, 32, 90, 90, 90, 255);
+    let b_in = TextureBuffer::solid_color(32, 32, 135, 135, 135, 255);
+    let a_in = TextureBuffer::solid_color(32, 32, 180, 180, 180, 255);
+
+    // Pack
+    let packed = ChannelCombiner::combine(
+        Some(&r_in),
+        Some(&g_in),
+        Some(&b_in),
+        Some(&a_in),
+        [0, 0, 0, 255],
+        32,
+        32,
+    );
+    assert_eq!(packed.get_pixel(0, 0), [45, 90, 135, 180]);
+
+    // Split
+    let (r_out, g_out, b_out, a_out) = ChannelSplitter::split(&packed);
+    assert_eq!(r_out.get_pixel(0, 0), r_in.get_pixel(0, 0));
+    assert_eq!(g_out.get_pixel(0, 0), g_in.get_pixel(0, 0));
+    assert_eq!(b_out.get_pixel(0, 0), b_in.get_pixel(0, 0));
+    assert_eq!(a_out.get_pixel(0, 0), a_in.get_pixel(0, 0));
+
+    // Full DAG roundtrip test:
+    let mut graph = Graph::new();
+    let n_pack = graph.create_node("ChannelCombine", "Packer", [0.0, 0.0]);
+    let n_split = graph.create_node("ChannelSplit", "Splitter", [300.0, 0.0]);
+
+    let p_pack_out = PinId::output(n_pack, "output");
+    let p_split_in = PinId::input(n_split, "input");
+    graph.connect(p_pack_out, p_split_in).unwrap();
+
+    let mut evaluator = GraphEvaluator::new((16, 16));
+    evaluator.evaluate(&graph).unwrap();
+
+    let r_buf = evaluator.get_output(&PinId::output(n_split, "R")).unwrap();
+    assert_eq!(r_buf.width, 16);
+    assert_eq!(r_buf.height, 16);
+}
+
+/// TC-302: Channel Mixer Swizzle
+#[test]
+fn test_mixer_swizzle() {
+    let mut graph = Graph::new();
+
+    let mut n_in = Node::new(NodeId(1), "TextureInput", "Source", [0.0, 0.0]);
+    n_in.set_param("color", NodeParam::Color([10.0 / 255.0, 20.0 / 255.0, 30.0 / 255.0, 40.0 / 255.0]));
+    let p_in_out = n_in.add_output("output");
+    graph.add_node(n_in);
+
+    let mut n_swizzle = Node::new(NodeId(2), "ChannelMixer", "Swizzle Matrix", [300.0, 0.0]);
+    n_swizzle.set_param("r_src", NodeParam::String("B".to_string()));
+    n_swizzle.set_param("g_src", NodeParam::String("G".to_string()));
+    n_swizzle.set_param("b_src", NodeParam::String("R".to_string()));
+    n_swizzle.set_param("a_src", NodeParam::String("A".to_string()));
+    let p_sw_in = n_swizzle.add_input("input");
+    let p_sw_out = n_swizzle.add_output("output");
+    graph.add_node(n_swizzle);
+
+    graph.connect(p_in_out, p_sw_in).unwrap();
+
+    let mut evaluator = GraphEvaluator::new((16, 16));
+    evaluator.evaluate(&graph).unwrap();
+
+    let out = evaluator.get_output(&p_sw_out).unwrap();
+    // Swizzling (10, 20, 30, 40) with R<->B produces (30, 20, 10, 40)
+    assert_eq!(out.get_pixel(0, 0), [30, 20, 10, 40]);
+}
+
+/// TC-303: Normal Blend RNM Orthogonality
+#[test]
+fn test_normal_blend_rnm() {
+    let flat_base = TextureBuffer::solid_color(16, 16, 128, 128, 255, 255);
+    // Tilted detail normal: nx=0.6, ny=0.0, nz=0.8 -> (204, 128, 230)
+    let detail_tilted = TextureBuffer::solid_color(16, 16, 204, 128, 230, 255);
+
+    let blended = blend_normals_rnm(&flat_base, &detail_tilted);
+    let px = blended.get_pixel(0, 0);
+
+    // RNM blends slopes without squashing Z
+    assert!((px[0] as i32 - 204).abs() <= 2);
+    assert!((px[1] as i32 - 128).abs() <= 2);
+    assert!((px[2] as i32 - 230).abs() <= 2);
+    assert!(px[2] > 200);
+
+    // Test inside DAG:
+    let mut graph = Graph::new();
+    let mut n_base = Node::new(NodeId(1), "ConstantColor", "Flat Base", [0.0, 0.0]);
+    n_base.set_param("color", NodeParam::Color([128.0 / 255.0, 128.0 / 255.0, 1.0, 1.0]));
+    let p_base = n_base.add_output("output");
+    graph.add_node(n_base);
+
+    let mut n_detail = Node::new(NodeId(2), "ConstantColor", "Tilted Detail", [0.0, 200.0]);
+    n_detail.set_param("color", NodeParam::Color([204.0 / 255.0, 128.0 / 255.0, 230.0 / 255.0, 1.0]));
+    let p_detail = n_detail.add_output("output");
+    graph.add_node(n_detail);
+
+    let mut n_rnm = Node::new(NodeId(3), "NormalBlendRNM", "RNM Blender", [300.0, 100.0]);
+    let p_rnm_base = n_rnm.add_input("base");
+    let p_rnm_detail = n_rnm.add_input("detail");
+    let p_rnm_out = n_rnm.add_output("output");
+    graph.add_node(n_rnm);
+
+    graph.connect(p_base, p_rnm_base).unwrap();
+    graph.connect(p_detail, p_rnm_detail).unwrap();
+
+    let mut evaluator = GraphEvaluator::new((16, 16));
+    evaluator.evaluate(&graph).unwrap();
+
+    let rnm_out = evaluator.get_output(&p_rnm_out).unwrap();
+    let dag_px = rnm_out.get_pixel(0, 0);
+    assert!((dag_px[0] as i32 - 204).abs() <= 2);
+    assert!(dag_px[2] > 200);
+}
+
+/// P3-T7: Layer Blend (Lerp) 50% opacity produces 128 gray
+#[test]
+fn test_layer_blend() {
+    let white = TextureBuffer::solid_color(16, 16, 255, 255, 255, 255);
+    let black = TextureBuffer::solid_color(16, 16, 0, 0, 0, 255);
+
+    let blended = blend_layers(&white, &black, None, 0.5, BlendMode::Normal);
+    let px = blended.get_pixel(0, 0);
+
+    assert_eq!(px[0], 128);
+    assert_eq!(px[1], 128);
+    assert_eq!(px[2], 128);
+    assert_eq!(px[3], 255);
+}
+
+/// TC-304: Normal Flip Green DirectX/OpenGL & Levels
+#[test]
+fn test_normal_flip_and_levels() {
+    let mut normal_buf = TextureBuffer::new(8, 8);
+    normal_buf.set_pixel(0, 0, [128, 64, 255, 255]);
+    let flipped = flip_normal_green(&normal_buf);
+
+    // Normal Y flips across 128 midpoint: 255 - 64 = 191
+    let px = flipped.get_pixel(0, 0);
+    assert_eq!(px[0], 128);
+    assert_eq!(px[1], 191);
+    assert_eq!(px[2], 255);
+
+    // Levels node verification
+    let levels = LevelsNodeData {
+        in_low: 0.1,
+        in_high: 0.9,
+        gamma: 1.0,
+        out_low: 0.0,
+        out_high: 1.0,
+        affect_alpha: false,
+    };
+    let lut = levels.build_lut();
+    assert_eq!(lut[0], 0);
+    assert_eq!(lut[255], 255);
+    // At input ~ 0.5 (128): (0.50196 - 0.1) / (0.8) = 0.40196 / 0.8 = 0.5024 -> 128
+    assert!((lut[128] as i32 - 128).abs() <= 2);
+}
+
+/// TC-305: Math Operations Suite (All 13 Operations)
+#[test]
+fn test_math_operations() {
+    let ops = [
+        MathOp::Add,
+        MathOp::Subtract,
+        MathOp::Multiply,
+        MathOp::Divide,
+        MathOp::Power,
+        MathOp::Min,
+        MathOp::Max,
+        MathOp::Clamp,
+        MathOp::Abs,
+        MathOp::Step,
+        MathOp::Smoothstep,
+        MathOp::Modulo,
+        MathOp::Invert,
+    ];
+
+    for op in ops {
+        // Zero-division safety: b = 0.0 must never panic or produce NaN
+        let safe_res = op.compute(0.5, 0.0, 0.0, 1.0, 0.0, 1.0);
+        assert!(!safe_res.is_nan(), "Op {:?} produced NaN with b=0.0", op);
+        assert!(!safe_res.is_infinite(), "Op {:?} produced Infinite with b=0.0", op);
+
+        // Standard inputs
+        let normal_res = op.compute(0.6, 0.3, 0.0, 1.0, 0.0, 1.0);
+        assert!(!normal_res.is_nan(), "Op {:?} produced NaN", op);
+        assert!(normal_res >= 0.0 && normal_res <= 1.0, "Op {:?} out of bounds", op);
+    }
+}
+
+/// TC-306: POT Resizing Rounding
+#[test]
+fn test_pot_rounding() {
+    // Nearest POT dimension rounding: 1920x1080 -> 2048x1024
+    let (w_near, h_near) = round_to_pot_dimensions(1920, 1080, PotRoundMode::Nearest);
+    assert_eq!(w_near, 2048);
+    assert_eq!(h_near, 1024);
+
+    assert_eq!(nearest_pot(1920), 2048);
+    assert_eq!(nearest_pot(1080), 1024);
+
+    assert_eq!(next_pot(1920), 2048);
+    assert_eq!(prev_pot(1920), 1024);
+}
+
