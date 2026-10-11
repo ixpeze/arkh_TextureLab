@@ -1,6 +1,4 @@
-//! ARKH TextureLab — Professional PBR Texture Authoring and Channel Packing Workstation.
-//!
-//! 100% Pure Rust • Native Desktop Engine • Zero Electron • Zero WebViews.
+//! TextureLab — PBR Texture Authoring and Channel Packing.
 
 pub mod app;
 pub mod core;

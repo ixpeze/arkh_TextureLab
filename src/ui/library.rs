@@ -1,10 +1,15 @@
-//! Node Catalog Library & Quick Search Palette (Phase 5).
+//! Node Catalog Library & Quick Search Palette (React/xyflow SpawnPalette Style).
 //!
 //! Provides the categorized node catalog browser and the high-speed
-//! `Tab`-activated floating search palette with fuzzy filtering.
+//! `Tab`-activated floating search palette with fuzzy filtering, keyboard navigation,
+//! and modern Graphite Blueprint aesthetic.
 
-use egui::{Key, ScrollArea, Stroke, Ui, Vec2};
+use egui::{Color32, Key, Pos2, Rect, ScrollArea, Sense, Stroke, Ui, Vec2};
 use crate::nodes::{NodeCategory, NodeDescriptor, NODE_CATALOG};
+use crate::ui::theme::{
+    category_color, ACCENT_AMBER, BG_CARD, BORDER_DARK, TEXT_MUTED, TEXT_PRIMARY,
+    TEXT_SECONDARY,
+};
 
 /// State for the floating quick-search palette (`Tab` key).
 pub struct SearchPaletteState {
@@ -46,7 +51,7 @@ impl SearchPaletteState {
         self.selected_index = 0;
     }
 
-    /// Renders the floating search palette popup.
+    /// Renders the floating search palette popup (frameless glassmorphic card).
     /// Returns `Some((descriptor, canvas_pos))` if a node was selected for spawning.
     pub fn show(
         &mut self,
@@ -60,39 +65,59 @@ impl SearchPaletteState {
         let mut close_requested = false;
 
         let screen_rect = ctx.screen_rect();
-        let modal_size = Vec2::new(340.0, 380.0);
+        let modal_size = Vec2::new(360.0, 400.0);
         let center = screen_rect.center();
 
-        egui::Window::new("Quick Spawn Palette (Tab)")
+        egui::Window::new("spawn_palette_window")
             .fixed_size(modal_size)
             .fixed_pos(center - modal_size * 0.5)
             .collapsible(false)
             .resizable(false)
-            .title_bar(true)
+            .title_bar(false)
+            .frame(
+                egui::Frame::window(&ctx.style())
+                    .fill(BG_CARD)
+                    .stroke(Stroke::new(1.5_f32, ACCENT_AMBER))
+                    .corner_radius(8.0)
+                    .inner_margin(12.0)
+            )
             .show(ctx, |ui| {
+                // Top Search Bar
                 ui.horizontal(|ui| {
-                    ui.label("🔍");
+                    ui.label(
+                        egui::RichText::new("Search")
+                            .color(ACCENT_AMBER)
+                            .size(13.0)
+                            .strong(),
+                    );
                     let text_edit = egui::TextEdit::singleline(&mut self.query)
-                        .hint_text("Search nodes by name, type, or hotkey...")
-                        .desired_width(280.0);
+                        .hint_text("Find nodes...")
+                        .desired_width(260.0);
                     let resp = ui.add(text_edit);
                     if self.just_opened {
                         resp.request_focus();
                         self.just_opened = false;
                     }
+
+                    if ui.small_button("x").clicked() {
+                        close_requested = true;
+                    }
                 });
 
+                ui.add_space(4.0);
                 ui.separator();
+                ui.add_space(4.0);
 
                 // Filter catalog
                 let filtered: Vec<&'static NodeDescriptor> = filter_catalog(&self.query);
 
                 if filtered.is_empty() {
                     ui.vertical_centered(|ui| {
-                        ui.add_space(30.0);
+                        ui.add_space(40.0);
                         ui.label(
                             egui::RichText::new("No matching nodes found")
-                                .color(crate::ui::theme::TEXT_MUTED),
+                                .color(TEXT_MUTED)
+                                .size(12.0),
                         );
                     });
                 } else {
@@ -118,53 +143,94 @@ impl SearchPaletteState {
                         self.selected_index = 0;
                     }
 
-                    ScrollArea::vertical().show(ui, |ui| {
+                    ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
                         for (idx, &desc) in filtered.iter().enumerate() {
                             let is_highlighted = idx == self.selected_index;
-                            let cat_color = crate::ui::theme::category_color(desc.category);
+                            let cat_color = category_color(desc.category);
 
-                            let item_resp = ui.horizontal(|ui| {
-                                ui.colored_label(cat_color, "●");
-                                ui.strong(
-                                    egui::RichText::new(desc.display_name).color(if is_highlighted {
-                                        crate::ui::theme::TEXT_ACCENT
-                                    } else {
-                                        crate::ui::theme::TEXT_PRIMARY
-                                    }),
+                            let desired_size = Vec2::new(ui.available_width(), 26.0);
+                            let (rect, resp) = ui.allocate_at_least(desired_size, Sense::click());
+
+                            let is_hovered = resp.hovered();
+                            let is_active = is_highlighted || is_hovered;
+
+                            let bg_fill = if is_active {
+                                Color32::from_rgb(42, 42, 58)
+                            } else {
+                                Color32::from_rgb(28, 28, 38)
+                            };
+                            let stroke = if is_active {
+                                Stroke::new(1.0_f32, ACCENT_AMBER)
+                            } else {
+                                Stroke::new(1.0_f32, BORDER_DARK)
+                            };
+
+                            ui.painter().rect_filled(rect, 4.0, bg_fill);
+                            ui.painter().rect_stroke(rect, 4.0, stroke, egui::StrokeKind::Inside);
+
+                            // Left Category Accent Bar
+                            let accent_rect = Rect::from_min_size(rect.min, Vec2::new(3.5, rect.height()));
+                            ui.painter().rect_filled(
+                                accent_rect,
+                                egui::CornerRadius { nw: 4, ne: 0, sw: 4, se: 0 },
+                                cat_color,
+                            );
+
+                            // Category Dot
+                            ui.painter().circle_filled(Pos2::new(rect.min.x + 12.0, rect.center().y), 3.0, cat_color);
+
+                            // Node Display Name
+                            ui.painter().text(
+                                Pos2::new(rect.min.x + 22.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                desc.display_name,
+                                egui::FontId::proportional(12.0),
+                                if is_active { Color32::WHITE } else { TEXT_PRIMARY },
+                            );
+
+                            // Category tag
+                            ui.painter().text(
+                                Pos2::new(rect.min.x + 150.0, rect.center().y),
+                                egui::Align2::LEFT_CENTER,
+                                format!("({})", desc.category),
+                                egui::FontId::proportional(10.0),
+                                TEXT_MUTED,
+                            );
+
+                            // Hotkey keycap tag on right
+                            if let Some(key) = desc.hotkey {
+                                let pill_rect = Rect::from_center_size(
+                                    Pos2::new(rect.max.x - 16.0, rect.center().y),
+                                    Vec2::new(22.0, 16.0),
                                 );
-                                if let Some(key) = desc.hotkey {
-                                    ui.with_layout(
-                                        egui::Layout::right_to_left(egui::Align::Center),
-                                        |ui| {
-                                            ui.colored_label(
-                                                crate::ui::theme::TEXT_MUTED,
-                                                format!("[{}]", key),
-                                            );
-                                        },
-                                    );
-                                }
-                            });
-
-                            if is_highlighted {
-                                let rect = item_resp.response.rect;
+                                ui.painter().rect_filled(pill_rect, 3.0, Color32::from_rgb(36, 36, 48));
                                 ui.painter().rect_stroke(
-                                    rect,
-                                    2.0,
-                                    Stroke::new(1.0_f32, crate::ui::theme::BORDER_HIGHLIGHT),
+                                    pill_rect,
+                                    3.0,
+                                    Stroke::new(1.0_f32, if is_active { ACCENT_AMBER } else { BORDER_DARK }),
                                     egui::StrokeKind::Inside,
+                                );
+                                ui.painter().text(
+                                    pill_rect.center(),
+                                    egui::Align2::CENTER_CENTER,
+                                    format!("[{}]", key),
+                                    egui::FontId::proportional(9.5),
+                                    if is_active { ACCENT_AMBER } else { TEXT_SECONDARY },
                                 );
                             }
 
-                            if item_resp.response.clicked() {
+                            if resp.clicked() {
                                 spawned = Some((desc, self.canvas_spawn_pos));
                                 close_requested = true;
                             }
+
+                            ui.add_space(2.0);
                         }
                     });
                 }
             });
 
-        // Close on escape
+        // Close on escape or tab
         if ctx.input(|i| i.key_pressed(Key::Escape)) || close_requested {
             self.close();
         }
@@ -181,14 +247,20 @@ pub fn show_library_panel(
     let mut spawned_desc = None;
 
     ui.vertical(|ui| {
+        // Search bar
         ui.horizontal(|ui| {
-            ui.label("🔍");
-            ui.text_edit_singleline(query);
-            if !query.is_empty() && ui.button("✖").clicked() {
+            let has_query = !query.is_empty();
+            let desired_w = ui.available_width() - if has_query { 24.0 } else { 0.0 };
+            let text_edit = egui::TextEdit::singleline(query)
+                .hint_text("Search library nodes...")
+                .desired_width(desired_w);
+            ui.add(text_edit);
+            if has_query && ui.small_button("x").clicked() {
                 query.clear();
             }
         });
 
+        ui.add_space(3.0);
         ui.separator();
 
         ScrollArea::vertical().show(ui, |ui| {
@@ -224,37 +296,106 @@ pub fn show_library_panel(
                     continue;
                 }
 
-                let cat_color = crate::ui::theme::category_color(cat);
+                let cat_color = category_color(cat);
+
                 egui::CollapsingHeader::new(
-                    egui::RichText::new(format!("● {}", cat))
+                    egui::RichText::new(format!("● {} ({})", cat, cat_nodes.len()))
                         .color(cat_color)
+                        .size(12.5)
                         .strong(),
                 )
                 .default_open(true)
                 .show(ui, |ui| {
-                    for desc in cat_nodes {
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(desc.display_name)
-                                    .color(crate::ui::theme::TEXT_PRIMARY),
-                            );
+                    for &desc in &cat_nodes {
+                        let desired_size = Vec2::new(ui.available_width(), 26.0);
+                        let (rect, resp) = ui.allocate_at_least(desired_size, Sense::click_and_drag());
 
-                            if let Some(key) = desc.hotkey {
-                                ui.colored_label(
-                                    crate::ui::theme::TEXT_MUTED,
-                                    format!("[{}]", key),
-                                );
-                            }
+                        let is_hovered = resp.hovered();
+                        let is_dragged = resp.dragged();
 
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    if ui.button("+ Add").clicked() {
-                                        spawned_desc = Some(desc);
-                                    }
-                                },
+                        // Visual feedback on hover and drag
+                        if is_dragged {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+                        } else if is_hovered {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+
+                        // Background: High-contrast tactile card surface (idle, hover, dragged)
+                        let bg_fill = if is_dragged {
+                            Color32::from_rgb(52, 52, 72)
+                        } else if is_hovered {
+                            Color32::from_rgb(42, 42, 58)
+                        } else {
+                            Color32::from_rgb(28, 28, 38)
+                        };
+
+                        let stroke = if is_dragged || is_hovered {
+                            Stroke::new(1.0_f32, ACCENT_AMBER)
+                        } else {
+                            Stroke::new(1.0_f32, BORDER_DARK)
+                        };
+
+                        ui.painter().rect_filled(rect, 4.0, bg_fill);
+                        ui.painter().rect_stroke(rect, 4.0, stroke, egui::StrokeKind::Inside);
+
+                        // 3.5px Category Left Accent Bar
+                        let accent_rect = Rect::from_min_size(rect.min, Vec2::new(3.5, rect.height()));
+                        ui.painter().rect_filled(
+                            accent_rect,
+                            egui::CornerRadius { nw: 4, ne: 0, sw: 4, se: 0 },
+                            cat_color,
+                        );
+
+                        // Category Dot Indicator
+                        ui.painter().circle_filled(Pos2::new(rect.min.x + 12.0, rect.center().y), 3.0, cat_color);
+
+                        // Node Name Label (High Contrast)
+                        let text_color = if is_hovered || is_dragged {
+                            Color32::WHITE
+                        } else {
+                            TEXT_PRIMARY
+                        };
+                        ui.painter().text(
+                            Pos2::new(rect.min.x + 22.0, rect.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            desc.display_name,
+                            egui::FontId::proportional(12.0),
+                            text_color,
+                        );
+
+                        // Hotkey keycap tag on right
+                        if let Some(key) = desc.hotkey {
+                            let pill_rect = Rect::from_center_size(
+                                Pos2::new(rect.max.x - 16.0, rect.center().y),
+                                Vec2::new(22.0, 16.0),
                             );
-                        });
+                            ui.painter().rect_filled(pill_rect, 3.0, Color32::from_rgb(36, 36, 48));
+                            ui.painter().rect_stroke(
+                                pill_rect,
+                                3.0,
+                                Stroke::new(1.0_f32, if is_hovered { ACCENT_AMBER } else { BORDER_DARK }),
+                                egui::StrokeKind::Inside,
+                            );
+                            ui.painter().text(
+                                pill_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                format!("[{}]", key),
+                                egui::FontId::proportional(9.5),
+                                if is_hovered { ACCENT_AMBER } else { TEXT_SECONDARY },
+                            );
+                        }
+
+                        // Click spawns node
+                        if resp.clicked() {
+                            spawned_desc = Some(desc);
+                        }
+
+                        // Drag payload setup
+                        if resp.drag_started() {
+                            egui::DragAndDrop::set_payload(ui.ctx(), desc.type_name.to_string());
+                        }
+
+                        ui.add_space(2.0);
                     }
                 });
             }
@@ -264,7 +405,7 @@ pub fn show_library_panel(
     spawned_desc
 }
 
-/// Filters node catalog items based on query substring matches.
+/// Filters the node catalog based on a text query.
 pub fn filter_catalog(query: &str) -> Vec<&'static NodeDescriptor> {
     let q = query.trim().to_lowercase();
     if q.is_empty() {

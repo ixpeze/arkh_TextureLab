@@ -22,45 +22,55 @@ pub enum Tab {
 impl Tab {
     pub fn title(&self) -> &'static str {
         match self {
-            Self::NodeCanvas => "☵ Node Canvas",
-            Self::Viewport2D => "🖼 2D Viewport",
-            Self::Inspector => "⚙ Properties Inspector",
-            Self::Library => "📚 Node Library",
-            Self::ExportDrawer => "📤 Export Preflight",
+            Self::NodeCanvas => "Node Canvas",
+            Self::Viewport2D => "2D Viewport",
+            Self::Inspector => "Properties",
+            Self::Library => "Node Library",
+            Self::ExportDrawer => "Export",
         }
     }
 }
 
+const DEFAULT_LAYOUT_JSON: &str = include_str!("../../texturelab_layout.json");
+
 /// Constructs the default professional workstation dock layout.
+/// Canvas is the central workspace, Left is Library, Right is Viewport (top) and Inspector (bottom).
+/// Export Drawer is hidden by default (opened on-demand via Ctrl+E or View menu).
 pub fn default_dock_layout() -> DockState<Tab> {
+    // 1. Attempt to load from disk first if present at runtime
+    if let Ok(data) = std::fs::read_to_string("texturelab_layout.json") {
+        if let Ok(dock) = serde_json::from_str::<DockState<Tab>>(&data) {
+            return dock;
+        }
+    }
+
+    // 2. Fallback to embedded default layout JSON
+    if let Ok(dock) = serde_json::from_str::<DockState<Tab>>(DEFAULT_LAYOUT_JSON) {
+        return dock;
+    }
+
+    // 3. Fallback: programmatic tree
     let mut dock_state = DockState::new(vec![Tab::NodeCanvas]);
 
-    // Split Left: Library
+    // Split Left: Node Library (~18% of screen)
     let [center, _left] = dock_state.main_surface_mut().split_left(
         NodeIndex::root(),
-        0.20,
+        0.18,
         vec![Tab::Library],
     );
 
-    // Split Right: Viewport2D (top right)
+    // Split Right: Viewport2D (top right, ~32% of remaining width)
     let [_center_view, right] = dock_state.main_surface_mut().split_right(
         center,
-        0.35,
+        0.32,
         vec![Tab::Viewport2D],
     );
 
-    // Split Bottom Right: Inspector
+    // Split Bottom Right: Properties Inspector (50% of right column)
     let [_top_right, _bottom_right] = dock_state.main_surface_mut().split_below(
         right,
         0.50,
         vec![Tab::Inspector],
-    );
-
-    // Split Bottom Center: Export Drawer
-    let [_center_top, _bottom] = dock_state.main_surface_mut().split_below(
-        center,
-        0.25,
-        vec![Tab::ExportDrawer],
     );
 
     dock_state
@@ -78,6 +88,7 @@ mod tests {
         assert!(tabs.contains(&Tab::Viewport2D));
         assert!(tabs.contains(&Tab::Inspector));
         assert!(tabs.contains(&Tab::Library));
-        assert!(tabs.contains(&Tab::ExportDrawer));
+        // ExportDrawer is hidden by default
+        assert!(!tabs.contains(&Tab::ExportDrawer));
     }
 }

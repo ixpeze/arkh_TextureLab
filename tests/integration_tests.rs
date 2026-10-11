@@ -982,10 +982,11 @@ fn test_workstation_launch_latency_and_dock_layout() {
     assert_eq!(app.graph.nodes.len(), 5);
     assert_eq!(app.graph.edges.len(), 4);
 
-    // Verify dock layout is properly initialized
+    // Verify dock layout is properly initialized (Canvas, Viewport, Inspector, Library; Export hidden by default)
     let dock = app.dock_state.expect("Missing dock state");
     let tabs: Vec<_> = dock.iter_all_tabs().map(|(_, t)| *t).collect();
-    assert_eq!(tabs.len(), 5);
+    assert_eq!(tabs.len(), 4);
+    assert!(!tabs.contains(&texturelab::ui::Tab::ExportDrawer));
 }
 
 /// TC-502: DCC Keyboard Hotkey Dispatcher Guard
@@ -1295,3 +1296,374 @@ fn test_edition_capability_matrix_and_enforcement() {
     let pro_rnm = pro_app.spawn_node_by_type("NormalBlendRNM");
     assert!(pro_rnm.is_some(), "RNM node must spawn successfully in Pro edition");
 }
+
+#[test]
+fn test_unreal_engine_navigation_and_pin_severing() {
+    let mut app = TextureLabApp::default();
+    let initial_edges = app.graph.edges.len();
+    assert!(initial_edges > 0);
+
+    // Sever connections on node 1's "RGBA" pin
+    let pin = PinId::output(NodeId(1), "RGBA");
+    let edges_connected: Vec<_> = app.graph.edges.iter().filter(|e| e.from == pin || e.to == pin).cloned().collect();
+    assert!(!edges_connected.is_empty(), "Pin must have active connections initially");
+
+    for edge in edges_connected {
+        app.graph.disconnect(&edge.from, &edge.to);
+    }
+    assert_eq!(app.graph.edges.len(), initial_edges - 1);
+
+    // Test spawning node at canvas position
+    let new_node_id = NodeId(app.graph.next_node_id);
+    let desc = texturelab::nodes::NODE_CATALOG.iter().find(|d| d.type_name == "ConstantScalar").unwrap();
+    let node = desc.create_node(new_node_id, [250.0, 350.0]);
+    app.graph.add_node(node);
+    assert_eq!(app.graph.get_node(new_node_id).unwrap().position, [250.0, 350.0]);
+}
+
+#[test]
+fn test_drag_and_drop_explorer_file_ingestion() {
+    let files = [
+        ("T_Cobblestone_BaseColor.png", "Base Color / Albedo", "sRGB"),
+        ("T_Cobblestone_Normal_GL.png", "Normal Map", "Linear"),
+        ("T_Cobblestone_Roughness.png", "Roughness", "Linear"),
+    ];
+
+    let mut app = TextureLabApp::default();
+    let initial_count = app.graph.nodes.len();
+
+    for (idx, (fname, expected_role, expected_cs)) in files.iter().enumerate() {
+        let meta = texturelab::normalizer::LexicalNormalizer::normalize(fname);
+        assert_eq!(meta.inferred_role.unwrap().display_name(), *expected_role);
+        assert_eq!(meta.inferred_role.unwrap().default_colorspace(), *expected_cs);
+
+        let desc = texturelab::nodes::NODE_CATALOG.iter().find(|d| d.type_name == "TextureInput").unwrap();
+        let node_id = NodeId(app.graph.next_node_id);
+        let mut node = desc.create_node(node_id, [100.0, 100.0 + idx as f32 * 140.0]);
+        node.label = format!("{} ({})", meta.clean_stem, expected_role);
+        node.set_param("file_path", NodeParam::String(fname.to_string()));
+        node.set_param("colorspace", NodeParam::String(expected_cs.to_string()));
+        app.graph.add_node(node);
+    }
+
+    assert_eq!(app.graph.nodes.len(), initial_count + 3);
+}
+
+#[test]
+fn test_node_library_drag_and_drop_payload() {
+    let ctx = egui::Context::default();
+    egui::DragAndDrop::set_payload(&ctx, "NormalFlipGreen".to_string());
+    let payload = egui::DragAndDrop::payload::<String>(&ctx);
+    assert_eq!(payload.as_deref(), Some(&"NormalFlipGreen".to_string()));
+
+    let taken = egui::DragAndDrop::take_payload::<String>(&ctx);
+    assert_eq!(taken.as_deref(), Some(&"NormalFlipGreen".to_string()));
+    assert!(!egui::DragAndDrop::has_any_payload(&ctx));
+}
+
+#[test]
+fn test_full_width_horizontal_socket_drag_and_drop() {
+    use texturelab::ui::canvas::calculate_node_width;
+
+    let mut graph = Graph::new();
+    let n1_id = NodeId(1);
+    let n2_id = NodeId(2);
+
+    // Node 1: TextureInput with output RGBA, R, G, B, A (Single-sided output node)
+    let desc_tex = texturelab::nodes::NODE_CATALOG
+        .iter()
+        .find(|d| d.type_name == "TextureInput")
+        .unwrap();
+    let node1 = desc_tex.create_node(n1_id, [100.0, 100.0]);
+    let w1 = calculate_node_width(&node1);
+    assert!(w1 >= 200.0 && w1 <= 280.0);
+    graph.add_node(node1);
+
+    // Node 2: Math (e.g. Multiply/Add) with inputs A, B and output 'output' (Dual-sided node)
+    let desc_math = texturelab::nodes::NODE_CATALOG
+        .iter()
+        .find(|d| d.type_name == "Math")
+        .unwrap();
+    let node2 = desc_math.create_node(n2_id, [400.0, 100.0]);
+    let w2 = calculate_node_width(&node2);
+    assert!(w2 >= 200.0 && w2 <= 280.0);
+    graph.add_node(node2);
+
+    // Simulate full-width horizontal hit-test logic
+    let node1_ref = graph.get_node(n1_id).unwrap();
+    let screen_x1 = 100.0;
+    let node1_w = calculate_node_width(node1_ref);
+    // On a single-sided output node, any point along the horizontal row targets the output
+    let test_x_left = screen_x1 + 10.0;
+    let test_x_mid = screen_x1 + node1_w * 0.5;
+    let test_x_right = screen_x1 + node1_w - 10.0;
+    for _test_x in [test_x_left, test_x_mid, test_x_right] {
+        let pin = if !node1_ref.outputs.is_empty() && node1_ref.inputs.is_empty() {
+            node1_ref.outputs.first().cloned()
+        } else {
+            None
+        };
+        assert!(pin.is_some());
+        assert_eq!(pin.unwrap().name, "output");
+    }
+
+    // On dual-sided node (Math), left half routes to input, right half routes to output
+    let node2_ref = graph.get_node(n2_id).unwrap();
+    let screen_x2 = 400.0;
+    let node2_w = calculate_node_width(node2_ref);
+    let mid_x = screen_x2 + node2_w * 0.5;
+
+    // Left half (hover.x <= mid_x)
+    let hover_input_x = screen_x2 + node2_w * 0.25;
+    assert!(hover_input_x <= mid_x);
+    let routed_input = node2_ref.inputs.first().cloned().unwrap();
+    assert_eq!(routed_input.name, "A");
+    assert!(routed_input.is_input);
+
+    // Right half (hover.x > mid_x)
+    let hover_output_x = screen_x2 + node2_w * 0.75;
+    assert!(hover_output_x > mid_x);
+    let routed_output = node2_ref.outputs.first().cloned().unwrap();
+    assert_eq!(routed_output.name, "output");
+    assert!(!routed_output.is_input);
+
+    // Verify connecting R -> A and G -> B (individual channel horizontal drops)
+    let pin_r = PinId::output(n1_id, "R");
+    let pin_in_a = PinId::input(n2_id, "A");
+    assert!(graph.connect(pin_r, pin_in_a).is_ok());
+
+    let pin_g = PinId::output(n1_id, "G");
+    let pin_in_b = PinId::input(n2_id, "B");
+    assert!(graph.connect(pin_g, pin_in_b).is_ok());
+
+    assert_eq!(graph.edges.len(), 2);
+}
+
+/// TC-510: Auto-Layout Engine Zero Overlap, Pin-Straightening, and Ctrl+F Hotkey Integration
+#[test]
+fn test_auto_layout_nodes_and_zero_overlapping() {
+    use texturelab::graph::auto_layout_graph;
+    use texturelab::graph::layout::{calculate_node_size, GRID_STEP};
+    use texturelab::hotkeys::{resolve_hotkey, HotkeyAction};
+    use texturelab::ui::canvas::CanvasAction;
+    use egui::Key;
+
+    // 1. Verify hotkey chord mapping: Ctrl+F -> AutoLayout, F -> FrameAll
+    assert_eq!(resolve_hotkey(Key::F, true, false, false), Some(HotkeyAction::AutoLayout));
+    assert_eq!(resolve_hotkey(Key::F, false, false, false), Some(HotkeyAction::FrameAll));
+
+    // 2. Build multi-branch graph with connected pipelines and isolated helper nodes
+    let mut graph = Graph::new();
+
+    let n1 = graph.create_node("ConstantColor", "Base Color", [100.0, 100.0]);
+    graph.get_node_mut(n1).unwrap().add_output("RGBA");
+    graph.get_node_mut(n1).unwrap().add_output("output");
+
+    let n2 = graph.create_node("ChannelSplit", "Splitter", [100.0, 100.0]);
+    graph.get_node_mut(n2).unwrap().add_input("input");
+    graph.get_node_mut(n2).unwrap().add_output("R");
+    graph.get_node_mut(n2).unwrap().add_output("G");
+    graph.get_node_mut(n2).unwrap().add_output("B");
+
+    let n3 = graph.create_node("Levels", "Roughness Levels", [100.0, 100.0]);
+    graph.get_node_mut(n3).unwrap().add_input("input");
+    graph.get_node_mut(n3).unwrap().add_output("output");
+
+    let n4 = graph.create_node("Invert", "Gloss Invert", [100.0, 100.0]);
+    graph.get_node_mut(n4).unwrap().add_input("input");
+    graph.get_node_mut(n4).unwrap().add_output("output");
+
+    let n5 = graph.create_node("NormalFlipGreen", "Normal DX-GL", [100.0, 100.0]);
+    graph.get_node_mut(n5).unwrap().add_input("input");
+    graph.get_node_mut(n5).unwrap().add_output("output");
+
+    let n6 = graph.create_node("ChannelCombine", "ORM Pack", [100.0, 100.0]);
+    graph.get_node_mut(n6).unwrap().add_input("R");
+    graph.get_node_mut(n6).unwrap().add_input("G");
+    graph.get_node_mut(n6).unwrap().add_input("B");
+    graph.get_node_mut(n6).unwrap().add_output("output");
+
+    let n7 = graph.create_node("TextureOutput", "Final ORM Output", [100.0, 100.0]);
+    graph.get_node_mut(n7).unwrap().add_input("input");
+
+    // Connect wires
+    graph.connect(PinId::output(n1, "RGBA"), PinId::input(n2, "input")).unwrap();
+    graph.connect(PinId::output(n2, "R"), PinId::input(n3, "input")).unwrap();
+    graph.connect(PinId::output(n3, "output"), PinId::input(n4, "input")).unwrap();
+    graph.connect(PinId::output(n2, "G"), PinId::input(n5, "input")).unwrap();
+    graph.connect(PinId::output(n4, "output"), PinId::input(n6, "R")).unwrap();
+    graph.connect(PinId::output(n5, "output"), PinId::input(n6, "G")).unwrap();
+    graph.connect(PinId::output(n2, "B"), PinId::input(n6, "B")).unwrap();
+    graph.connect(PinId::output(n6, "output"), PinId::input(n7, "input")).unwrap();
+
+    // Isolated utility nodes placed in arbitrary spots
+    let n_iso1 = graph.create_node("ConstantScalar", "Roughness Floor", [50.0, 50.0]);
+    let n_iso2 = graph.create_node("Math", "Helper Add", [50.0, 50.0]);
+
+    // Deliberately set all 9 nodes to exact same coordinate [200.0, 200.0] to test collision unpacking
+    for node in graph.nodes.values_mut() {
+        node.position = [200.0, 200.0];
+    }
+
+    // Execute Auto Layout
+    auto_layout_graph(&mut graph);
+
+    // 3. Mathematical Verification: ZERO OVERLAPPING across all pairs of nodes
+    let nodes: Vec<&Node> = graph.nodes.values().collect();
+    for i in 0..nodes.len() {
+        for j in (i + 1)..nodes.len() {
+            let a = nodes[i];
+            let b = nodes[j];
+            let (wa, ha) = calculate_node_size(a);
+            let (wb, hb) = calculate_node_size(b);
+
+            let a_min_x = a.position[0];
+            let a_max_x = a.position[0] + wa;
+            let a_min_y = a.position[1];
+            let a_max_y = a.position[1] + ha;
+
+            let b_min_x = b.position[0];
+            let b_max_x = b.position[0] + wb;
+            let b_min_y = b.position[1];
+            let b_max_y = b.position[1] + hb;
+
+            let overlap_x = a_min_x < b_max_x && a_max_x > b_min_x;
+            let overlap_y = a_min_y < b_max_y && a_max_y > b_min_y;
+
+            assert!(
+                !(overlap_x && overlap_y),
+                "OVERLAP DETECTED between node {} ({:?}) and node {} ({:?})",
+                a.id, a.position, b.id, b.position
+            );
+        }
+    }
+
+    // 4. Verify Left-to-Right Topological progression
+    let p1 = graph.get_node(n1).unwrap().position;
+    let p2 = graph.get_node(n2).unwrap().position;
+    let p6 = graph.get_node(n6).unwrap().position;
+    let p7 = graph.get_node(n7).unwrap().position;
+
+    assert!(p1[0] < p2[0], "Source node n1 must be left of splitter n2");
+    assert!(p2[0] < p6[0], "Splitter n2 must be left of combiner n6");
+    assert!(p6[0] < p7[0], "Combiner n6 must be left of output n7");
+
+    // 5. Verify isolated helper nodes are staged below the connected network
+    let p_iso1 = graph.get_node(n_iso1).unwrap().position;
+    let p_iso2 = graph.get_node(n_iso2).unwrap().position;
+    assert!(p_iso1[1] > p1[1], "Isolated node 1 should be positioned below primary pipeline");
+    assert!(p_iso2[1] > p1[1], "Isolated node 2 should be positioned below primary pipeline");
+
+    // 6. Verify 24px Grid Snapping
+    for node in graph.nodes.values() {
+        assert_eq!(node.position[0] % GRID_STEP, 0.0, "Node {} X must snap to grid", node.id);
+        assert_eq!(node.position[1] % GRID_STEP, 0.0, "Node {} Y must snap to grid", node.id);
+    }
+
+    // 7. Verify CanvasAction::AutoLayout enum variant exists
+    let act = CanvasAction::AutoLayout;
+    assert_eq!(act, CanvasAction::AutoLayout);
+
+    // 8. Verify contextual back-hierarchy layout when a node is selected:
+    // Move downstream node n7 and isolated nodes to distinct coordinates
+    let n7_custom_pos = [2500.0, 500.0];
+    let iso1_custom_pos = [3000.0, 3000.0];
+    graph.get_node_mut(n7).unwrap().position = n7_custom_pos;
+    graph.get_node_mut(n_iso1).unwrap().position = iso1_custom_pos;
+
+    // Call contextual layout with node n6 (ChannelCombine) selected
+    texturelab::graph::auto_layout_graph_contextual(&mut graph, Some(n6));
+
+    // Downstream node n7 and isolated node n_iso1 MUST remain in their exact custom coordinates
+    assert_eq!(graph.get_node(n7).unwrap().position, n7_custom_pos, "Downstream node n7 must be untouched");
+    assert_eq!(graph.get_node(n_iso1).unwrap().position, iso1_custom_pos, "Isolated node n_iso1 must be untouched");
+
+    // Upstream back-hierarchy of n6 must remain zero-overlap and flow Right-to-Left ending at n6
+    let new_p1 = graph.get_node(n1).unwrap().position;
+    let new_p2 = graph.get_node(n2).unwrap().position;
+    let new_p6 = graph.get_node(n6).unwrap().position;
+    assert!(new_p1[0] < new_p2[0]);
+    assert!(new_p2[0] < new_p6[0]);
+}
+
+/// Verification of 2D Viewport selected-node live tracking, output socket selection,
+/// parameter reactivity, and automatic fallback to final TextureOutput.
+#[test]
+fn test_2d_viewport_selection_and_live_update() {
+    use texturelab::graph::evaluator::GraphEvaluator;
+    use texturelab::graph::model::{Graph, Node, NodeId, NodeParam};
+    use texturelab::ui::viewport::{resolve_viewport_preview, ViewportState};
+
+    let mut graph = Graph::new();
+
+    // Node 1: Red Color
+    let mut n1 = Node::new(NodeId(1), "ConstantColor", "Albedo Base", [0.0, 0.0]);
+    n1.set_param("color", NodeParam::Color([1.0, 0.0, 0.0, 1.0]));
+    n1.add_output("output");
+    n1.add_output("RGBA");
+    n1.add_output("R");
+    graph.add_node(n1);
+
+    // Node 2: Blue Color
+    let mut n2 = Node::new(NodeId(2), "ConstantColor", "Tint Color", [200.0, 0.0]);
+    n2.set_param("color", NodeParam::Color([0.0, 0.0, 1.0, 1.0]));
+    n2.add_output("output");
+    graph.add_node(n2);
+
+    // Node 3: TextureOutput terminal node
+    let mut n3 = Node::new(NodeId(3), "TextureOutput", "Final Normal Output", [500.0, 0.0]);
+    n3.add_input("input");
+    n3.add_output("output");
+    graph.add_node(n3);
+
+    let mut evaluator = GraphEvaluator::new((32, 32));
+    let _ = evaluator.evaluate(&graph);
+
+    let mut state = ViewportState::new();
+
+    // 1. Initial deselect: viewport auto-falls back to terminal TextureOutput (Node 3)
+    let prev_empty = resolve_viewport_preview(&graph, &evaluator, state.locked_node, None, state.selected_socket.as_deref());
+    assert_eq!(prev_empty.node_id, Some(NodeId(3)));
+    assert!(prev_empty.is_fallback);
+
+    // 2. Select Node 1: Viewport live-switches to Node 1 (Red)
+    let prev_n1 = resolve_viewport_preview(&graph, &evaluator, state.locked_node, Some(NodeId(1)), state.selected_socket.as_deref());
+    assert_eq!(prev_n1.node_id, Some(NodeId(1)));
+    assert_eq!(prev_n1.node_label, "Albedo Base");
+    let buf1 = prev_n1.buffer.expect("Node 1 buffer should exist");
+    assert_eq!(buf1.get_pixel(0, 0), [255, 0, 0, 255]);
+
+    // 3. Live parameter update: mutate Node 1 to Green and re-evaluate
+    let n1_mut = graph.get_node_mut(NodeId(1)).unwrap();
+    n1_mut.set_param("color", NodeParam::Color([0.0, 1.0, 0.0, 1.0]));
+    evaluator.mark_dirty(&graph, NodeId(1));
+    let _ = evaluator.evaluate(&graph);
+
+    let prev_n1_updated = resolve_viewport_preview(&graph, &evaluator, state.locked_node, Some(NodeId(1)), state.selected_socket.as_deref());
+    let buf1_updated = prev_n1_updated.buffer.expect("Updated buffer should exist");
+    assert_eq!(buf1_updated.get_pixel(0, 0), [0, 255, 0, 255], "Viewport buffer must live-update to green");
+
+    // 4. Select Node 2: Viewport live-switches to Node 2 (Blue)
+    let prev_n2 = resolve_viewport_preview(&graph, &evaluator, state.locked_node, Some(NodeId(2)), state.selected_socket.as_deref());
+    assert_eq!(prev_n2.node_id, Some(NodeId(2)));
+    let buf2 = prev_n2.buffer.expect("Node 2 buffer should exist");
+    assert_eq!(buf2.get_pixel(0, 0), [0, 0, 255, 255], "Viewport buffer must display blue");
+
+    // 5. Pin / Lock feature: lock viewport to Node 2
+    state.locked_node = Some(NodeId(2));
+    // Now even if Node 1 is selected, locked Node 2 takes priority
+    let prev_pinned = resolve_viewport_preview(&graph, &evaluator, state.locked_node, Some(NodeId(1)), state.selected_socket.as_deref());
+    assert_eq!(prev_pinned.node_id, Some(NodeId(2)));
+    assert!(prev_pinned.is_pinned);
+
+    // 6. Unpin: immediately resumes tracking selected Node 1
+    state.locked_node = None;
+    let prev_unpinned = resolve_viewport_preview(&graph, &evaluator, state.locked_node, Some(NodeId(1)), state.selected_socket.as_deref());
+    assert_eq!(prev_unpinned.node_id, Some(NodeId(1)));
+    assert!(!prev_unpinned.is_pinned);
+}
+
+
+
+
+

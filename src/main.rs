@@ -7,7 +7,7 @@ use texturelab::app::TextureLabApp;
 fn main() -> eframe::Result<()> {
     let native_options = NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_title("TextureLAB — PBR Texture Workstation (Pure Rust)")
+            .with_title("TextureLAB")
             .with_inner_size(vec2(1440.0, 900.0))
             .with_min_inner_size(vec2(1024.0, 640.0))
             .with_active(true),

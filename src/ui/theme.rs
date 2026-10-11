@@ -6,47 +6,58 @@
 use egui::{Color32, Stroke, Vec2, Visuals};
 use crate::nodes::NodeCategory;
 
-// --- Surface & Background Palette (Obsidian Tactical) ---
-pub const BG_CANVAS: Color32 = Color32::from_rgb(10, 11, 16);       // #0a0b10
-pub const BG_PANEL: Color32 = Color32::from_rgb(15, 17, 23);        // #0f1117
-pub const BG_CARD: Color32 = Color32::from_rgb(22, 25, 34);         // #161922
-pub const BG_CARD_SELECTED: Color32 = Color32::from_rgb(28, 33, 46);// #1c212e
-pub const BG_HEADER: Color32 = Color32::from_rgb(18, 20, 28);       // #12141c
+// --- Surface & Background Palette (Obsidian Tactical Workstation) ---
+pub const BG_CANVAS: Color32 = Color32::from_rgb(16, 16, 19);        // #101013 (Deep Slate Canvas)
+pub const BG_PANEL: Color32 = Color32::from_rgb(22, 22, 28);         // #16161C (Tactical Side Panel)
+pub const BG_CARD: Color32 = Color32::from_rgb(32, 32, 42);          // #20202A (High-Contrast Charcoal Card)
+pub const BG_CARD_SELECTED: Color32 = Color32::from_rgb(40, 40, 54); // #282836 (Selected Card Base)
+pub const BG_HEADER: Color32 = Color32::from_rgb(38, 38, 50);        // #262632 (Raised Header Surface)
+pub const BG_INSET: Color32 = Color32::from_rgb(18, 18, 24);         // #121218 (Dark Inset)
 
-// --- Grid Lines ---
-pub const GRID_MINOR: Color32 = Color32::from_rgb(18, 20, 28);      // subtle
-pub const GRID_MAJOR: Color32 = Color32::from_rgb(28, 32, 46);      // prominent
-pub const GRID_AXIS: Color32 = Color32::from_rgb(45, 52, 75);       // origin axes
+// --- Grid Dots & Lines (Tactical High-Contrast Blueprint Grid) ---
+pub const GRID_DOT: Color32 = Color32::from_rgb(46, 46, 60);         // #2E2E3C (crisp visible minor dot)
+pub const GRID_DOT_MAJOR: Color32 = Color32::from_rgb(76, 76, 100);   // #4C4C64 (prominent major dot)
+pub const GRID_MINOR: Color32 = Color32::from_rgb(32, 32, 42);       // subtle line fallback
+pub const GRID_MAJOR: Color32 = Color32::from_rgb(48, 48, 62);       // prominent line
+pub const GRID_AXIS: Color32 = Color32::from_rgb(86, 86, 110);       // origin axes
 
-// --- Borders & Separators ---
-pub const BORDER_DARK: Color32 = Color32::from_rgb(32, 36, 50);     // #202432
-pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(38, 43, 58);   // #262b3a
-pub const BORDER_HIGHLIGHT: Color32 = Color32::from_rgb(56, 189, 248); // #38bdf8 (cyan)
-pub const BORDER_SELECTED: Color32 = Color32::from_rgb(96, 165, 250);  // #60a5fa (blue)
+// --- Borders & Separators (Crisp, High-Definition DCC Lines) ---
+pub const BORDER_DARK: Color32 = Color32::from_rgb(58, 58, 76);      // #3A3A4C (crisp visible card border)
+pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(72, 72, 94);    // #48485E
+pub const BORDER_HAIRLINE: Color32 = Color32::from_rgb(88, 88, 114);  // #585872 (strong hairline)
+pub const BORDER_HIGHLIGHT: Color32 = Color32::from_rgb(255, 176, 46); // #FFB02E (signature amber)
+pub const BORDER_SELECTED: Color32 = Color32::from_rgb(255, 176, 46);  // #FFB02E (signature amber)
+pub const HAIRLINE_ROW_GRAY: Color32 = Color32::from_rgba_premultiplied(70, 70, 92, 60); // Distinct row separator
+
+// --- Signature Accent & Glow ---
+pub const ACCENT_AMBER: Color32 = Color32::from_rgb(255, 176, 46);   // #FFB02E
+pub const ACCENT_GLOW: Color32 = Color32::from_rgba_premultiplied(255, 176, 46, 80);
 
 // --- Typography Tokens (WCAG AA Compliant >= 4.5:1) ---
-pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(241, 245, 249); // #f1f5f9 (~18:1 contrast)
-pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(148, 163, 184); // #94a3b8 (~7.5:1 contrast)
-pub const TEXT_MUTED: Color32 = Color32::from_rgb(100, 116, 139);   // #64748b (~4.6:1 contrast)
-pub const TEXT_ACCENT: Color32 = Color32::from_rgb(56, 189, 248);  // #38bdf8
+pub const TEXT_PRIMARY: Color32 = Color32::from_rgb(248, 246, 240);  // #F8F6F0 (~16:1 contrast)
+pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(182, 178, 170);// #B6B2AA (~8:1 contrast)
+pub const TEXT_MUTED: Color32 = Color32::from_rgb(140, 136, 126);    // #8C887E (~5.2:1 contrast)
+pub const TEXT_ACCENT: Color32 = Color32::from_rgb(255, 176, 46);    // #FFB02E
 
-// --- Semantic Wire & Socket Colors (Phase 5 Section 2.2) ---
-pub const WIRE_RED: Color32 = Color32::from_rgb(239, 68, 68);       // #ef4444 (Red R)
-pub const WIRE_GREEN: Color32 = Color32::from_rgb(34, 197, 94);     // #22c55e (Green G)
-pub const WIRE_BLUE: Color32 = Color32::from_rgb(59, 130, 246);     // #3b82f6 (Blue B)
-pub const WIRE_ALPHA: Color32 = Color32::from_rgb(148, 163, 184);   // #94a3b8 (Alpha / Scalar)
-pub const WIRE_RGBA: Color32 = Color32::from_rgb(248, 250, 252);    // #f8fafc (Crisp White RGBA)
-pub const WIRE_DEFAULT: Color32 = Color32::from_rgb(203, 213, 225); // #cbd5e1
+// --- Semantic Wire & Socket Colors (Phase 5 Section 2.2 & PBR Standards) ---
+pub const WIRE_RED: Color32 = Color32::from_rgb(239, 68, 68);        // #ef4444 (Red R)
+pub const WIRE_GREEN: Color32 = Color32::from_rgb(34, 197, 94);      // #22c55e (Green G)
+pub const WIRE_BLUE: Color32 = Color32::from_rgb(59, 130, 246);      // #3b82f6 (Blue B)
+pub const WIRE_ALPHA: Color32 = Color32::from_rgb(148, 163, 184);    // #94a3b8 (Alpha / Scalar)
+pub const WIRE_RGBA: Color32 = Color32::from_rgb(248, 250, 252);     // #f8fafc (Crisp White RGBA)
+pub const WIRE_PACKED: Color32 = Color32::from_rgb(183, 156, 245);   // #B79CF5 (Soft Lavender)
+pub const WIRE_NORMAL: Color32 = Color32::from_rgb(76, 201, 192);    // #4CC9C0 (Teal Normal)
+pub const WIRE_DEFAULT: Color32 = Color32::from_rgb(203, 213, 225);  // #cbd5e1
 
-// --- Category Colors (Node Badges & Headers) ---
-pub const CAT_IO: Color32 = Color32::from_rgb(13, 148, 136);        // #0d9488 (Teal)
-pub const CAT_CONSTANTS: Color32 = Color32::from_rgb(217, 119, 6);   // #d97706 (Amber)
-pub const CAT_CHANNEL: Color32 = Color32::from_rgb(124, 58, 237);    // #7c3aed (Violet)
-pub const CAT_ADJUST: Color32 = Color32::from_rgb(2, 132, 199);      // #0284c7 (Sky)
-pub const CAT_NORMAL: Color32 = Color32::from_rgb(79, 70, 229);      // #4f46e5 (Indigo)
-pub const CAT_BLEND: Color32 = Color32::from_rgb(225, 29, 72);       // #e11d48 (Rose)
-pub const CAT_MATH: Color32 = Color32::from_rgb(16, 185, 129);       // #10b981 (Emerald)
-pub const CAT_TRANSFORM: Color32 = Color32::from_rgb(245, 158, 11);  // #f59e0b (Orange)
+// --- Category Colors (Softened 2px Top Accent Bars) ---
+pub const CAT_IO: Color32 = Color32::from_rgb(92, 200, 232);         // #5CC8E8 (Cyan)
+pub const CAT_CONSTANTS: Color32 = Color32::from_rgb(236, 232, 225); // #ECE8E1 (Off-white)
+pub const CAT_CHANNEL: Color32 = Color32::from_rgb(183, 156, 245);   // #B79CF5 (Soft Violet)
+pub const CAT_ADJUST: Color32 = Color32::from_rgb(92, 200, 232);     // #5CC8E8 (Sky)
+pub const CAT_NORMAL: Color32 = Color32::from_rgb(76, 201, 192);     // #4CC9C0 (Teal)
+pub const CAT_BLEND: Color32 = Color32::from_rgb(245, 200, 76);      // #F5C84C (Amber-Yellow)
+pub const CAT_MATH: Color32 = Color32::from_rgb(111, 208, 140);      // #6FD08C (Mint Emerald)
+pub const CAT_TRANSFORM: Color32 = Color32::from_rgb(245, 158, 11);   // #F59E0B (Orange)
 
 /// Resolves the semantic wire color for a pin or socket name.
 pub fn pin_wire_color(pin_name: &str) -> Color32 {
@@ -73,6 +84,28 @@ pub fn category_color(cat: NodeCategory) -> Color32 {
         NodeCategory::Math => CAT_MATH,
         NodeCategory::Transform => CAT_TRANSFORM,
     }
+}
+
+/// Computes a desaturated, high-value pastel tint for a node category.
+pub fn category_pastel_color(cat: NodeCategory) -> Color32 {
+    let base = category_color(cat);
+    Color32::from_rgb(
+        ((base.r() as u16 + 255) / 2) as u8,
+        ((base.g() as u16 + 255) / 2) as u8,
+        ((base.b() as u16 + 255) / 2) as u8,
+    )
+}
+
+/// Computes a 5% opacity pastel background tint (alpha = 13 ~= 5.1%).
+pub fn category_pastel_tint_5(cat: NodeCategory) -> Color32 {
+    let pastel = category_pastel_color(cat);
+    Color32::from_rgba_unmultiplied(pastel.r(), pastel.g(), pastel.b(), 13)
+}
+
+/// Computes a 16% opacity pastel hover background tint (alpha = 41 ~= 16.1%).
+pub fn category_pastel_tint_16(cat: NodeCategory) -> Color32 {
+    let pastel = category_pastel_color(cat);
+    Color32::from_rgba_unmultiplied(pastel.r(), pastel.g(), pastel.b(), 41)
 }
 
 /// Computes the relative luminance of an sRGB color (WCAG 2.1 standard formula).
@@ -107,62 +140,90 @@ pub fn apply_theme(ctx: &egui::Context) {
     visuals.extreme_bg_color = BG_CANVAS;
 
     // Window and widget styling
-    visuals.window_stroke = Stroke::new(1.0_f32, BORDER_DARK);
-    visuals.window_corner_radius = 4.into();
+    visuals.window_stroke = Stroke::new(1.0_f32, BORDER_HAIRLINE);
+    visuals.window_corner_radius = 6.into();
 
     // Widget states
     visuals.widgets.noninteractive.bg_fill = BG_CARD;
     visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, BORDER_DARK);
     visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_SECONDARY);
-    visuals.widgets.noninteractive.corner_radius = 3.into();
+    visuals.widgets.noninteractive.corner_radius = 4.into();
 
     visuals.widgets.inactive.bg_fill = BG_HEADER;
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER_SUBTLE);
+    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, BORDER_DARK);
     visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
-    visuals.widgets.inactive.corner_radius = 3.into();
+    visuals.widgets.inactive.corner_radius = 4.into();
 
-    visuals.widgets.hovered.bg_fill = Color32::from_rgb(30, 36, 50);
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, BORDER_HIGHLIGHT);
+    visuals.widgets.hovered.bg_fill = Color32::from_rgb(36, 36, 42);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT_AMBER);
     visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-    visuals.widgets.hovered.corner_radius = 3.into();
+    visuals.widgets.hovered.corner_radius = 4.into();
 
-    visuals.widgets.active.bg_fill = Color32::from_rgb(40, 48, 68);
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, BORDER_SELECTED);
+    visuals.widgets.active.bg_fill = Color32::from_rgb(46, 46, 54);
+    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT_AMBER);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
-    visuals.widgets.active.corner_radius = 3.into();
+    visuals.widgets.active.corner_radius = 4.into();
 
     visuals.widgets.open.bg_fill = BG_CARD;
-    visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, BORDER_HIGHLIGHT);
+    visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, ACCENT_AMBER);
     visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
 
-    visuals.selection.bg_fill = Color32::from_rgb(30, 58, 95);
-    visuals.selection.stroke = Stroke::new(1.5_f32, BORDER_HIGHLIGHT);
+    visuals.selection.bg_fill = Color32::from_rgba_premultiplied(255, 176, 46, 40);
+    visuals.selection.stroke = Stroke::new(1.5_f32, ACCENT_AMBER);
 
     let mut style = (*ctx.style()).clone();
     style.visuals = visuals;
     style.spacing.item_spacing = Vec2::new(8.0, 6.0);
     style.spacing.window_margin = egui::Margin::same(8);
     ctx.set_style(style);
+
+    configure_fonts(ctx);
+}
+
+/// Configures custom modern Geist typography.
+pub fn configure_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    fonts.font_data.insert(
+        "Geist-Regular".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../../assets/fonts/Geist-Regular.ttf"
+        ))),
+    );
+    fonts.font_data.insert(
+        "Geist-SemiBold".to_owned(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../../assets/fonts/Geist-SemiBold.ttf"
+        ))),
+    );
+
+    if let Some(prop) = fonts.families.get_mut(&egui::FontFamily::Proportional) {
+        prop.insert(0, "Geist-Regular".to_owned());
+    }
+    if let Some(mono) = fonts.families.get_mut(&egui::FontFamily::Monospace) {
+        mono.insert(0, "Geist-Regular".to_owned());
+    }
+
+    ctx.set_fonts(fonts);
 }
 
 /// Configures an `egui_dock::Style` consistent with the Obsidian Workstation theme.
 pub fn create_dock_style(ctx: &egui::Context) -> egui_dock::Style {
     let mut dock_style = egui_dock::Style::from_egui(ctx.style().as_ref());
     dock_style.separator.color_idle = BORDER_DARK;
-    dock_style.separator.color_hovered = BORDER_HIGHLIGHT;
+    dock_style.separator.color_hovered = ACCENT_AMBER;
     dock_style.separator.width = 2.0;
 
     dock_style.tab_bar.bg_fill = BG_PANEL;
-    dock_style.tab_bar.height = 28.0;
+    dock_style.tab_bar.height = 30.0;
 
     dock_style.tab.tab_body.bg_fill = BG_PANEL;
     dock_style.tab.active.bg_fill = BG_CARD;
-    dock_style.tab.active.text_color = TEXT_PRIMARY;
+    dock_style.tab.active.text_color = ACCENT_AMBER;
     dock_style.tab.inactive.bg_fill = BG_PANEL;
     dock_style.tab.inactive.text_color = TEXT_SECONDARY;
     dock_style.tab.focused.bg_fill = BG_CARD_SELECTED;
-    dock_style.tab.focused.text_color = TEXT_PRIMARY;
-    dock_style.tab.hovered.bg_fill = Color32::from_rgb(26, 30, 42);
+    dock_style.tab.focused.text_color = ACCENT_AMBER;
+    dock_style.tab.hovered.bg_fill = Color32::from_rgb(36, 36, 42);
     dock_style.tab.hovered.text_color = TEXT_PRIMARY;
 
     dock_style

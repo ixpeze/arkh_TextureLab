@@ -1,141 +1,87 @@
-# ARKH TextureLab — Professional PBR Texture Workstation (Pure Rust)
+# ARKH TextureLab
 
-> **100% Native Windows Desktop Application • Zero Electron • Zero WebViews • Zero Node.js**  
-> *Stack: Rust 2021 • eframe / egui 0.31 • egui_dock 0.16 • Rayon 1.10 • image 0.25 • Standalone 5.2 MB Windows `.exe`*
+> PBR Texture Authoring and Channel Packing Workstation.
 
-ARKH TextureLab is a professional, high-velocity workstation for PBR texture authoring, channel multiplexing (`pack <=> unpack`), lexical naming normalization, Reoriented Normal Mapping (RNM), and direct disk export.
-
-Built from the ground up in 100% native Rust, TextureLab replaces bloated multi-hundred-megabyte web runtimes with an ultra-lean, instantaneous native workstation that starts in under 80 milliseconds and idles at only ~45 MB RAM.
+ARKH TextureLab is a professional, high-velocity workstation designed for technical artists, game developers, and 3D visualization professionals. It streamlines PBR texture authoring, channel multiplexing (pack/unpack), lexical naming normalization, Reoriented Normal Mapping (RNM), and direct disk export in a single native portable executable.
 
 ---
 
-## 📦 Download & Release Binary
+## Highlights
 
-Run ARKH TextureLab immediately without any runtime prerequisites, installers, or background services:
-
-| Deliverable | Location | Size | Description |
-|---|---|---|---|
-| **Standalone Executable** | [`release/texturelab.exe`](release/texturelab.exe) | **~5.2 MB** | Single, self-contained native Windows executable. Double-click to run. |
-| **Release Checksums** | [`release/SHA256SUMS.txt`](release/SHA256SUMS.txt) | 88 B | Cryptographic SHA-256 hash verifying binary integrity. |
-
-*(To verify integrity in PowerShell: `Get-FileHash .\release\texturelab.exe -Algorithm SHA256`)*
-
----
-
-## ⚡ Performance Budgets: Pure Rust vs Legacy Electron
-
-| Metric / Capability | Legacy Electron (v0.2) | Pure Rust Budget | **TextureLab Native (Measured)** |
-|---|---|---|---|
-| **Binary / Distribution Size** | ~220 MB | <= 10.0 MB | **5.2 MB standalone `.exe`** |
-| **Cold Startup Latency** | 3.5 – 5.5 s | <= 200 ms | **< 80 ms (Instant)** |
-| **Idle Memory (RAM)** | 350 – 500 MB | <= 80 MB | **~45 MB** |
-| **4K Channel Pack Latency** | 450 – 1200 ms | <= 100 ms | **< 50 ms (Rayon Multithreaded)** |
-| **2D Viewport UV Tiling (4K)** | Out-of-Memory Risk | 60 FPS GPU UV | **60 FPS Fixed** |
-| **Alpha Data Loss (Audit F-01)** | Canvas2D Premultiplication Bug | Zero Loss | **Byte-Exact Lossless (0-alpha safe)** |
-| **Disk Exporter** | Renderer IPC File Blobs | Direct Disk | **Atomic Parallel Multi-Core Disk Write** |
+* **100% Pure Rust Engine**: Built with `eframe`, `egui`, `egui_dock`, and `rayon` with zero browser overhead or memory leaks. Sub-80ms cold startup and ~12 MB self-contained binary footprint.
+* **Topological DAG Evaluator**: Reactive node graph execution with Kahn's topological sort, cycle detection, dirty-state propagation, and 100-step undo/redo.
+* **Unreal Engine Navigation Standards**:
+  * Right-click drag: smooth canvas panning.
+  * Right-click tap (< 5px): instant quick search spawn palette.
+  * `Alt + Left Click` on socket pin: severs all connections on that pin.
+  * `Alt + Left Click` on wire: severs the targeted Bezier edge.
+  * `Hold Key + Left Click` quick-spawn: `T` (TextureInput), `1` (ConstantScalar), `3` (ConstantColor), `M` (Multiply), `A` (Add), `L` (LayerBlend), `O` (Invert).
+  * `F` key: frames canvas camera on active selection or entire graph.
+* **Drag-and-Drop Ingestion**:
+  * Drag images directly from **Windows Explorer** onto the canvas: automatically runs lexical PBR role classification (60+ conventions) and instantiates bound `TextureInput` samplers.
+  * Drag nodes from the **Node Library** left panel onto the canvas with glowing placement ghost preview.
+* **Comprehensive Codecs**: Byte-exact un-premultiplied PNG and Truevision TGA 2.0 with custom footer compliance, plus WebP, JPEG, and BMP.
+* **PBR Lexical Normalizer**: Automatic map categorization and slot assignment supporting 60+ industry conventions (Megascans, Poly Haven, Substance, Quixel).
+* **Industry Presets**: One-click channel packing presets for Unreal Engine (ORM), Unity HDRP (MaskMap), Blender Principled, and custom token pipelines.
 
 ---
 
-## 🎹 Professional DCC Keyboard Shortcuts
+## Quickstart
 
-Designed for high-throughput technical artists and game developers:
+### Automated Windows Scripts
+* [`setup.bat`](setup.bat): Automated toolchain verification, test suite run, and portable `.exe` build.
+* [`run_desktop.bat`](run_desktop.bat): Launches the standalone portable workstation executable.
 
-| Key / Shortcut | Action / Target | Description |
-|---|---|---|
-| `Tab` | **Quick Node Search Palette** | Instant popup to fuzzy-search and spawn any node |
-| `F` | **Frame Selected / Frame All** | Smoothly centers canvas camera on active nodes |
-| `S` | **Spawn Channel Splitter (Unpack)** | Unpacks packed RGBA maps into R, G, B, A outputs |
-| `C` / `P` | **Spawn Channel Combiner (Pack)** | Packs discrete R, G, B, A inputs into RGBA |
-| `M` | **Spawn Math Node** *(Pro)* | Scalar and vector arithmetic (13 operations) |
-| `B` | **Spawn Layer Blend** | Lerp blending with mask and opacity |
-| `N` | **Spawn Normal Flip Green** | DirectX (-Y) $\leftrightarrow$ OpenGL (+Y) tangent space toggle |
-| `L` | **Spawn Levels** | Remap black/white points, contrast, and gamma |
-| `I` | **Spawn Invert** | Invert channels (Roughness $\leftrightarrow$ Glossiness) |
-| `1` | **Spawn Constant Scalar** | Single-channel float slider (`0.0 .. 1.0`) |
-| `3` | **Spawn Constant Color** | RGBA color swatch picker |
-| `Delete` / `Backspace` | **Delete Selection** | Removes selected nodes or wires from graph |
-| `Ctrl + Z` | **Undo Transaction** | 100-step transactional history revert |
-| `Ctrl + Y` | **Redo Transaction** | Re-applies undone transaction |
-| `Ctrl + A` | **Select All** | Selects all nodes in active project graph |
-| `Ctrl + S` | **Save Project (.tlab)** | Atomic Serde JSON project serialization |
-| `Ctrl + E` | **Export Preflight Drawer** | Opens batch export validation panel |
-
----
-
-## 💎 Edition Capability Matrix
-
-TextureLab provides two feature tiers out of the box:
-
-| Capability | TextureLAB Lite | TextureLAB Pro |
-|---|---|---|
-| **Channel Pack & Unpack** | ✅ Yes | ✅ Yes |
-| **Lexical Normalizer & Wizard** | ✅ Yes | ✅ Yes |
-| **Direct PNG & TGA 2.0 Export** | ✅ Yes | ✅ Yes |
-| **Basic 2D Viewport (Channels & Tiling)** | ✅ Yes | ✅ Yes |
-| **Built-in Game Engine Presets (UE5, Unity, Blender)** | ✅ Yes | ✅ Yes |
-| **Reoriented Normal Mapping (RNM)** | 🔒 Locked | ✅ Yes |
-| **13-Op Math & Vector Nodes** | 🔒 Locked | ✅ Yes |
-| **16-Bit TIFF & EXR Codecs** | 🔒 Locked | ✅ Yes |
-| **A/B Split Comparison & Histogram** | 🔒 Locked | ✅ Yes |
-
-*(You can toggle the active edition anytime directly from the top menu bar under `Edition`.)*
-
----
-
-## 🛠️ Core Engine Architecture
-
-1. **Topological DAG Engine & Reactive Compiler (`src/graph/`)**
-   - Kahn's topological sort algorithm with automatic circular dependency cycle detection.
-   - Fine-grained dirty-node tracking and memoized intermediate buffer caching.
-   - 100-step transactional undo/redo history with non-destructive state reconstruction.
-2. **Rayon SIMD Multi-Core Buffer Pipeline (`src/core/`)**
-   - Multi-precision `TextureBuffer` supporting R8, RGBA8, R16, RGBA16, and F32 HDR.
-   - Parallel pixel processing offloading all math to available CPU cores via Rayon.
-   - Byte-exact sRGB $\leftrightarrow$ Linear LUT conversions.
-3. **Lossless Image Codecs & TGA 2.0 (`src/export/`)**
-   - Pure native PNG codec preserving un-premultiplied color values even at zero alpha.
-   - Truevision TGA 2.0 compliant encoder complete with official 26-byte `TRUEVISION-XFILE.\0` footer.
-4. **Lexical Normalizer & One-Click Pack Wizard (`src/normalizer/`)**
-   - Dictionary recognizing 60+ industry naming conventions (Megascans, Poly Haven, Substance, Quixel, Unreal, Unity).
-   - Automated detection of DirectX vs OpenGL normal maps with green channel auto-inversion.
-   - Automated glossiness-to-roughness inversion.
-5. **Direct Disk Exporter (`src/export/`)**
-   - Parallel multi-threaded disk writer with Windows reserved device name protection (`CON`, `PRN`, `AUX`, `NUL`, `COM1-9`, `LPT1-9`).
-   - Tokenized path resolution (`{project}`, `{asset}`, `{slot}`, `{res}`, `{colorspace}`, `{format}`).
-   - Atomic disk writes via temporary staging and safe renaming.
-
----
-
-## 🚀 Building & Running from Source
-
-### Prerequisites
-- **Operating System:** Windows 10 / 11 (x64)
-- **Rust Toolchain:** Rust 2021 (1.80+ x64) — `cargo --version; rustc --version`
-- **MSVC Build Tools:** Visual Studio C++ Build Tools or `link.exe`
-
-### Commands (PowerShell)
-
+### Native Rust Engine Commands
 ```powershell
-# Run desktop application in development mode
+# Run native app in debug mode
 cargo run
 
-# Run full automated test suite (131+ unit & integration tests)
+# Run native app in optimized release mode
+cargo run --release
+
+# Run unit and integration test suite (150+ tests)
 cargo test
 
-# Compile optimized standalone release executable
+# Build production portable executable
 cargo build --release
-
-# Inspect release binary size
-(Get-Item .\target\release\texturelab.exe).Length / 1MB
 ```
-
-### Batch Launchers
-- **`run_desktop.bat`** — Runs the release build.
-- **`run_desktop_dev.bat`** — Runs cargo in development mode.
-- **`setup.bat`** — Verifies local Rust toolchain and dependencies.
 
 ---
 
-## 📄 License & Attribution
+## Workstation Hotkeys
 
-ARKH TextureLab is developed by ARKH LAB. Bundled third-party dependencies are licensed under their respective open-source licenses (MIT, Apache 2.0) as documented in `THIRD_PARTY_LICENSES.txt`.
+| Shortcut | Target | Action |
+|---|---|---|
+| `Tab` / Right Click Tap | Quick Search | Fuzzy search palette to spawn any node |
+| `F` | Frame View | Centers camera on active node selection |
+| `Alt + Click` | Wire / Socket Cut | Severs wire or breaks all connections on pin |
+| `Hold T + Click` | Quick Spawn | Spawns `TextureInput` node at cursor |
+| `Hold 1 + Click` | Quick Spawn | Spawns `ConstantScalar` node at cursor |
+| `Hold 3 + Click` | Quick Spawn | Spawns `ConstantColor` node at cursor |
+| `Hold M + Click` | Quick Spawn | Spawns `Multiply` math operator at cursor |
+| `Hold A + Click` | Quick Spawn | Spawns `Add` math operator at cursor |
+| `Hold L + Click` | Quick Spawn | Spawns `LayerBlend` lerp node at cursor |
+| `Hold O + Click` | Quick Spawn | Spawns `Invert` (OneMinus) node at cursor |
+| `S` | Channel Splitter | Spawns channel splitter |
+| `C` / `P` | Channel Combiner | Spawns channel combiner |
+| `N` | Normal Flip Green | Toggles DirectX (-Y) $\leftrightarrow$ OpenGL (+Y) tangent space |
+| `Ctrl + Z` | Undo | Reverts last transaction (100-step buffer) |
+| `Ctrl + Y` | Redo | Re-applies undone transaction |
+| `Ctrl + S` | Save | Serializes active graph to `.tlab` format |
+| `Ctrl + E` | Export | Opens preflight batch export validation drawer |
+
+---
+
+## Documentation
+
+* [System Architecture](docs/ARCHITECTURE.md) — Subsystem breakdown, DAG compiler, and data flow.
+* [Developer Setup & Contributing](docs/DEV_SETUP.md) — Comprehensive build instructions and test commands.
+* [Strategic Roadmap](docs/ROADMAP.md) — Milestone planning, 3D viewport, and feature pipeline.
+* [Specifications](docs/specs/) — Upcoming architectural specifications and design proposals.
+
+---
+
+## License & Attribution
+
+Developed by ARKH LAB. Bundled third-party dependencies are licensed under their respective open-source licenses as documented in [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).

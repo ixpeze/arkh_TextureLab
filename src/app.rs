@@ -18,6 +18,7 @@ use crate::ui::canvas::{CanvasAction, CanvasState};
 use crate::ui::inspector::{show_inspector, InspectorAction};
 use crate::ui::library::{show_library_panel, SearchPaletteState};
 use crate::export::{ExportItem, ExportPreset, ExportWriter, TokenContext};
+use crate::normalizer::LexicalNormalizer;
 use crate::ui::theme::{apply_theme, create_dock_style, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY};
 use crate::ui::viewport::ViewportState;
 use crate::ui::Tab;
@@ -147,7 +148,7 @@ impl TextureLabApp {
         canvas_state.selected_node = Some(NodeId(1));
 
         Self {
-            title: "TextureLAB — PBR Texture Workstation".to_string(),
+            title: "TextureLAB".to_string(),
             version: env!("CARGO_PKG_VERSION"),
             edition: Edition::Pro,
             graph,
@@ -158,7 +159,7 @@ impl TextureLabApp {
             viewport_state: ViewportState::new(),
             search_palette: SearchPaletteState::new(),
             library_query: String::new(),
-            status_message: "Ready. Pure Rust engine active.".to_string(),
+            status_message: "Ready".to_string(),
             eval_time_ms,
             project_file_path: None,
             show_about_dialog: false,
@@ -240,6 +241,37 @@ impl TextureLabApp {
     pub fn version(&self) -> &'static str {
         self.version
     }
+
+    /// Automatically organizes nodes into a compact, non-overlapping hierarchical layout.
+    ///
+    /// If a node is selected, organizes only its upstream back-hierarchy (Right to Left)
+    /// anchored to that node. If no node is selected, arranges the entire graph.
+    /// Preserves current canvas camera pan and zoom without altering the view.
+    pub fn execute_auto_layout(&mut self) {
+        let sel = self.canvas_state.selected_node;
+        self.history.record(&self.graph, "Auto Layout Nodes");
+        crate::graph::layout::auto_layout_graph_contextual(&mut self.graph, sel);
+
+        let count = if let Some(target) = sel {
+            let mut back = crate::graph::compiler::GraphCompiler::upstream_nodes(&self.graph, target);
+            back.insert(target);
+            back.len()
+        } else {
+            self.graph.nodes.len()
+        };
+
+        if let Some(target) = sel {
+            self.status_message = format!(
+                "Auto-arranged back-hierarchy of Node#{} ({} nodes, Right-to-Left) [Ctrl+F]",
+                target.0, count
+            );
+        } else {
+            self.status_message = format!(
+                "Auto-arranged {} nodes into compact layout (Ctrl+F)",
+                count
+            );
+        }
+    }
 }
 
 impl Default for TextureLabApp {
@@ -255,7 +287,7 @@ impl Default for TextureLabApp {
         canvas_state.selected_node = Some(NodeId(1));
 
         Self {
-            title: "TextureLAB — PBR Texture Workstation".to_string(),
+            title: "TextureLAB".to_string(),
             version: env!("CARGO_PKG_VERSION"),
             edition: Edition::Pro,
             graph,
@@ -266,7 +298,7 @@ impl Default for TextureLabApp {
             viewport_state: ViewportState::new(),
             search_palette: SearchPaletteState::new(),
             library_query: String::new(),
-            status_message: "Ready. Pure Rust engine active.".to_string(),
+            status_message: "Ready".to_string(),
             eval_time_ms: 0.0,
             project_file_path: None,
             show_about_dialog: false,
@@ -280,6 +312,9 @@ impl Default for TextureLabApp {
 
 impl eframe::App for TextureLabApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Sync 2D Viewport locked node to canvas state
+        self.canvas_state.locked_viewport_node = self.viewport_state.locked_node;
+
         // 1. Hotkey Dispatcher Guard
         let is_text_focused = ctx.memory(|m| m.focused().is_some());
         let hotkey = ctx.input(|i| dispatch_from_input(i, is_text_focused));
@@ -290,7 +325,7 @@ impl eframe::App for TextureLabApp {
                     self.search_palette.open_at([-self.canvas_state.pan.x + 400.0, -self.canvas_state.pan.y + 250.0]);
                 }
                 HotkeyAction::FrameAll => {
-                    self.canvas_state.frame_focus(&self.graph, ctx.screen_rect().size());
+                    // Auto-framing feature removed
                 }
                 HotkeyAction::SpawnConstantScalar => {
                     self.spawn_node_by_type("ConstantScalar");
@@ -368,6 +403,76 @@ impl eframe::App for TextureLabApp {
                         self.dock_state = Some(dock);
                     }
                 }
+                HotkeyAction::AutoLayout => {
+                    self.execute_auto_layout();
+                }
+            }
+        }
+
+        // 1.5. Intercept Explorer File Drag & Drop directly onto Canvas
+        let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
+        if !dropped_files.is_empty() {
+            let mut spawned_any = false;
+            let mut start_pos = [-self.canvas_state.pan.x + 250.0, -self.canvas_state.pan.y + 150.0];
+            if let Some(ptr) = ctx.pointer_hover_pos() {
+                start_pos = [
+                    (ptr.x - self.canvas_state.pan.x) / self.canvas_state.zoom,
+                    (ptr.y - self.canvas_state.pan.y) / self.canvas_state.zoom,
+                ];
+            }
+
+            let mut y_offset = 0.0;
+            let mut last_spawned_id = None;
+
+            for file in dropped_files {
+                if let Some(path) = file.path {
+                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                    let is_image = matches!(
+                        ext.as_str(),
+                        "png" | "jpg" | "jpeg" | "tga" | "webp" | "bmp" | "exr" | "tif" | "tiff"
+                    );
+
+                    if is_image {
+                        let path_str = path.to_string_lossy().to_string();
+                        let metadata = LexicalNormalizer::normalize(&path_str);
+                        let role_label = metadata
+                            .inferred_role
+                            .map(|r| r.display_name())
+                            .unwrap_or("Texture Input");
+                        let label = format!("{} ({})", metadata.clean_stem, role_label);
+
+                        let node_id = NodeId(self.graph.next_node_id);
+                        let desc = NODE_CATALOG
+                            .iter()
+                            .find(|d| d.type_name == "TextureInput");
+
+                        if let Some(desc) = desc {
+                            let mut node = desc.create_node(node_id, [start_pos[0], start_pos[1] + y_offset]);
+                            node.label = label;
+                            node.set_param("file_path", crate::graph::model::NodeParam::String(path_str.clone()));
+                            let colorspace = metadata
+                                .inferred_role
+                                .map(|r| r.default_colorspace())
+                                .unwrap_or("sRGB");
+                            node.set_param("colorspace", crate::graph::model::NodeParam::String(colorspace.to_string()));
+
+                            self.graph.add_node(node);
+                            self.evaluator.mark_dirty(&self.graph, node_id);
+                            last_spawned_id = Some(node_id);
+                            spawned_any = true;
+                            y_offset += 150.0;
+                        }
+                    }
+                }
+            }
+
+            if spawned_any {
+                if let Some(sel_id) = last_spawned_id {
+                    self.canvas_state.selected_node = Some(sel_id);
+                }
+                self.reevaluate();
+                self.history.record(&self.graph, "Drop textures from Explorer");
+                self.status_message = "Loaded and auto-bound texture sampler from Windows Explorer".to_string();
             }
         }
 
@@ -466,6 +571,11 @@ impl eframe::App for TextureLabApp {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.button("Auto Layout Nodes (Ctrl+F)").clicked() {
+                        self.execute_auto_layout();
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button("Select All (Ctrl+A)").clicked() {
                         if let Some(&first) = self.graph.nodes.keys().next() {
                             self.canvas_state.selected_node = Some(first);
@@ -484,16 +594,66 @@ impl eframe::App for TextureLabApp {
                 });
 
                 ui.menu_button("View", |ui| {
-                    if ui.button("Frame All (F)").clicked() {
-                        self.canvas_state.frame_focus(&self.graph, ctx.screen_rect().size());
+                    if ui.button("Auto Layout Nodes (Ctrl+F)").clicked() {
+                        self.execute_auto_layout();
                         ui.close_menu();
                     }
                     if ui.button("Reset Viewport").clicked() {
                         self.viewport_state.reset_view();
                         ui.close_menu();
                     }
-                    if ui.button("Reset Dock Layout").clicked() {
+                    ui.separator();
+                    if ui.button("Save Layout...").clicked() {
+                        if let Some(dock) = &self.dock_state {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Layout JSON", &["json"])
+                                .set_file_name("texturelab_layout.json")
+                                .save_file()
+                            {
+                                if let Ok(json_str) = serde_json::to_string_pretty(dock) {
+                                    let _ = std::fs::write(&path, json_str);
+                                    self.status_message = format!("Saved layout to {}", path.display());
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("Load Layout...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Layout JSON", &["json"])
+                            .pick_file()
+                        {
+                            if let Ok(data) = std::fs::read_to_string(&path) {
+                                match serde_json::from_str::<DockState<Tab>>(&data) {
+                                    Ok(loaded_dock) => {
+                                        self.dock_state = Some(loaded_dock);
+                                        self.status_message = format!("Loaded layout from {}", path.display());
+                                    }
+                                    Err(err) => {
+                                        self.status_message = format!("Failed to load layout: {}", err);
+                                    }
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("Reset to Default Layout").clicked() {
                         self.dock_state = Some(crate::ui::default_dock_layout());
+                        self.viewport_state.is_undocked = false;
+                        self.status_message = "Reset layout to default".to_string();
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("Export Preflight (Ctrl+E)").clicked() {
+                        if let Some(mut dock) = self.dock_state.take() {
+                            if dock.find_tab(&Tab::ExportDrawer).is_none() {
+                                dock.main_surface_mut().push_to_focused_leaf(Tab::ExportDrawer);
+                            }
+                            if let Some(loc) = dock.find_tab(&Tab::ExportDrawer) {
+                                dock.set_active_tab(loc);
+                            }
+                            self.dock_state = Some(dock);
+                        }
                         ui.close_menu();
                     }
                 });
@@ -501,6 +661,10 @@ impl eframe::App for TextureLabApp {
                 ui.menu_button("Nodes", |ui| {
                     if ui.button("Quick Search Palette (Tab)").clicked() {
                         self.search_palette.open_at([-self.canvas_state.pan.x + 400.0, -self.canvas_state.pan.y + 250.0]);
+                        ui.close_menu();
+                    }
+                    if ui.button("Auto Layout Graph (Ctrl+F)").clicked() {
+                        self.execute_auto_layout();
                         ui.close_menu();
                     }
                     ui.separator();
@@ -521,18 +685,14 @@ impl eframe::App for TextureLabApp {
                 });
 
                 ui.menu_button(format!("Edition: {}", self.edition.name()), |ui| {
-                    ui.label(egui::RichText::new("Capability Matrix:").strong());
-                    ui.label("• Lite: Channel Pack/Unpack, Lexical Wizard, PNG/TGA");
-                    ui.label("• Pro: RNM, 13-Op Math, 16-bit EXR/TIFF, A/B Split");
-                    ui.separator();
-                    if ui.selectable_label(self.edition == Edition::Pro, "TextureLAB Pro (Full Features)").clicked() {
+                    if ui.selectable_label(self.edition == Edition::Pro, "TextureLAB Pro").clicked() {
                         self.edition = Edition::Pro;
-                        self.status_message = "Active edition: TextureLAB Pro (All features unlocked)".to_string();
+                        self.status_message = "Edition: Pro".to_string();
                         ui.close_menu();
                     }
-                    if ui.selectable_label(self.edition == Edition::Lite, "TextureLAB Lite (Restricted Mode)").clicked() {
+                    if ui.selectable_label(self.edition == Edition::Lite, "TextureLAB Lite").clicked() {
                         self.edition = Edition::Lite;
-                        self.status_message = "Active edition: TextureLAB Lite (RNM, Math & EXR/TIFF locked)".to_string();
+                        self.status_message = "Edition: Lite".to_string();
                         ui.close_menu();
                     }
                 });
@@ -546,8 +706,8 @@ impl eframe::App for TextureLabApp {
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.colored_label(
-                        crate::ui::theme::TEXT_ACCENT,
-                        format!("100% Native Rust • Zero Electron [{}]", self.edition.name()),
+                        crate::ui::theme::TEXT_MUTED,
+                        format!("[{}]", self.edition.name()),
                     );
                     ui.separator();
                     ui.label(
@@ -631,6 +791,36 @@ impl eframe::App for TextureLabApp {
             self.dock_state = Some(dock_state);
         }
 
+        // 4.5 Native Multi-Monitor OS Viewport for 2D Viewport
+        if self.viewport_state.is_undocked {
+            let preview_data = crate::ui::viewport::resolve_viewport_preview(
+                &self.graph,
+                &self.evaluator,
+                self.viewport_state.locked_node,
+                self.canvas_state.selected_node,
+                self.viewport_state.selected_socket.as_deref(),
+            );
+
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("viewport_2d_secondary_monitor"),
+                egui::ViewportBuilder::default()
+                    .with_title("2D Viewport — TextureLAB")
+                    .with_inner_size([800.0, 600.0])
+                    .with_min_inner_size([400.0, 300.0]),
+                |ctx, class| {
+                    if class == egui::ViewportClass::Immediate {
+                        if ctx.input(|i| i.viewport().close_requested()) {
+                            self.viewport_state.is_undocked = false;
+                        }
+
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            self.viewport_state.show(ui, &preview_data);
+                        });
+                    }
+                },
+            );
+        }
+
         // 5. Floating Quick-Search Palette (`Tab`)
         if let Some((desc, pos)) = self.search_palette.show(ctx) {
             self.spawn_node(desc, pos);
@@ -638,20 +828,16 @@ impl eframe::App for TextureLabApp {
 
         // 6. About Dialog Modal
         if self.show_about_dialog {
-            egui::Window::new("About ARKH TextureLAB")
+            egui::Window::new("About TextureLAB")
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    ui.heading("ARKH TextureLAB");
-                    ui.label("Professional PBR Texture Authoring and Channel Packing Workstation");
-                    ui.label(format!("Version: {}", self.version));
-                    ui.label(format!("Edition: {} ({})", self.edition.name(), if self.edition.is_pro() { "Full Capability Matrix" } else { "Lite Mode" }));
+                    ui.heading("TextureLAB");
+                    ui.label(format!("Version {}", self.version));
+                    ui.label(format!("Edition: {}", self.edition.name()));
                     ui.separator();
-                    ui.label("• 100% Native Desktop Engine (Rust 2021)");
-                    ui.label("• Zero Electron • Zero WebViews • Zero Node.js runtime");
-                    ui.label("• Rayon Multi-threaded SIMD parallel image pipeline");
-                    ui.label("• High-performance Topological DAG execution");
-                    ui.add_space(10.0);
+                    ui.label("PBR Texture Authoring & Channel Packing Workstation");
+                    ui.add_space(8.0);
                     if ui.button("Close").clicked() {
                         self.show_about_dialog = false;
                     }
@@ -733,49 +919,90 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         CanvasAction::OpenSearchPalette(pos) => {
                             self.search_palette.open_at(pos);
                         }
+                        CanvasAction::DisconnectPin(pin) => {
+                            let edges_to_remove: Vec<_> = self.graph.edges.iter()
+                                .filter(|e| e.from == pin || e.to == pin)
+                                .cloned()
+                                .collect();
+                            for edge in edges_to_remove {
+                                self.graph.disconnect(&edge.from, &edge.to);
+                                self.evaluator.mark_dirty(self.graph, edge.to.node_id);
+                            }
+                            let _ = self.evaluator.evaluate(self.graph);
+                            self.history.record(self.graph, format!("Sever pin {}", pin.name));
+                            *self.status_message = format!("Severed connections to {}", pin.name);
+                        }
+                        CanvasAction::SpawnNodeAt { type_name, pos } => {
+                            if !self.edition.is_node_allowed(&type_name) {
+                                *self.status_message = format!("🔒 '{}' requires TextureLAB Pro edition.", type_name);
+                            } else if let Some(desc) = NODE_CATALOG.iter().find(|d| d.type_name.eq_ignore_ascii_case(&type_name)) {
+                                let node_id = NodeId(self.graph.next_node_id);
+                                let node = desc.create_node(node_id, pos);
+                                self.graph.add_node(node);
+                                self.canvas_state.selected_node = Some(node_id);
+                                self.evaluator.mark_dirty(self.graph, node_id);
+                                let start = Instant::now();
+                                let _ = self.evaluator.evaluate(self.graph);
+                                *self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
+                                self.history.record(self.graph, format!("Spawn {}", desc.display_name));
+                                *self.status_message = format!("Spawned {}", desc.display_name);
+                            }
+                        }
+                        CanvasAction::FrameFocus => {
+                            // Auto-framing feature removed
+                        }
+                        CanvasAction::AutoLayout => {
+                            let sel = self.canvas_state.selected_node;
+                            self.history.record(self.graph, "Auto Layout Nodes");
+                            crate::graph::layout::auto_layout_graph_contextual(self.graph, sel);
+                            let count = if let Some(target) = sel {
+                                let mut back = crate::graph::compiler::GraphCompiler::upstream_nodes(self.graph, target);
+                                back.insert(target);
+                                back.len()
+                            } else {
+                                self.graph.nodes.len()
+                            };
+                            if let Some(target) = sel {
+                                *self.status_message = format!(
+                                    "Auto-arranged back-hierarchy of Node#{} ({} nodes, Right-to-Left) [Ctrl+F]",
+                                    target.0, count
+                                );
+                            } else {
+                                *self.status_message = format!(
+                                    "Auto-arranged {} nodes into compact layout (Ctrl+F)",
+                                    count
+                                );
+                            }
+                        }
                     }
                 }
             }
 
             Tab::Viewport2D => {
-                // Find evaluated buffer for selected node or first available output
-                let mut buffer_to_show = None;
-                let mut title = "2D Viewport (Empty)".to_string();
-
-                if let Some(sel_id) = self.canvas_state.selected_node {
-                    if let Some(node) = self.graph.get_node(sel_id) {
-                        title = format!("2D Viewport: {} ({})", node.label, node.node_type);
-                        // Search in node outputs
-                        for pin in &node.outputs {
-                            if let Some(buf) = self.evaluator.get_output(pin) {
-                                buffer_to_show = Some(buf);
-                                break;
-                            }
+                if self.viewport_state.is_undocked {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(40.0);
+                        ui.label(
+                            egui::RichText::new("2D Viewport is detached to secondary monitor")
+                                .color(crate::ui::theme::TEXT_SECONDARY)
+                                .size(13.0),
+                        );
+                        ui.add_space(8.0);
+                        if ui.button("Dock back to main workspace").clicked() {
+                            self.viewport_state.is_undocked = false;
                         }
-                    }
+                    });
+                    return;
                 }
 
-                if buffer_to_show.is_none() {
-                    // Fallback to first available cached output in graph
-                    for node in self.graph.nodes.values() {
-                        for pin in &node.outputs {
-                            if let Some(buf) = self.evaluator.get_output(pin) {
-                                title = format!("2D Viewport: {} ({})", node.label, node.node_type);
-                                buffer_to_show = Some(buf);
-                                break;
-                            }
-                        }
-                        if buffer_to_show.is_some() {
-                            break;
-                        }
-                    }
-                }
-
-                self.viewport_state.show(
-                    ui,
-                    buffer_to_show.as_deref(),
-                    &title,
+                let preview_data = crate::ui::viewport::resolve_viewport_preview(
+                    self.graph,
+                    self.evaluator,
+                    self.viewport_state.locked_node,
+                    self.canvas_state.selected_node,
+                    self.viewport_state.selected_socket.as_deref(),
                 );
+                self.viewport_state.show(ui, &preview_data);
             }
 
             Tab::Inspector => {
@@ -791,6 +1018,7 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                             *self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
                             self.history.record(self.graph, format!("Edit {}", param_name));
                             *self.status_message = format!("Updated {}", param_name);
+                            ui.ctx().request_repaint();
                         }
                         InspectorAction::LabelChanged { node_id, new_label } => {
                             self.history.record(self.graph, format!("Rename node {}", node_id));
@@ -1137,5 +1365,42 @@ mod tests {
         let result_rnm = app.spawn_node_by_type("NormalBlendRNM");
         assert!(result_rnm.is_some());
         assert_eq!(app.graph.nodes.len(), initial_node_count + 2);
+    }
+
+    #[test]
+    fn test_auto_layout_execution_and_undo() {
+        let mut app = TextureLabApp::default();
+        let initial_pan = app.canvas_state.pan;
+
+        // Deselect node to test full-graph layout
+        app.canvas_state.selected_node = None;
+
+        // Mess up coordinates
+        for node in app.graph.nodes.values_mut() {
+            node.position = [0.0, 0.0];
+        }
+
+        // Execute auto layout without auto-framing
+        app.execute_auto_layout();
+        assert!(app.status_message.contains("Auto-arranged 5 nodes into compact layout (Ctrl+F)"));
+
+        // Camera pan MUST remain untouched (no auto-framing)
+        assert_eq!(app.canvas_state.pan, initial_pan, "Camera pan must not change on auto-layout");
+
+        // Positions should now be properly organized and non-overlapping
+        let layout_positions: Vec<[f32; 2]> = app.graph.nodes.values().map(|n| n.position).collect();
+        assert_ne!(layout_positions, vec![[0.0, 0.0]; 5]);
+
+        // Undo auto layout
+        let restored_graph = app.history.undo(&app.graph).expect("Undo should succeed");
+        app.graph = restored_graph;
+        let restored_positions: Vec<[f32; 2]> = app.graph.nodes.values().map(|n| n.position).collect();
+        assert_eq!(restored_positions, vec![[0.0, 0.0]; 5]);
+
+        // Contextual selection: select Node 3 and auto-layout back hierarchy
+        app.canvas_state.selected_node = Some(NodeId(3));
+        app.execute_auto_layout();
+        assert!(app.status_message.contains("Auto-arranged back-hierarchy of Node#3"));
+        assert_eq!(app.canvas_state.pan, initial_pan, "Camera pan must remain unchanged");
     }
 }

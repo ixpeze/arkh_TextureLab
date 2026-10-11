@@ -4,7 +4,7 @@
 //! routing rows, color, formats, and blend modes) and emits mutations
 //! to trigger reactive evaluation.
 
-use egui::{Color32, DragValue, Slider, Ui};
+use egui::{Color32, DragValue, Slider, Ui, Vec2};
 use crate::graph::model::{Node, NodeId, NodeParam};
 use crate::nodes::NodeCategory;
 
@@ -49,20 +49,26 @@ pub fn show_inspector(
     let node_id = node.id;
 
     ui.vertical(|ui| {
-        // Node Header Banner
-        ui.horizontal(|ui| {
-            let cat = infer_category(&node.node_type);
-            let badge_color = crate::ui::theme::category_color(cat);
+        // Node Header Banner with Category Accent Strip
+        let cat = infer_category(&node.node_type);
+        let badge_color = crate::ui::theme::category_color(cat);
 
-            ui.colored_label(badge_color, format!("● [{}]", cat));
-            ui.heading(
+        let (accent_strip_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 2.5), egui::Sense::hover());
+        ui.painter().rect_filled(accent_strip_rect, 1.0, badge_color);
+
+        ui.add_space(4.0);
+
+        ui.horizontal(|ui| {
+            ui.colored_label(badge_color, "•");
+            ui.label(
                 egui::RichText::new(&node.node_type)
                     .color(crate::ui::theme::TEXT_PRIMARY)
-                    .size(16.0),
+                    .size(15.0)
+                    .strong(),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui
-                    .button(egui::RichText::new("🗑 Delete").color(crate::ui::theme::WIRE_RED))
+                    .button(egui::RichText::new("Delete").color(crate::ui::theme::WIRE_RED).size(11.0))
                     .clicked()
                 {
                     action = Some(InspectorAction::DeleteNode(node_id));
@@ -71,7 +77,7 @@ pub fn show_inspector(
         });
 
         ui.label(
-            egui::RichText::new(format!("ID: {}", node.id))
+            egui::RichText::new(format!("Category: {}  •  Node ID: {}", cat, node.id))
                 .color(crate::ui::theme::TEXT_MUTED)
                 .size(11.0),
         );

@@ -42,6 +42,8 @@ pub enum HotkeyAction {
     SaveProject,
     /// Open export dialog drawer (`Ctrl + E`).
     OpenExportDialog,
+    /// Auto-layout graph nodes into compact non-overlapping arrangement (`Ctrl + F`).
+    AutoLayout,
 }
 
 /// Evaluates raw key and modifier states with an input-focus guard.
@@ -75,6 +77,9 @@ pub fn resolve_hotkey(
         }
         if key == Key::E {
             return Some(HotkeyAction::OpenExportDialog);
+        }
+        if key == Key::F {
+            return Some(HotkeyAction::AutoLayout);
         }
         return None;
     }
@@ -228,6 +233,10 @@ pub mod tests {
         assert_eq!(
             resolve_hotkey(Key::E, true, false, text_input_active),
             Some(HotkeyAction::OpenExportDialog)
+        );
+        assert_eq!(
+            resolve_hotkey(Key::F, true, false, text_input_active),
+            Some(HotkeyAction::AutoLayout)
         );
     }
 }
