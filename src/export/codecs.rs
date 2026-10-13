@@ -145,6 +145,72 @@ pub fn save_png<P: AsRef<Path>>(buffer: &TextureBuffer, path: P) -> Result<(), C
     Ok(())
 }
 
+/// Saves a `TextureBuffer` to disk as a JPEG file with the specified quality (1..=100).
+pub fn save_jpeg<P: AsRef<Path>>(buffer: &TextureBuffer, path: P, quality: u8) -> Result<(), CodecError> {
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    // Convert RGBA8 to RGB8 (JPEG does not support alpha channel)
+    let rgb = image::DynamicImage::ImageRgba8(buffer.image.clone()).to_rgb8();
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut writer, quality.clamp(1, 100));
+    encoder.encode(rgb.as_raw(), buffer.width, buffer.height, ExtendedColorType::Rgb8)?;
+    Ok(())
+}
+
+/// Saves a `TextureBuffer` to disk as a WebP file.
+pub fn save_webp<P: AsRef<Path>>(buffer: &TextureBuffer, path: P) -> Result<(), CodecError> {
+    let dyn_img = image::DynamicImage::ImageRgba8(buffer.image.clone());
+    dyn_img.save_with_format(path, image::ImageFormat::WebP)?;
+    Ok(())
+}
+
+/// Saves a `TextureBuffer` to disk as a BMP file.
+pub fn save_bmp<P: AsRef<Path>>(buffer: &TextureBuffer, path: P) -> Result<(), CodecError> {
+    let dyn_img = image::DynamicImage::ImageRgba8(buffer.image.clone());
+    dyn_img.save_with_format(path, image::ImageFormat::Bmp)?;
+    Ok(())
+}
+
+/// Saves a `TextureBuffer` to disk, automatically inferring the codec from the file extension.
+pub fn save_image<P: AsRef<Path>>(buffer: &TextureBuffer, path: P) -> Result<(), CodecError> {
+    let path_ref = path.as_ref();
+    let ext = path_ref
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    match ext.as_str() {
+        "tga" => crate::export::tga::save_tga_file(buffer, path_ref, 32).map_err(|e| CodecError::IoError(e.to_string())),
+        "jpg" | "jpeg" => save_jpeg(buffer, path_ref, 95),
+        "webp" => save_webp(buffer, path_ref),
+        "bmp" => save_bmp(buffer, path_ref),
+        _ => save_png(buffer, path_ref),
+    }
+}
+
+/// Loads a 16-bit image from disk into a `TextureBuffer16`.
+pub fn load_image_16<P: AsRef<Path>>(path: P) -> Result<crate::core::buffer::TextureBuffer16, CodecError> {
+    let path_ref = path.as_ref();
+    let mut file = File::open(path_ref)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)?;
+    let reader = ImageReader::new(Cursor::new(&bytes)).with_guessed_format()?;
+    let dynamic_img = reader.decode()?;
+    let (width, height) = (dynamic_img.width(), dynamic_img.height());
+    let rgba16 = dynamic_img.to_rgba16();
+    Ok(crate::core::buffer::TextureBuffer16 {
+        width,
+        height,
+        data: rgba16.into_raw(),
+    })
+}
+
+/// Saves a `TextureBuffer16` to disk as a lossless 16-bit PNG file.
+pub fn save_png_16<P: AsRef<Path>>(buffer: &crate::core::buffer::TextureBuffer16, path: P) -> Result<(), CodecError> {
+    let bytes = encode_png_rgba16(buffer.width, buffer.height, &buffer.data)?;
+    std::fs::write(path, bytes)?;
+    Ok(())
+}
+
 /// Loads an image file from disk (supporting PNG, JPEG, WebP, TGA, BMP) into a `TextureBuffer`.
 pub fn load_image<P: AsRef<Path>>(path: P) -> Result<TextureBuffer, CodecError> {
     let path_ref = path.as_ref();
@@ -163,6 +229,74 @@ pub fn load_image<P: AsRef<Path>>(path: P) -> Result<TextureBuffer, CodecError> 
 
     decode_image_from_memory(&bytes)
 }
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+struct DiskCacheKey {
+    path: std::path::PathBuf,
+    mtime: Option<std::time::SystemTime>,
+    file_size: u64,
+}
+
+struct DiskImageCache {
+    entries: std::collections::HashMap<DiskCacheKey, std::sync::Arc<TextureBuffer>>,
+    access_order: Vec<DiskCacheKey>,
+    max_entries: usize,
+}
+
+static DISK_IMAGE_CACHE: std::sync::OnceLock<std::sync::Mutex<DiskImageCache>> = std::sync::OnceLock::new();
+
+fn get_disk_cache() -> &'static std::sync::Mutex<DiskImageCache> {
+    DISK_IMAGE_CACHE.get_or_init(|| {
+        std::sync::Mutex::new(DiskImageCache {
+            entries: std::collections::HashMap::new(),
+            access_order: Vec::new(),
+            max_entries: 64,
+        })
+    })
+}
+
+/// Loads an image from disk using a thread-safe LRU cache.
+///
+/// If the file on disk has matching timestamp and size, returns the existing `Arc<TextureBuffer>`
+/// without decoding. If modified or uncached, decodes from disk and updates the cache.
+pub fn load_image_cached<P: AsRef<Path>>(path: P) -> Result<std::sync::Arc<TextureBuffer>, CodecError> {
+    let path_buf = path.as_ref().to_path_buf();
+    let metadata = std::fs::metadata(&path_buf)?;
+    let mtime = metadata.modified().ok();
+    let file_size = metadata.len();
+
+    let key = DiskCacheKey {
+        path: path_buf,
+        mtime,
+        file_size,
+    };
+
+    let cache_lock = get_disk_cache();
+    {
+        let cache = cache_lock.lock().unwrap();
+        if let Some(buf) = cache.entries.get(&key) {
+            return Ok(std::sync::Arc::clone(buf));
+        }
+    }
+
+    // Decode on miss
+    let loaded = std::sync::Arc::new(load_image(&key.path)?);
+
+    {
+        let mut cache = cache_lock.lock().unwrap();
+        if cache.entries.len() >= cache.max_entries {
+            if let Some(oldest_key) = cache.access_order.first().cloned() {
+                cache.entries.remove(&oldest_key);
+                cache.access_order.retain(|k| k != &oldest_key);
+            }
+        }
+        cache.access_order.push(key.clone());
+        cache.entries.insert(key, std::sync::Arc::clone(&loaded));
+    }
+
+    Ok(loaded)
+}
+
 
 #[cfg(test)]
 pub mod tests {
@@ -217,4 +351,26 @@ pub mod tests {
         assert_eq!(dec_h, height);
         assert_eq!(dec_data, u16_data);
     }
+
+    #[test]
+    pub fn test_load_image_cached_pointer_equality() {
+        let temp_dir = std::env::temp_dir().join(format!("tlab_cache_test_{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&temp_dir);
+        let test_path = temp_dir.join("sample_tex.png");
+
+        let original = TextureBuffer::solid_color(16, 16, 120, 200, 80, 255);
+        save_png(&original, &test_path).expect("Failed to write test PNG");
+
+        // First load: cache miss, decodes from disk
+        let buf1 = load_image_cached(&test_path).expect("First load failed");
+        assert_eq!(buf1.get_pixel(0, 0), [120, 200, 80, 255]);
+
+        // Second load: cache hit, must return the exact same Arc pointer!
+        let buf2 = load_image_cached(&test_path).expect("Second load failed");
+        assert!(std::sync::Arc::ptr_eq(&buf1, &buf2), "Cache hit must reuse identical Arc allocation");
+
+        let _ = std::fs::remove_file(&test_path);
+        let _ = std::fs::remove_dir_all(&temp_dir);
+    }
 }
+

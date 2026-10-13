@@ -104,6 +104,12 @@ pub enum ExportFormat {
     Tga,
     /// Portable Network Graphics (8-bit or 16-bit).
     Png,
+    /// Joint Photographic Experts Group (JPEG / JPG).
+    Jpg,
+    /// Google WebP format.
+    Webp,
+    /// Windows Bitmap (BMP).
+    Bmp,
     /// Automatically infer format from file extension.
     Auto,
 }
@@ -133,6 +139,9 @@ impl ExportItem {
         {
             Some("tga") => ExportFormat::Tga,
             Some("png") => ExportFormat::Png,
+            Some("jpg") | Some("jpeg") => ExportFormat::Jpg,
+            Some("webp") => ExportFormat::Webp,
+            Some("bmp") => ExportFormat::Bmp,
             _ => ExportFormat::Auto,
         };
 
@@ -362,16 +371,21 @@ impl ExportWriter {
         let effective_format = match item.format {
             ExportFormat::Tga => ExportFormat::Tga,
             ExportFormat::Png => ExportFormat::Png,
+            ExportFormat::Jpg => ExportFormat::Jpg,
+            ExportFormat::Webp => ExportFormat::Webp,
+            ExportFormat::Bmp => ExportFormat::Bmp,
             ExportFormat::Auto => {
-                if dest_path
+                let ext = dest_path
                     .extension()
                     .and_then(|e| e.to_str())
-                    .map(|e| e.eq_ignore_ascii_case("tga"))
-                    .unwrap_or(false)
-                {
-                    ExportFormat::Tga
-                } else {
-                    ExportFormat::Png
+                    .unwrap_or("")
+                    .to_ascii_lowercase();
+                match ext.as_str() {
+                    "tga" => ExportFormat::Tga,
+                    "jpg" | "jpeg" => ExportFormat::Jpg,
+                    "webp" => ExportFormat::Webp,
+                    "bmp" => ExportFormat::Bmp,
+                    _ => ExportFormat::Png,
                 }
             }
         };
@@ -382,9 +396,25 @@ impl ExportWriter {
                 save_tga_file(&item.buffer, &temp_path, item.tga_bits)
                     .map_err(|e| format!("TGA write error for {:?}: {}", dest_path, e))
             }
-            ExportFormat::Png | ExportFormat::Auto => {
+            ExportFormat::Png => {
                 save_png(&item.buffer, &temp_path)
                     .map_err(|e| format!("PNG write error for {:?}: {}", dest_path, e))
+            }
+            ExportFormat::Jpg => {
+                crate::export::codecs::save_jpeg(&item.buffer, &temp_path, 95)
+                    .map_err(|e| format!("JPEG write error for {:?}: {}", dest_path, e))
+            }
+            ExportFormat::Webp => {
+                crate::export::codecs::save_webp(&item.buffer, &temp_path)
+                    .map_err(|e| format!("WebP write error for {:?}: {}", dest_path, e))
+            }
+            ExportFormat::Bmp => {
+                crate::export::codecs::save_bmp(&item.buffer, &temp_path)
+                    .map_err(|e| format!("BMP write error for {:?}: {}", dest_path, e))
+            }
+            ExportFormat::Auto => {
+                save_png(&item.buffer, &temp_path)
+                    .map_err(|e| format!("Image write error for {:?}: {}", dest_path, e))
             }
         };
 
@@ -522,6 +552,34 @@ pub mod tests {
         assert!(png_path.exists());
         let png_meta = fs::metadata(&png_path).unwrap();
         assert!(png_meta.len() > 0);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    pub fn test_atomic_export_jpeg_format_magic() {
+        let temp_dir = std::env::temp_dir().join(format!(
+            "texturelab_test_p6_jpg_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let buf = TextureBuffer::solid_color(16, 16, 200, 100, 50, 255);
+        let jpg_path = temp_dir.join("T_Test_Albedo.jpg");
+
+        let items = vec![ExportItem::new(buf, &jpg_path)];
+        let report = ExportWriter::execute_export(&items);
+        assert!(report.is_success());
+
+        assert!(jpg_path.exists());
+        let bytes = fs::read(&jpg_path).unwrap();
+        // Valid JPEG files must start with SOI marker [0xFF, 0xD8]
+        assert!(bytes.len() >= 2);
+        assert_eq!(bytes[0], 0xFF);
+        assert_eq!(bytes[1], 0xD8);
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

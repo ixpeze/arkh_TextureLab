@@ -23,6 +23,7 @@ pub const GRID_AXIS: Color32 = Color32::from_rgb(86, 86, 110);       // origin a
 
 // --- Borders & Separators (Crisp, High-Definition DCC Lines) ---
 pub const BORDER_DARK: Color32 = Color32::from_rgb(58, 58, 76);      // #3A3A4C (crisp visible card border)
+pub const BORDER_HOVER: Color32 = Color32::from_rgb(74, 74, 96);     // #4A4A60 (hovered element border)
 pub const BORDER_SUBTLE: Color32 = Color32::from_rgb(72, 72, 94);    // #48485E
 pub const BORDER_HAIRLINE: Color32 = Color32::from_rgb(88, 88, 114);  // #585872 (strong hairline)
 pub const BORDER_HIGHLIGHT: Color32 = Color32::from_rgb(255, 176, 46); // #FFB02E (signature amber)
@@ -39,6 +40,61 @@ pub const TEXT_SECONDARY: Color32 = Color32::from_rgb(182, 178, 170);// #B6B2AA 
 pub const TEXT_MUTED: Color32 = Color32::from_rgb(140, 136, 126);    // #8C887E (~5.2:1 contrast)
 pub const TEXT_ACCENT: Color32 = Color32::from_rgb(255, 176, 46);    // #FFB02E
 
+// --- Category Colors & Suggested Tinted Backgrounds (Design Guide Section 2) ---
+pub const CAT_IO: Color32 = Color32::from_rgb(92, 200, 232);         // #5CC8E8 (Cyan)
+pub const CAT_IO_BG: Color32 = Color32::from_rgb(29, 48, 56);        // #1D3038
+pub const CAT_CONSTANTS: Color32 = Color32::from_rgb(236, 232, 225); // #ECE8E1 (Off-white)
+pub const CAT_CONSTANTS_BG: Color32 = Color32::from_rgb(41, 41, 45); // #29292D
+pub const CAT_CHANNEL: Color32 = Color32::from_rgb(183, 156, 245);   // #B79CF5 (Soft Violet)
+pub const CAT_CHANNEL_BG: Color32 = Color32::from_rgb(41, 34, 55);   // #292237
+pub const CAT_ADJUST: Color32 = Color32::from_rgb(92, 200, 232);     // #5CC8E8 (Sky)
+pub const CAT_ADJUST_BG: Color32 = Color32::from_rgb(29, 48, 56);    // #1D3038
+pub const CAT_NORMAL: Color32 = Color32::from_rgb(76, 201, 192);     // #4CC9C0 (Teal)
+pub const CAT_NORMAL_BG: Color32 = Color32::from_rgb(27, 52, 50);    // #1B3432
+pub const CAT_BLEND: Color32 = Color32::from_rgb(245, 200, 76);      // #F5C84C (Amber-Yellow)
+pub const CAT_BLEND_BG: Color32 = Color32::from_rgb(52, 45, 28);     // #342D1C
+pub const CAT_MATH: Color32 = Color32::from_rgb(111, 208, 140);      // #6FD08C (Mint Emerald)
+pub const CAT_MATH_BG: Color32 = Color32::from_rgb(29, 51, 39);      // #1D3327
+pub const CAT_TRANSFORM: Color32 = Color32::from_rgb(245, 158, 11);   // #F59E0B (Orange)
+pub const CAT_TRANSFORM_BG: Color32 = Color32::from_rgb(53, 39, 27); // #35271B
+
+// --- Map Detection Badges (TextureInput Node Layout Section 6) ---
+pub const BADGE_AO_BG: Color32 = Color32::from_rgba_premultiplied(18, 26, 31, 50);     // #5B839E (~20%)
+pub const BADGE_AO_TEXT: Color32 = Color32::from_rgb(213, 223, 232);                    // #D5DFE8
+pub const BADGE_ROUGH_BG: Color32 = Color32::from_rgba_premultiplied(21, 30, 24, 50);  // #6A9A78 (~20%)
+pub const BADGE_ROUGH_TEXT: Color32 = Color32::from_rgb(218, 232, 223);                 // #DAE8DF
+pub const BADGE_METAL_BG: Color32 = Color32::from_rgba_premultiplied(18, 26, 35, 50);  // #5B83B2 (~20%)
+pub const BADGE_METAL_TEXT: Color32 = Color32::from_rgb(214, 228, 240);                 // #D6E4F0
+pub const BADGE_HEIGHT_BG: Color32 = Color32::from_rgba_premultiplied(35, 28, 22, 50);// #B48D6E (~20%)
+pub const BADGE_HEIGHT_TEXT: Color32 = Color32::from_rgb(232, 221, 213);                // #E8DDD5
+pub const BADGE_GLOSS_BG: Color32 = Color32::from_rgba_premultiplied(18, 32, 28, 50);   // #5E9E8A (~20%)
+pub const BADGE_GLOSS_TEXT: Color32 = Color32::from_rgb(215, 238, 230);                  // #D7EEE6
+pub const BADGE_SPEC_BG: Color32 = Color32::from_rgba_premultiplied(30, 24, 38, 50);    // #9A80B8 (~20%)
+pub const BADGE_SPEC_TEXT: Color32 = Color32::from_rgb(234, 226, 244);                   // #EAE2F4
+pub const BADGE_MASK_BG: Color32 = Color32::from_rgba_premultiplied(24, 28, 35, 50);    // #708090 (~20%)
+pub const BADGE_MASK_TEXT: Color32 = Color32::from_rgb(226, 232, 240);                   // #E2E8F0
+
+// --- Viewport Channel Toolbar Colors (Preview Panel Section 4) ---
+pub const CHAN_R_ACCENT: Color32 = Color32::from_rgb(239, 68, 68);    // #EF4444
+pub const CHAN_R_BG: Color32 = Color32::from_rgb(53, 29, 36);        // #351D24
+pub const CHAN_G_ACCENT: Color32 = Color32::from_rgb(34, 197, 94);    // #22C55E
+pub const CHAN_G_BG: Color32 = Color32::from_rgb(25, 53, 37);        // #193525
+pub const CHAN_B_ACCENT: Color32 = Color32::from_rgb(59, 130, 246);   // #3B82F6
+pub const CHAN_B_BG: Color32 = Color32::from_rgb(28, 45, 72);        // #1C2D48
+pub const CHAN_A_ACCENT: Color32 = Color32::from_rgb(148, 163, 184); // #94A3B8
+pub const CHAN_A_BG: Color32 = Color32::from_rgb(52, 52, 60);        // #34343C
+pub const CHAN_RGBA_ACCENT: Color32 = Color32::from_rgb(255, 176, 46);// #FFB02E
+
+// --- Viewport Checkerboard Colors ---
+pub const CHECKER_DARK: Color32 = Color32::from_rgb(24, 24, 32);     // #181820
+pub const CHECKER_LIGHT: Color32 = Color32::from_rgb(34, 34, 44);    // #22222C
+
+// --- Inspector Panel Tokens ---
+pub const INSPECTOR_SECTION_BG: Color32 = Color32::from_rgb(28, 28, 37);    // #1C1C25
+pub const INSPECTOR_SECTION_HOVER: Color32 = Color32::from_rgb(37, 37, 50); // #252532
+pub const CHEVRON_COLOR: Color32 = Color32::from_rgb(203, 213, 225);        // #CBD5E1
+pub const CHEVRON_MUTED: Color32 = Color32::from_rgb(148, 163, 184);        // #94A3B8
+
 // --- Semantic Wire & Socket Colors (Phase 5 Section 2.2 & PBR Standards) ---
 pub const WIRE_RED: Color32 = Color32::from_rgb(239, 68, 68);        // #ef4444 (Red R)
 pub const WIRE_GREEN: Color32 = Color32::from_rgb(34, 197, 94);      // #22c55e (Green G)
@@ -48,16 +104,6 @@ pub const WIRE_RGBA: Color32 = Color32::from_rgb(248, 250, 252);     // #f8fafc 
 pub const WIRE_PACKED: Color32 = Color32::from_rgb(183, 156, 245);   // #B79CF5 (Soft Lavender)
 pub const WIRE_NORMAL: Color32 = Color32::from_rgb(76, 201, 192);    // #4CC9C0 (Teal Normal)
 pub const WIRE_DEFAULT: Color32 = Color32::from_rgb(203, 213, 225);  // #cbd5e1
-
-// --- Category Colors (Softened 2px Top Accent Bars) ---
-pub const CAT_IO: Color32 = Color32::from_rgb(92, 200, 232);         // #5CC8E8 (Cyan)
-pub const CAT_CONSTANTS: Color32 = Color32::from_rgb(236, 232, 225); // #ECE8E1 (Off-white)
-pub const CAT_CHANNEL: Color32 = Color32::from_rgb(183, 156, 245);   // #B79CF5 (Soft Violet)
-pub const CAT_ADJUST: Color32 = Color32::from_rgb(92, 200, 232);     // #5CC8E8 (Sky)
-pub const CAT_NORMAL: Color32 = Color32::from_rgb(76, 201, 192);     // #4CC9C0 (Teal)
-pub const CAT_BLEND: Color32 = Color32::from_rgb(245, 200, 76);      // #F5C84C (Amber-Yellow)
-pub const CAT_MATH: Color32 = Color32::from_rgb(111, 208, 140);      // #6FD08C (Mint Emerald)
-pub const CAT_TRANSFORM: Color32 = Color32::from_rgb(245, 158, 11);   // #F59E0B (Orange)
 
 /// Resolves the semantic wire color for a pin or socket name.
 pub fn pin_wire_color(pin_name: &str) -> Color32 {
@@ -84,6 +130,31 @@ pub fn category_color(cat: NodeCategory) -> Color32 {
         NodeCategory::Math => CAT_MATH,
         NodeCategory::Transform => CAT_TRANSFORM,
     }
+}
+
+/// Returns the suggested tinted background for a category accordion header (10-15% opacity target).
+pub fn category_tinted_bg(cat: NodeCategory) -> Color32 {
+    match cat {
+        NodeCategory::Io => CAT_IO_BG,
+        NodeCategory::Constants => CAT_CONSTANTS_BG,
+        NodeCategory::ChannelOps => CAT_CHANNEL_BG,
+        NodeCategory::ColorAdjust => CAT_ADJUST_BG,
+        NodeCategory::NormalOps => CAT_NORMAL_BG,
+        NodeCategory::BlendOps => CAT_BLEND_BG,
+        NodeCategory::Math => CAT_MATH_BG,
+        NodeCategory::Transform => CAT_TRANSFORM_BG,
+    }
+}
+
+/// Returns the hover background for a category accordion header (18-22% opacity target).
+pub fn category_header_hover_bg(cat: NodeCategory) -> Color32 {
+    let base = category_color(cat);
+    // Blend ~20% category color over BG_PANEL (#16161C = 22, 22, 28)
+    Color32::from_rgb(
+        ((base.r() as u16 * 51 + 22 * 204) / 255) as u8,
+        ((base.g() as u16 * 51 + 22 * 204) / 255) as u8,
+        ((base.b() as u16 * 51 + 28 * 204) / 255) as u8,
+    )
 }
 
 /// Computes a desaturated, high-value pastel tint for a node category.
@@ -214,16 +285,16 @@ pub fn create_dock_style(ctx: &egui::Context) -> egui_dock::Style {
     dock_style.separator.width = 2.0;
 
     dock_style.tab_bar.bg_fill = BG_PANEL;
-    dock_style.tab_bar.height = 30.0;
+    dock_style.tab_bar.height = 32.0;
 
     dock_style.tab.tab_body.bg_fill = BG_PANEL;
-    dock_style.tab.active.bg_fill = BG_CARD;
-    dock_style.tab.active.text_color = ACCENT_AMBER;
-    dock_style.tab.inactive.bg_fill = BG_PANEL;
-    dock_style.tab.inactive.text_color = TEXT_SECONDARY;
-    dock_style.tab.focused.bg_fill = BG_CARD_SELECTED;
+    dock_style.tab.active.bg_fill = Color32::from_rgb(38, 38, 50); // #262632
+    dock_style.tab.active.text_color = TEXT_PRIMARY;              // #F8F6F0
+    dock_style.tab.inactive.bg_fill = BG_PANEL;                   // #16161C
+    dock_style.tab.inactive.text_color = TEXT_MUTED;              // #8C887E
+    dock_style.tab.focused.bg_fill = Color32::from_rgb(38, 38, 50);
     dock_style.tab.focused.text_color = ACCENT_AMBER;
-    dock_style.tab.hovered.bg_fill = Color32::from_rgb(36, 36, 42);
+    dock_style.tab.hovered.bg_fill = Color32::from_rgb(32, 32, 42);
     dock_style.tab.hovered.text_color = TEXT_PRIMARY;
 
     dock_style

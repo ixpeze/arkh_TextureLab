@@ -166,7 +166,7 @@ impl TextureInputNodeData {
     }
 }
 
-/// Configuration payload for a `TextureOutput` node.
+/// Configuration payload for a `SaveImage` / `TextureOutput` node.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TextureOutputNodeData {
     pub slot_name: String,
@@ -187,6 +187,9 @@ impl Default for TextureOutputNodeData {
         }
     }
 }
+
+/// Backward-compatible type alias for `SaveImageNodeData`.
+pub type SaveImageNodeData = TextureOutputNodeData;
 
 impl TextureOutputNodeData {
     pub fn new(slot_name: impl Into<String>) -> Self {
@@ -249,13 +252,13 @@ pub fn execute_texture_input(
     } else if let Some(path_str) = node.get_param("file_path").and_then(|p| p.as_str()) {
         let path = std::path::Path::new(path_str);
         if path.exists() {
-            match crate::export::codecs::load_image(path) {
-                Ok(loaded) => Arc::new(loaded),
+            match crate::export::codecs::load_image_cached(path) {
+                Ok(loaded) => loaded,
                 Err(e) => {
-                    return Err(EvaluationError::Execution(format!(
-                        "Failed to load image from {:?}: {}",
-                        path_str, e
-                    )));
+                    eprintln!("Warning: Failed to load image from {:?}: {}", path_str, e);
+                    // Decode failed: output diagnostic magenta fallback so DAG continues evaluating
+                    let solid = TextureBuffer::solid_color(width, height, 255, 0, 255, 255);
+                    Arc::new(solid)
                 }
             }
         } else {
@@ -299,9 +302,10 @@ pub fn execute_texture_input(
     Ok(outputs)
 }
 
-/// Executes a `TextureOutput` node by passing through connected inputs and recording export metadata.
+/// Executes a `SaveImage` / `TextureOutput` node by passing through connected inputs,
+/// applying optional auto-resize if a target resolution is set, and recording export metadata.
 pub fn execute_texture_output(
-    _node: &Node,
+    node: &Node,
     inputs: &HashMap<String, SharedTextureBuffer>,
     resolution: (u32, u32),
 ) -> Result<HashMap<String, SharedTextureBuffer>, EvaluationError> {
@@ -312,11 +316,26 @@ pub fn execute_texture_output(
         .or_else(|| inputs.get("RGBA"))
         .or_else(|| inputs.values().next());
 
+    let target_res = node
+        .get_param("resolution")
+        .and_then(|p| p.as_resolution());
+
     if let Some(buf) = src {
-        outputs.insert("output".to_string(), Arc::clone(buf));
-        outputs.insert("RGBA".to_string(), Arc::clone(buf));
+        let final_buf = if let Some((target_w, target_h)) = target_res {
+            if target_w > 0 && target_h > 0 && (buf.width != target_w || buf.height != target_h) {
+                Arc::new(buf.resize(target_w, target_h, crate::core::buffer::FilterType::Lanczos3))
+            } else {
+                Arc::clone(buf)
+            }
+        } else {
+            Arc::clone(buf)
+        };
+
+        outputs.insert("output".to_string(), Arc::clone(&final_buf));
+        outputs.insert("RGBA".to_string(), Arc::clone(&final_buf));
     } else {
-        let fallback = Arc::new(TextureBuffer::new(resolution.0, resolution.1));
+        let (out_w, out_h) = target_res.unwrap_or(resolution);
+        let fallback = Arc::new(TextureBuffer::new(out_w, out_h));
         outputs.insert("output".to_string(), fallback);
     }
 
@@ -380,5 +399,21 @@ pub mod tests {
         let res = execute_texture_output(&node, &inputs, (16, 16)).unwrap();
         let out = res.get("output").unwrap();
         assert_eq!(out.get_pixel(0, 0), [128, 128, 255, 255]);
+    }
+
+    #[test]
+    pub fn test_save_image_auto_resize() {
+        let mut node = Node::new(NodeId(21), "SaveImage", "Save Image Test", [100.0, 0.0]);
+        node.set_param("resolution", NodeParam::Resolution { width: 32, height: 32 });
+
+        let mut inputs = HashMap::new();
+        let src = Arc::new(TextureBuffer::solid_color(16, 16, 255, 128, 0, 255));
+        inputs.insert("input".to_string(), Arc::clone(&src));
+
+        let res = execute_texture_output(&node, &inputs, (16, 16)).unwrap();
+        let out = res.get("output").unwrap();
+        assert_eq!(out.width, 32);
+        assert_eq!(out.height, 32);
+        assert_eq!(out.get_pixel(0, 0), [255, 128, 0, 255]);
     }
 }

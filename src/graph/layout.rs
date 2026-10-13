@@ -41,15 +41,33 @@ pub fn calculate_node_width(node: &Node) -> f32 {
     let max_out_len = node.outputs.iter().map(|p| p.name.len()).max().unwrap_or(0);
 
     let content_len = (title_len.max(label_len)).max(max_in_len + max_out_len);
-    (180.0 + (content_len as f32 * 3.5)).clamp(200.0, 280.0)
+    (240.0 + (content_len as f32 * 2.0)).clamp(260.0, 280.0)
 }
 
 /// Dynamically calculates node card height based on header and socket count.
 pub fn calculate_node_height(node: &Node) -> f32 {
-    let header_height = 28.0;
-    let socket_row_height = 22.0;
+    let is_texture_input = node.node_type == "TextureInput";
+    let header_height = 36.0;
+    let filename_height = if is_texture_input {
+        let name_len = node
+            .get_param("file_path")
+            .or_else(|| node.get_param("path"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.len())
+            .unwrap_or(node.label.len());
+        if name_len > 60 {
+            54.0
+        } else if name_len > 30 {
+            42.0
+        } else {
+            30.0
+        }
+    } else {
+        0.0
+    };
+    let socket_row_height = if is_texture_input { 34.0 } else { 24.0 };
     let max_sockets = node.inputs.len().max(node.outputs.len()).max(1);
-    let body_height = (max_sockets as f32 * socket_row_height) + 16.0;
+    let body_height = filename_height + (max_sockets as f32 * socket_row_height) + 16.0;
     header_height + body_height
 }
 

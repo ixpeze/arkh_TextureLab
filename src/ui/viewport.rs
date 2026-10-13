@@ -10,6 +10,11 @@ use egui::{
 use crate::core::buffer::{SharedTextureBuffer, TextureBuffer};
 use crate::graph::evaluator::GraphEvaluator;
 use crate::graph::model::{Graph, Node, NodeId, PinId};
+use crate::ui::theme::{
+    ACCENT_AMBER, BG_CARD, BG_CARD_SELECTED, BG_PANEL, BORDER_DARK, BORDER_HOVER,
+    CHAN_A_ACCENT, CHAN_A_BG, CHAN_B_ACCENT, CHAN_B_BG, CHAN_G_ACCENT, CHAN_G_BG,
+    CHAN_R_ACCENT, CHAN_R_BG, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY,
+};
 
 /// Available channel isolation modes for 2D Viewport inspection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -142,14 +147,14 @@ pub fn buffer_to_color_image(buffer: &TextureBuffer, isolation: ChannelIsolation
             let color = match isolation {
                 ChannelIsolation::Rgb => Color32::from_rgba_premultiplied(r, g, b, 255),
                 ChannelIsolation::RgbaChecker => {
-                    // Checkerboard background (16x16 px blocks)
+                    // Checkerboard background (16x16 px blocks) with #181820 (dark) and #22222C (light)
                     let check = ((x / 16) + (y / 16)) % 2 == 0;
-                    let bg = if check { 180u8 } else { 120u8 };
+                    let (bg_r, bg_g, bg_b) = if check { (34u8, 34u8, 44u8) } else { (24u8, 24u8, 32u8) };
                     let alpha = a as u16;
                     let inv_alpha = 255 - alpha;
-                    let br = ((r as u16 * alpha + bg as u16 * inv_alpha) / 255) as u8;
-                    let bg_c = ((g as u16 * alpha + bg as u16 * inv_alpha) / 255) as u8;
-                    let bb = ((b as u16 * alpha + bg as u16 * inv_alpha) / 255) as u8;
+                    let br = ((r as u16 * alpha + bg_r as u16 * inv_alpha) / 255) as u8;
+                    let bg_c = ((g as u16 * alpha + bg_g as u16 * inv_alpha) / 255) as u8;
+                    let bb = ((b as u16 * alpha + bg_b as u16 * inv_alpha) / 255) as u8;
                     Color32::from_rgb(br, bg_c, bb)
                 }
                 ChannelIsolation::Red => Color32::from_rgb(r, r, r),
@@ -218,9 +223,9 @@ pub fn resolve_viewport_preview(
             let mut max_x = f32::MIN;
 
             for node in graph.nodes.values() {
-                if node.node_type == "TextureOutput" {
+                if node.node_type == "SaveImage" || node.node_type == "TextureOutput" {
                     if best_output_node.is_none()
-                        || best_output_node.unwrap().node_type != "TextureOutput"
+                        || (best_output_node.unwrap().node_type != "SaveImage" && best_output_node.unwrap().node_type != "TextureOutput")
                         || node.position[0] > max_x
                     {
                         best_output_node = Some(node);
@@ -427,15 +432,156 @@ fn icon_button(
     let (rect, response) = ui.allocate_exact_size(size, Sense::click());
     let is_hovered = response.hovered();
     let is_active = response.is_pointer_button_down_on();
-    if is_hovered {
-        ui.painter().rect_filled(
-            rect,
-            3.0,
-            Color32::from_rgba_unmultiplied(255, 255, 255, 18),
-        );
-    }
+    let bg = if is_active {
+        BG_CARD_SELECTED
+    } else if is_hovered {
+        Color32::from_rgb(40, 40, 54)
+    } else {
+        BG_CARD
+    };
+    ui.painter().rect_filled(rect, 4.0, bg);
+    let border_col = if is_hovered { BORDER_HOVER } else { BORDER_DARK };
+    ui.painter().rect_stroke(rect, 4.0, Stroke::new(1.0_f32, border_col), StrokeKind::Inside);
     draw_icon(ui.painter(), rect, is_hovered, is_active);
     response.on_hover_text(tooltip)
+}
+
+fn channel_button(
+    ui: &mut Ui,
+    label: &str,
+    is_active: bool,
+    accent: Color32,
+    bg_tint: Color32,
+    tooltip: &str,
+) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(32.0, 28.0), Sense::click());
+    let is_hovered = resp.hovered();
+
+    let (bg, stroke, text_col) = if is_active {
+        (
+            Color32::from_rgb(
+                ((accent.r() as u16 * 70 + bg_tint.r() as u16 * 185) / 255) as u8,
+                ((accent.g() as u16 * 70 + bg_tint.g() as u16 * 185) / 255) as u8,
+                ((accent.b() as u16 * 70 + bg_tint.b() as u16 * 185) / 255) as u8,
+            ),
+            Stroke::new(1.5_f32, accent),
+            Color32::WHITE,
+        )
+    } else if is_hovered {
+        (
+            Color32::from_rgb(
+                ((bg_tint.r() as u16 + 20).min(255)) as u8,
+                ((bg_tint.g() as u16 + 20).min(255)) as u8,
+                ((bg_tint.b() as u16 + 20).min(255)) as u8,
+            ),
+            Stroke::new(1.0_f32, accent),
+            accent,
+        )
+    } else {
+        (
+            bg_tint,
+            Stroke::new(1.0_f32, Color32::from_rgba_premultiplied(accent.r() / 3, accent.g() / 3, accent.b() / 3, 90)),
+            accent,
+        )
+    };
+
+    ui.painter().rect_filled(rect, 5.0, bg);
+    ui.painter().rect_stroke(rect, 5.0, stroke, StrokeKind::Inside);
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        label,
+        egui::FontId::proportional(12.0),
+        text_col,
+    );
+    resp.on_hover_text(tooltip).clicked()
+}
+
+fn rgba_button(
+    ui: &mut Ui,
+    is_active: bool,
+    tooltip: &str,
+) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(42.0, 28.0), Sense::click());
+    let is_hovered = resp.hovered();
+
+    let (bg, stroke, text_col) = if is_active {
+        (
+            ACCENT_AMBER,
+            Stroke::NONE,
+            Color32::from_rgb(16, 16, 19),
+        )
+    } else if is_hovered {
+        (
+            BG_CARD_SELECTED,
+            Stroke::new(1.0_f32, ACCENT_AMBER),
+            TEXT_PRIMARY,
+        )
+    } else {
+        (
+            BG_CARD,
+            Stroke::new(1.0_f32, BORDER_DARK),
+            TEXT_SECONDARY,
+        )
+    };
+
+    ui.painter().rect_filled(rect, 5.0, bg);
+    if stroke.width > 0.0 {
+        ui.painter().rect_stroke(rect, 5.0, stroke, StrokeKind::Inside);
+    }
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "RGBA",
+        egui::FontId::proportional(12.0),
+        text_col,
+    );
+    resp.on_hover_text(tooltip).clicked()
+}
+
+fn tiling_button(
+    ui: &mut Ui,
+    code: &str,
+    is_active: bool,
+    tooltip: &str,
+) -> bool {
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(28.0, 28.0), Sense::click());
+    let is_hovered = resp.hovered();
+
+    let (bg, stroke, text_col) = if is_active {
+        (
+            ACCENT_AMBER,
+            Stroke::NONE,
+            Color32::from_rgb(16, 16, 19),
+        )
+    } else if is_hovered {
+        (
+            BG_CARD,
+            Stroke::new(1.0_f32, BORDER_HOVER),
+            TEXT_PRIMARY,
+        )
+    } else {
+        (
+            Color32::TRANSPARENT,
+            Stroke::NONE,
+            TEXT_MUTED,
+        )
+    };
+
+    if bg != Color32::TRANSPARENT {
+        ui.painter().rect_filled(rect, 4.0, bg);
+    }
+    if stroke.width > 0.0 {
+        ui.painter().rect_stroke(rect, 4.0, stroke, StrokeKind::Inside);
+    }
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        code,
+        egui::FontId::proportional(11.5),
+        text_col,
+    );
+    resp.on_hover_text(tooltip).clicked()
 }
 
 /// Viewport persistent state.
@@ -507,131 +653,131 @@ impl ViewportState {
         preview_data: &ViewportPreviewData,
     ) {
         ui.vertical(|ui| {
-            // ==========================================
-            // TOP BAR: Node Identity & Navigation (26px)
-            // ==========================================
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
+            // Top Toolbar (Design Guide Section 3: 36–40px height, #16161C background, #3A3A4C bottom divider)
+            let (top_bar_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
+            ui.painter().rect_filled(top_bar_rect, 0.0, BG_PANEL);
+            ui.painter().line_segment(
+                [top_bar_rect.left_bottom(), top_bar_rect.right_bottom()],
+                Stroke::new(1.0_f32, BORDER_DARK),
+            );
 
-                // Pin / Lock Toggle Button (Vector Pushpin)
-                let is_pinned = preview_data.is_pinned;
-                let pin_tooltip = if is_pinned {
-                    "Viewport is locked to this node. Click to unpin and follow active selection."
-                } else {
-                    "Pin 2D Viewport to this node so it stays visible while editing other nodes."
-                };
-                let pin_btn = icon_button(ui, Vec2::new(20.0, 20.0), pin_tooltip, |painter, r, h, _| {
-                    draw_pin_icon(painter, r, is_pinned, h);
-                });
-                if pin_btn.clicked() {
-                    if is_pinned {
-                        self.locked_node = None;
-                    } else if let Some(target_id) = preview_data.node_id {
-                        self.locked_node = Some(target_id);
+            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(top_bar_rect.shrink2(Vec2::new(10.0, 4.0))), |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(8.0, 0.0);
+
+                    // Texture Output Label (12-13px Medium #F1F5F9)
+                    let is_pinned = preview_data.is_pinned;
+                    ui.label(
+                        egui::RichText::new(&preview_data.node_label)
+                            .size(12.5)
+                            .strong()
+                            .color(if is_pinned { ACCENT_AMBER } else { TEXT_PRIMARY }),
+                    );
+
+                    // Multiple Output Socket Selector Pills
+                    if preview_data.available_sockets.len() > 1 {
+                        ui.separator();
+                        for sock in &preview_data.available_sockets {
+                            let is_active = preview_data.active_socket == sock.as_str();
+                            let text = egui::RichText::new(sock).size(11.0).color(
+                                if is_active { ACCENT_AMBER } else { TEXT_MUTED }
+                            );
+                            if ui
+                                .selectable_label(is_active, text)
+                                .on_hover_text(format!("Inspect output socket '{}'", sock))
+                                .clicked()
+                            {
+                                self.selected_socket = Some(sock.clone());
+                            }
+                        }
                     }
-                }
 
-                // Undock / Pop-out Window Button (Vector Popout)
-                let popout_tooltip = if self.is_undocked {
-                    "Dock viewport back into main workspace"
-                } else {
-                    "Pop out viewport to separate floating monitor window"
-                };
-                let is_undocked = self.is_undocked;
-                let undock_btn = icon_button(ui, Vec2::new(20.0, 20.0), popout_tooltip, |painter, r, h, _| {
-                    draw_popout_icon(painter, r, is_undocked, h);
-                });
-                if undock_btn.clicked() {
-                    self.is_undocked = !self.is_undocked;
-                }
+                    // Navigation Controls on the Right Edge
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Zoom percentage readout
+                        ui.label(
+                            egui::RichText::new(format!("{:.0}%", self.zoom * 100.0))
+                                .monospace()
+                                .size(11.5)
+                                .color(TEXT_SECONDARY),
+                        );
 
-                ui.separator();
-
-                // Clean Node Title (No duplicate redundant text)
-                ui.label(
-                    egui::RichText::new(&preview_data.node_label)
-                        .size(11.5)
-                        .strong()
-                        .color(if is_pinned {
-                            crate::ui::theme::ACCENT_AMBER
-                        } else {
-                            crate::ui::theme::TEXT_PRIMARY
-                        }),
-                );
-
-                // Multiple Output Socket Selector Pills (Only shown if node has 2+ outputs)
-                if preview_data.available_sockets.len() > 1 {
-                    ui.separator();
-                    for sock in &preview_data.available_sockets {
-                        let is_active = preview_data.active_socket == sock.as_str();
-                        let text = egui::RichText::new(sock).size(10.5).color(
-                            if is_active {
-                                crate::ui::theme::ACCENT_AMBER
-                            } else {
-                                crate::ui::theme::TEXT_MUTED
+                        // Fit view icon button
+                        let fit_btn = icon_button(
+                            ui,
+                            Vec2::new(26.0, 26.0),
+                            "Fit texture to viewport",
+                            |painter, r, h, _| {
+                                draw_fit_icon(painter, r, h);
                             },
                         );
-                        if ui
-                            .selectable_label(is_active, text)
-                            .on_hover_text(format!("Inspect output socket '{}'", sock))
-                            .clicked()
-                        {
-                            self.selected_socket = Some(sock.clone());
+                        if fit_btn.clicked() {
+                            if let Some(buf) = preview_data.buffer.as_deref() {
+                                let avail = ui.available_size();
+                                self.fit_view((buf.width, buf.height), avail);
+                            } else {
+                                self.reset_view();
+                            }
                         }
-                    }
-                }
 
-                // Navigation Controls (Right Aligned)
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Zoom readout
-                    ui.label(
-                        egui::RichText::new(format!("{:.0}%", self.zoom * 100.0))
-                            .monospace()
-                            .size(11.0)
-                            .color(crate::ui::theme::TEXT_MUTED),
-                    );
+                        // 1:1 Pixel scale button
+                        let (scale_rect, scale_resp) = ui.allocate_exact_size(Vec2::new(32.0, 26.0), Sense::click());
+                        let scale_h = scale_resp.hovered();
+                        let scale_bg = if scale_h { BG_CARD_SELECTED } else { BG_CARD };
+                        ui.painter().rect_filled(scale_rect, 4.0, scale_bg);
+                        ui.painter().rect_stroke(scale_rect, 4.0, Stroke::new(1.0_f32, if scale_h { BORDER_HOVER } else { BORDER_DARK }), StrokeKind::Inside);
+                        ui.painter().text(
+                            scale_rect.center(),
+                            egui::Align2::CENTER_CENTER,
+                            "1:1",
+                            egui::FontId::proportional(11.0),
+                            TEXT_SECONDARY,
+                        );
+                        if scale_resp.on_hover_text("Reset to 1:1 pixel scale").clicked() {
+                            self.zoom = 1.0;
+                            self.pan = Vec2::ZERO;
+                        }
 
-                    // Fit view icon button
-                    let fit_btn = icon_button(
-                        ui,
-                        Vec2::new(20.0, 20.0),
-                        "Fit texture in viewport",
-                        |painter, r, h, _| {
-                            draw_fit_icon(painter, r, h);
-                        },
-                    );
-                    if fit_btn.clicked() {
-                        if let Some(buf) = preview_data.buffer.as_deref() {
-                            let avail = ui.available_size();
-                            self.fit_view((buf.width, buf.height), avail);
+                        ui.separator();
+
+                        // Undock / Pop-out Window Button
+                        let is_undocked = self.is_undocked;
+                        let undock_tooltip = if self.is_undocked {
+                            "Dock viewport back into main workspace"
                         } else {
-                            self.reset_view();
+                            "Pop out viewport to separate floating monitor window"
+                        };
+                        let undock_btn = icon_button(ui, Vec2::new(26.0, 26.0), undock_tooltip, |painter, r, h, _| {
+                            draw_popout_icon(painter, r, is_undocked, h);
+                        });
+                        if undock_btn.clicked() {
+                            self.is_undocked = !self.is_undocked;
                         }
-                    }
 
-                    // 1:1 Pixel scale button
-                    let scale_btn = ui.add(
-                        egui::Button::new(
-                            egui::RichText::new("1:1")
-                                .size(10.0)
-                                .color(crate::ui::theme::TEXT_SECONDARY),
-                        )
-                        .frame(true)
-                        .min_size(Vec2::new(22.0, 18.0)),
-                    );
-                    if scale_btn.on_hover_text("Reset to 1:1 pixel scale").clicked() {
-                        self.zoom = 1.0;
-                        self.pan = Vec2::ZERO;
-                    }
+                        // Pin / Lock Toggle Button
+                        let pin_tooltip = if is_pinned {
+                            "Viewport is locked to this node. Click to unpin and follow active selection."
+                        } else {
+                            "Pin 2D Viewport to this node so it stays visible while editing other nodes."
+                        };
+                        let pin_btn = icon_button(ui, Vec2::new(26.0, 26.0), pin_tooltip, |painter, r, h, _| {
+                            draw_pin_icon(painter, r, is_pinned, h);
+                        });
+                        if pin_btn.clicked() {
+                            if is_pinned {
+                                self.locked_node = None;
+                            } else if let Some(target_id) = preview_data.node_id {
+                                self.locked_node = Some(target_id);
+                            }
+                        }
+                    });
                 });
             });
-
-            ui.separator();
 
             // ==========================================
             // MAIN CANVAS (Interactive Pan, Zoom, Tiling)
             // ==========================================
-            let canvas_size = (ui.available_size() - Vec2::new(0.0, 28.0)).max(Vec2::new(50.0, 50.0));
+            let canvas_size = (ui.available_size() - Vec2::new(0.0, 40.0)).max(Vec2::new(50.0, 50.0));
             let (rect, response) = ui.allocate_exact_size(canvas_size, Sense::click_and_drag());
 
             // Handle pan via drag
@@ -772,116 +918,135 @@ impl ViewportState {
                 self.active_probe = None;
             }
 
-            ui.separator();
-
             // ==========================================
-            // BOTTOM BAR: Inspection & Telemetry (24px)
+            // BOTTOM BAR: Inspection & Telemetry (Design Guide Section 4: 38-42px height, #16161C background, #3A3A4C top divider)
             // ==========================================
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
+            let (bottom_bar_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 38.0), Sense::hover());
+            ui.painter().rect_filled(bottom_bar_rect, 0.0, BG_PANEL);
+            ui.painter().line_segment(
+                [bottom_bar_rect.left_top(), bottom_bar_rect.right_top()],
+                Stroke::new(1.0_f32, BORDER_DARK),
+            );
 
-                // Channel Isolation Segmented Pills
-                // 1. RGB
-                let is_rgb = self.isolation == ChannelIsolation::Rgb;
-                let rgb_txt = egui::RichText::new("RGB").size(10.5).color(
-                    if is_rgb { crate::ui::theme::ACCENT_AMBER } else { crate::ui::theme::TEXT_SECONDARY }
-                );
-                if ui.selectable_label(is_rgb, rgb_txt).on_hover_text("RGB Color").clicked() {
-                    self.isolation = ChannelIsolation::Rgb;
-                }
+            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(bottom_bar_rect.shrink2(Vec2::new(10.0, 4.0))), |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 0.0);
 
-                // 2. Checkerboard Alpha icon pill
-                let is_chk = self.isolation == ChannelIsolation::RgbaChecker;
-                let (chk_rect, chk_resp) = ui.allocate_exact_size(Vec2::new(20.0, 18.0), Sense::click());
-                if chk_resp.hovered() || is_chk {
-                    ui.painter().rect_filled(
-                        chk_rect,
-                        2.0,
-                        if is_chk { Color32::from_rgba_unmultiplied(245, 158, 11, 35) } else { Color32::from_rgba_unmultiplied(255, 255, 255, 15) }
-                    );
-                }
-                draw_checker_icon(ui.painter(), chk_rect, is_chk);
-                if chk_resp.on_hover_text("RGBA Checkerboard Alpha").clicked() {
-                    self.isolation = ChannelIsolation::RgbaChecker;
-                }
-
-                // 3. R, G, B, A
-                for &(mode, label, tip) in &[
-                    (ChannelIsolation::Red, "R", "Red Channel Grayscale"),
-                    (ChannelIsolation::Green, "G", "Green Channel Grayscale"),
-                    (ChannelIsolation::Blue, "B", "Blue Channel Grayscale"),
-                    (ChannelIsolation::Alpha, "A", "Alpha Channel Grayscale"),
-                ] {
-                    let is_active = self.isolation == mode;
-                    let text = egui::RichText::new(label).size(10.5).color(
-                        if is_active { crate::ui::theme::ACCENT_AMBER } else { crate::ui::theme::TEXT_SECONDARY }
-                    );
-                    if ui.selectable_label(is_active, text).on_hover_text(tip).clicked() {
-                        self.isolation = mode;
+                    // 1. RGBA Button (Solid amber when active)
+                    let is_rgba = self.isolation == ChannelIsolation::Rgb;
+                    if rgba_button(ui, is_rgba, "Full Texture (RGBA)") {
+                        self.isolation = ChannelIsolation::Rgb;
                     }
-                }
 
-                ui.separator();
+                    // 2. R, G, B, A Semantic Color-Coded Buttons
+                    if channel_button(
+                        ui,
+                        "R",
+                        self.isolation == ChannelIsolation::Red,
+                        CHAN_R_ACCENT,
+                        CHAN_R_BG,
+                        "Red Channel (Grayscale)",
+                    ) {
+                        self.isolation = ChannelIsolation::Red;
+                    }
 
-                // UV Tiling Toggles
-                for &(tile, code) in &[
-                    (TilingMode::OneX, "1x"),
-                    (TilingMode::TwoX, "2x"),
-                    (TilingMode::FourX, "4x"),
-                ] {
-                    let is_active = self.tiling == tile;
-                    let text = egui::RichText::new(code).size(10.5).color(
-                        if is_active {
-                            crate::ui::theme::ACCENT_AMBER
-                        } else {
-                            crate::ui::theme::TEXT_MUTED
+                    if channel_button(
+                        ui,
+                        "G",
+                        self.isolation == ChannelIsolation::Green,
+                        CHAN_G_ACCENT,
+                        CHAN_G_BG,
+                        "Green Channel (Grayscale)",
+                    ) {
+                        self.isolation = ChannelIsolation::Green;
+                    }
+
+                    if channel_button(
+                        ui,
+                        "B",
+                        self.isolation == ChannelIsolation::Blue,
+                        CHAN_B_ACCENT,
+                        CHAN_B_BG,
+                        "Blue Channel (Grayscale)",
+                    ) {
+                        self.isolation = ChannelIsolation::Blue;
+                    }
+
+                    if channel_button(
+                        ui,
+                        "A",
+                        self.isolation == ChannelIsolation::Alpha,
+                        CHAN_A_ACCENT,
+                        CHAN_A_BG,
+                        "Alpha Channel (Grayscale)",
+                    ) {
+                        self.isolation = ChannelIsolation::Alpha;
+                    }
+
+                    ui.separator();
+
+                    // 3. Checkerboard Alpha Button
+                    let is_chk = self.isolation == ChannelIsolation::RgbaChecker;
+                    let (chk_rect, chk_resp) = ui.allocate_exact_size(Vec2::new(28.0, 28.0), Sense::click());
+                    let chk_bg = if is_chk { Color32::from_rgb(48, 48, 62) } else if chk_resp.hovered() { BG_CARD_SELECTED } else { BG_CARD };
+                    ui.painter().rect_filled(chk_rect, 4.0, chk_bg);
+                    ui.painter().rect_stroke(chk_rect, 4.0, Stroke::new(1.0_f32, if is_chk { ACCENT_AMBER } else { BORDER_DARK }), StrokeKind::Inside);
+                    draw_checker_icon(ui.painter(), chk_rect, is_chk);
+                    if chk_resp.on_hover_text("Toggle Transparency Checkerboard").clicked() {
+                        self.isolation = if is_chk { ChannelIsolation::Rgb } else { ChannelIsolation::RgbaChecker };
+                    }
+
+                    ui.separator();
+
+                    // 4. UV Tiling Multipliers (1x, 2x, 4x)
+                    if tiling_button(ui, "1x", self.tiling == TilingMode::OneX, "1x Texture Tiling") {
+                        self.tiling = TilingMode::OneX;
+                    }
+                    if tiling_button(ui, "2x", self.tiling == TilingMode::TwoX, "2x UV Repeat Tiling") {
+                        self.tiling = TilingMode::TwoX;
+                    }
+                    if tiling_button(ui, "4x", self.tiling == TilingMode::FourX, "4x UV Repeat Tiling") {
+                        self.tiling = TilingMode::FourX;
+                    }
+
+                    // 5. Right-Aligned Telemetry & Resolution Readout
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if let Some(probe) = &self.active_probe {
+                            ui.label(
+                                egui::RichText::new(format!("({}, {})", probe.x, probe.y))
+                                    .size(11.0)
+                                    .color(TEXT_MUTED),
+                            ).on_hover_text(probe.formatted_hud());
+
+                            ui.label(
+                                egui::RichText::new(&probe.hex)
+                                    .monospace()
+                                    .size(11.0)
+                                    .strong()
+                                    .color(ACCENT_AMBER),
+                            ).on_hover_text(probe.formatted_hud());
+
+                            let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(14.0, 14.0), Sense::hover());
+                            ui.painter().rect_filled(
+                                swatch_rect,
+                                3.0,
+                                Color32::from_rgb(probe.r, probe.g, probe.b),
+                            );
+                            ui.painter().rect_stroke(
+                                swatch_rect,
+                                3.0,
+                                Stroke::new(1.0_f32, BORDER_DARK),
+                                StrokeKind::Inside,
+                            );
+                            swatch_resp.on_hover_text(probe.formatted_hud());
+                        } else if let Some(buf) = preview_data.buffer.as_deref() {
+                            ui.label(
+                                egui::RichText::new(format!("{} × {} px", buf.width, buf.height))
+                                    .size(11.5)
+                                    .color(TEXT_SECONDARY),
+                            );
                         }
-                    );
-                    if ui.selectable_label(is_active, text).on_hover_text(format!("{} UV Repeat Tiling", code)).clicked() {
-                        self.tiling = tile;
-                    }
-                }
-
-                // Telemetry / Swatch (Right Aligned)
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if let Some(probe) = &self.active_probe {
-                        // Coordinates
-                        ui.label(
-                            egui::RichText::new(format!("({}, {})", probe.x, probe.y))
-                                .size(10.5)
-                                .color(crate::ui::theme::TEXT_MUTED),
-                        ).on_hover_text(probe.formatted_hud());
-
-                        // Hex text
-                        ui.label(
-                            egui::RichText::new(&probe.hex)
-                                .monospace()
-                                .size(11.0)
-                                .strong()
-                                .color(crate::ui::theme::ACCENT_AMBER),
-                        ).on_hover_text(probe.formatted_hud());
-
-                        // 12x12 Rounded color swatch chip
-                        let (swatch_rect, swatch_resp) = ui.allocate_exact_size(Vec2::new(12.0, 12.0), Sense::hover());
-                        ui.painter().rect_filled(
-                            swatch_rect,
-                            2.0,
-                            Color32::from_rgb(probe.r, probe.g, probe.b),
-                        );
-                        ui.painter().rect_stroke(
-                            swatch_rect,
-                            2.0,
-                            Stroke::new(1.0_f32, Color32::from_rgb(50, 50, 50)),
-                            StrokeKind::Inside,
-                        );
-                        swatch_resp.on_hover_text(probe.formatted_hud());
-                    } else if let Some(buf) = preview_data.buffer.as_deref() {
-                        ui.label(
-                            egui::RichText::new(format!("{} × {} px", buf.width, buf.height))
-                                .size(11.0)
-                                .color(crate::ui::theme::TEXT_SECONDARY),
-                        );
-                    }
+                    });
                 });
             });
         });

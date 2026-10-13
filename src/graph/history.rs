@@ -67,6 +67,33 @@ impl HistoryStack {
         self.redo_stack.clear();
     }
 
+    /// Records the current graph state before a mutation, coalescing with the previous entry
+    /// if the previous entry has the exact same description and occurred within `coalesce_window_secs`.
+    ///
+    /// When coalesced, the existing entry (which holds the pristine state prior to the start of the continuous drag)
+    /// is preserved, its timestamp is updated to keep extending the gesture window, and the redo stack is cleared.
+    pub fn record_coalesced(
+        &mut self,
+        current_before_change: &Graph,
+        description: impl Into<String>,
+        coalesce_window_secs: f64,
+    ) {
+        let desc = description.into();
+        let now = chrono::Utc::now();
+
+        if let Some(last) = self.undo_stack.back_mut() {
+            let elapsed = (now - last.timestamp).num_milliseconds() as f64 / 1000.0;
+            if last.description == desc && elapsed >= 0.0 && elapsed <= coalesce_window_secs {
+                last.timestamp = now;
+                self.redo_stack.clear();
+                return;
+            }
+        }
+
+        self.record(current_before_change, desc);
+    }
+
+
     /// Reverts to the previous graph state in history.
     /// Pushes the active graph state onto the redo stack.
     pub fn undo(&mut self, current: &Graph) -> Option<Graph> {
@@ -253,4 +280,35 @@ pub mod tests {
         history.record(&g_undone, "Action 2");
         assert!(!history.can_redo());
     }
+
+    /// Verify that rapid continuous parameter tweaks coalesce into a single undo step.
+    #[test]
+    pub fn test_history_record_coalesced_slider_drag() {
+        let mut history = HistoryStack::new();
+        let mut graph = Graph::new();
+        let node_id = graph.create_node("ConstantScalar", "S", [0.0, 0.0]);
+        let node = graph.get_node_mut(node_id).unwrap();
+        node.set_param("value", NodeParam::Float(0.0));
+
+        // Simulate 20 rapid slider movement ticks during a drag gesture
+        for i in 1..=20 {
+            // Record pre-mutation state with coalescing (1.0s window)
+            history.record_coalesced(&graph, "Edit value", 1.0);
+            let n = graph.get_node_mut(node_id).unwrap();
+            n.set_param("value", NodeParam::Float(i as f32 * 0.05));
+        }
+
+        // Despite 20 edits, coalescing should have collapsed them to 1 undo entry!
+        assert_eq!(history.undo_depth(), 1);
+        assert_eq!(history.undo_description(), Some("Edit value"));
+
+        // Undoing should immediately restore the value from before the entire drag gesture began (0.0)
+        let restored = history.undo(&graph).expect("Undo failed");
+        assert_eq!(
+            restored.get_node(node_id).unwrap().get_float("value", 99.0),
+            0.0
+        );
+        assert_eq!(history.undo_depth(), 0);
+    }
 }
+

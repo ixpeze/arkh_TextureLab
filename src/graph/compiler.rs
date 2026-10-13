@@ -307,8 +307,9 @@ pub mod tests {
         assert!(!GraphCompiler::would_create_cycle(&graph, n1, n2));
         assert!(GraphCompiler::would_create_cycle(&graph, n3, n1));
 
-        // Add back-edge to create cycle
-        let _ = graph.connect(PinId::output(n3, "out"), PinId::input(n1, "in"));
+        // Verify graph.connect rejects cycle, then push circular edge to test compiler Kahn cycle detection
+        assert!(graph.connect(PinId::output(n3, "out"), PinId::input(n1, "in")).is_err());
+        graph.edges.push(Edge::new(PinId::output(n3, "out"), PinId::input(n1, "in")));
         let res = GraphCompiler::compile(&graph);
         assert_eq!(res, Err(CompileError::CycleDetected));
     }

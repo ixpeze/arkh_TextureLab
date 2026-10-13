@@ -109,6 +109,8 @@ pub fn dispatch_from_input(input: &InputState, text_input_active: bool) -> Optio
     let ctrl = input.modifiers.command || input.modifiers.ctrl;
     let shift = input.modifiers.shift;
 
+    let is_clicking = input.pointer.primary_down() || input.pointer.primary_pressed();
+
     for &key in &[
         Key::Tab,
         Key::F,
@@ -130,6 +132,10 @@ pub fn dispatch_from_input(input: &InputState, text_input_active: bool) -> Optio
         Key::E,
     ] {
         if input.key_pressed(key) {
+            // When mouse is clicked/held, hold-key canvas quick spawn takes precedence
+            if is_clicking && matches!(key, Key::Num1 | Key::Num3 | Key::M | Key::B | Key::L | Key::I) {
+                continue;
+            }
             if let Some(action) = resolve_hotkey(key, ctrl, shift, text_input_active) {
                 return Some(action);
             }

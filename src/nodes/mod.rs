@@ -68,6 +68,10 @@ impl PbrNodeExecutor {
 }
 
 impl NodeExecutor for PbrNodeExecutor {
+    fn set_input_texture(&mut self, node_id: NodeId, buffer: SharedTextureBuffer) {
+        self.set_input_texture(node_id, buffer);
+    }
+
     fn execute(
         &self,
         node: &Node,
@@ -77,7 +81,7 @@ impl NodeExecutor for PbrNodeExecutor {
         match node.node_type.as_str() {
             // I/O Nodes
             "TextureInput" | "Input" => io::execute_texture_input(node, &self.custom_inputs, resolution),
-            "TextureOutput" | "Output" => io::execute_texture_output(node, inputs, resolution),
+            "SaveImage" | "TextureOutput" | "Output" => io::execute_texture_output(node, inputs, resolution),
 
             // Constants
             "ConstantScalar" | "Scalar" => constants::execute_constant_scalar(node, resolution),
@@ -201,8 +205,8 @@ pub static NODE_CATALOG: &[NodeDescriptor] = &[
         default_outputs: &["output", "RGBA", "R", "G", "B", "A"],
     },
     NodeDescriptor {
-        type_name: "TextureOutput",
-        display_name: "Texture Output",
+        type_name: "SaveImage",
+        display_name: "Save Image",
         category: NodeCategory::Io,
         hotkey: None,
         default_inputs: &["input"],
@@ -322,7 +326,23 @@ pub static NODE_CATALOG: &[NodeDescriptor] = &[
         type_name: "Math",
         display_name: "Math (13 Operations)",
         category: NodeCategory::Math,
+        hotkey: None,
+        default_inputs: &["A", "B"],
+        default_outputs: &["output"],
+    },
+    NodeDescriptor {
+        type_name: "Multiply",
+        display_name: "Multiply",
+        category: NodeCategory::Math,
         hotkey: Some("M"),
+        default_inputs: &["A", "B"],
+        default_outputs: &["output"],
+    },
+    NodeDescriptor {
+        type_name: "Add",
+        display_name: "Add",
+        category: NodeCategory::Math,
+        hotkey: Some("A"),
         default_inputs: &["A", "B"],
         default_outputs: &["output"],
     },
@@ -337,11 +357,41 @@ pub static NODE_CATALOG: &[NodeDescriptor] = &[
     },
 ];
 
-/// Finds a node descriptor by type name.
+/// Finds a node descriptor by type name with full alias support.
 pub fn find_descriptor(type_name: &str) -> Option<&'static NodeDescriptor> {
-    NODE_CATALOG
+    if let Some(desc) = NODE_CATALOG
         .iter()
         .find(|d| d.type_name.eq_ignore_ascii_case(type_name))
+    {
+        return Some(desc);
+    }
+
+    match type_name.to_ascii_uppercase().as_str() {
+        "MULTIPLY" | "MUL" => NODE_CATALOG.iter().find(|d| d.type_name == "Multiply"),
+        "ADD" => NODE_CATALOG.iter().find(|d| d.type_name == "Add"),
+        "SUBTRACT" | "SUB" | "DIVIDE" | "DIV" | "POWER" | "POW" | "MIN" | "MAX" | "CLAMP"
+        | "ABS" | "STEP" | "SMOOTHSTEP" | "MODULO" | "MOD" => {
+            NODE_CATALOG.iter().find(|d| d.type_name == "Math")
+        }
+        "CHANNELPACK" | "CHANNELCOMBINER" | "PACK" => {
+            NODE_CATALOG.iter().find(|d| d.type_name == "ChannelCombine")
+        }
+        "CHANNELUNPACK" | "CHANNELSPLITTER" | "UNPACK" => {
+            NODE_CATALOG.iter().find(|d| d.type_name == "ChannelSplit")
+        }
+        "SWIZZLE" => NODE_CATALOG.iter().find(|d| d.type_name == "ChannelMixer"),
+        "ONEMINUS" => NODE_CATALOG.iter().find(|d| d.type_name == "Invert"),
+        "FLIPGREEN" | "NORMALINVERTY" => {
+            NODE_CATALOG.iter().find(|d| d.type_name == "NormalFlipGreen")
+        }
+        "RNM" | "NORMALBLEND" => NODE_CATALOG.iter().find(|d| d.type_name == "NormalBlendRNM"),
+        "LERP" | "BLEND" => NODE_CATALOG.iter().find(|d| d.type_name == "LayerBlend"),
+        "TRANSFORM" => NODE_CATALOG.iter().find(|d| d.type_name == "Resize"),
+        "SAVEIMAGE" | "TEXTUREOUTPUT" | "SAVETEXTURE" | "SAVE" | "EXPORT" => {
+            NODE_CATALOG.iter().find(|d| d.type_name == "SaveImage")
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -355,6 +405,10 @@ pub mod tests {
         assert!(find_descriptor("NormalBlendRNM").is_some());
         assert!(find_descriptor("Levels").is_some());
         assert!(find_descriptor("Math").is_some());
+        assert!(find_descriptor("Multiply").is_some());
+        assert!(find_descriptor("Add").is_some());
+        assert!(find_descriptor("OneMinus").is_some());
+        assert!(find_descriptor("ChannelPack").is_some());
     }
 
     #[test]

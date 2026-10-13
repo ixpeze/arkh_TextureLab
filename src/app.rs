@@ -9,9 +9,9 @@ use egui_dock::{DockArea, DockState};
 use std::path::PathBuf;
 use std::time::Instant;
 
-use crate::graph::evaluator::GraphEvaluator;
+use crate::graph::evaluator::{AsyncEvaluator, GraphEvaluator};
 use crate::graph::history::HistoryStack;
-use crate::graph::model::{Graph, NodeId, PinId, ProjectFile};
+use crate::graph::model::{Graph, NodeId, PinId, ProjectFile, ProjectMetadata};
 use crate::hotkeys::{dispatch_from_input, HotkeyAction};
 use crate::nodes::{NodeDescriptor, NODE_CATALOG};
 use crate::ui::canvas::{CanvasAction, CanvasState};
@@ -106,7 +106,9 @@ pub struct TextureLabApp {
     pub edition: Edition,
     pub graph: Graph,
     pub evaluator: GraphEvaluator,
+    pub async_evaluator: AsyncEvaluator,
     pub history: HistoryStack,
+    pub project_metadata: ProjectMetadata,
     pub dock_state: Option<DockState<Tab>>,
     pub canvas_state: CanvasState,
     pub viewport_state: ViewportState,
@@ -136,9 +138,8 @@ impl TextureLabApp {
         let _ = evaluator.evaluate(&graph);
         let eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-        // 3. Initialize transactional history
-        let mut history = HistoryStack::new();
-        history.record(&graph, "Starter PBR Graph");
+        // 3. Initialize transactional history (clean starting state with 0 undo steps)
+        let history = HistoryStack::new();
 
         // 4. Default docking workspace
         let dock_state = crate::ui::default_dock_layout();
@@ -153,7 +154,9 @@ impl TextureLabApp {
             edition: Edition::Pro,
             graph,
             evaluator,
+            async_evaluator: AsyncEvaluator::new((1024, 1024)),
             history,
+            project_metadata: ProjectMetadata::default(),
             dock_state: Some(dock_state),
             canvas_state,
             viewport_state: ViewportState::new(),
@@ -185,10 +188,13 @@ impl TextureLabApp {
     /// Spawns a node from a descriptor at the given canvas position if permitted by edition.
     pub fn spawn_node(&mut self, desc: &'static NodeDescriptor, position: [f32; 2]) -> Option<NodeId> {
         if !self.edition.is_node_allowed(desc.type_name) {
-            let msg = format!("🔒 '{}' requires TextureLAB Pro edition.", desc.display_name);
+            let msg = format!("[PRO] '{}' requires TextureLAB Pro edition.", desc.display_name);
             self.status_message = msg;
             return None;
         }
+
+        // Record pre-mutation state before adding node
+        self.history.record(&self.graph, format!("Spawn {}", desc.display_name));
 
         let node_id = NodeId(self.graph.next_node_id);
         let node = desc.create_node(node_id, position);
@@ -196,23 +202,63 @@ impl TextureLabApp {
         self.canvas_state.selected_node = Some(node_id);
 
         self.evaluator.mark_dirty(&self.graph, node_id);
-        let start = Instant::now();
-        let _ = self.evaluator.evaluate(&self.graph);
-        self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
+        self.async_evaluator.request_evaluation(
+            &self.graph,
+            vec![node_id],
+            false,
+            self.evaluator.default_resolution(),
+        );
 
-        self.history.record(&self.graph, format!("Spawn {}", desc.display_name));
         self.status_message = format!("Spawned {}", desc.display_name);
         Some(node_id)
     }
 
-    /// Spawns a node from its canonical type name at the center of the current canvas viewport if permitted.
+    /// Spawns a node from its canonical type name or alias at the center of the current canvas viewport if permitted.
     pub fn spawn_node_by_type(&mut self, type_name: &str) -> Option<NodeId> {
-        let desc = NODE_CATALOG.iter().find(|d| d.type_name.eq_ignore_ascii_case(type_name))?;
+        let desc = crate::nodes::find_descriptor(type_name)?;
         let canvas_center = [-self.canvas_state.pan.x + 300.0, -self.canvas_state.pan.y + 200.0];
         self.spawn_node(desc, canvas_center)
     }
 
-    /// Re-evaluates the graph and tracks execution time.
+    /// Polls the background async evaluation worker and applies any completed texture snapshots to the UI state.
+    pub fn poll_evaluator(&mut self, ctx: &egui::Context) {
+        if let Some(resp) = self.async_evaluator.try_recv() {
+            match resp.report {
+                Ok(report) => {
+                    self.eval_time_ms = resp.eval_time_ms;
+                    self.evaluator.apply_cache_update(resp.cache_snapshot);
+                    self.status_message = format!(
+                        "Evaluated {} nodes in {:.2}ms (Async worker)",
+                        report.evaluated_nodes.len(),
+                        self.eval_time_ms,
+                    );
+                    ctx.request_repaint();
+                }
+                Err(e) => {
+                    self.status_message = format!("Evaluation warning: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Dispatches an asynchronous evaluation request to the background worker.
+    pub fn request_async_eval(&mut self, dirty_nodes: Vec<NodeId>, invalidate_all: bool) {
+        if invalidate_all {
+            self.evaluator.invalidate_all();
+        } else {
+            for id in &dirty_nodes {
+                self.evaluator.mark_dirty(&self.graph, *id);
+            }
+        }
+        self.async_evaluator.request_evaluation(
+            &self.graph,
+            dirty_nodes,
+            invalidate_all,
+            self.evaluator.default_resolution(),
+        );
+    }
+
+    /// Re-evaluates the graph synchronously and tracks execution time (for deterministic testing and pre-export guarantees).
     pub fn reevaluate(&mut self) {
         let start = Instant::now();
         match self.evaluator.evaluate(&self.graph) {
@@ -280,8 +326,7 @@ impl Default for TextureLabApp {
         let mut evaluator = GraphEvaluator::new((1024, 1024));
         let _ = evaluator.evaluate(&graph);
 
-        let mut history = HistoryStack::new();
-        history.record(&graph, "Starter PBR Graph");
+        let history = HistoryStack::new();
 
         let mut canvas_state = CanvasState::new();
         canvas_state.selected_node = Some(NodeId(1));
@@ -292,7 +337,9 @@ impl Default for TextureLabApp {
             edition: Edition::Pro,
             graph,
             evaluator,
+            async_evaluator: AsyncEvaluator::new((1024, 1024)),
             history,
+            project_metadata: ProjectMetadata::default(),
             dock_state: Some(crate::ui::default_dock_layout()),
             canvas_state,
             viewport_state: ViewportState::new(),
@@ -312,6 +359,12 @@ impl Default for TextureLabApp {
 
 impl eframe::App for TextureLabApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Poll background async evaluator for completed computation results
+        self.poll_evaluator(ctx);
+        if self.async_evaluator.is_evaluating() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        }
+
         // Sync 2D Viewport locked node to canvas state
         self.canvas_state.locked_viewport_node = self.viewport_state.locked_node;
 
@@ -379,16 +432,16 @@ impl eframe::App for TextureLabApp {
                 }
                 HotkeyAction::DeleteSelected => {
                     if let Some(sel) = self.canvas_state.selected_node.take() {
+                        self.history.record(&self.graph, "Delete node");
                         self.graph.remove_node(sel);
                         self.evaluator.invalidate_all();
                         self.reevaluate();
-                        self.history.record(&self.graph, "Delete node");
                         self.status_message = format!("Deleted node {}", sel);
                     }
                 }
                 HotkeyAction::SaveProject => {
                     if let Some(path) = &self.project_file_path {
-                        let project = ProjectFile::new(self.graph.clone(), "TextureLab Project");
+                        let project = ProjectFile::with_metadata(self.graph.clone(), self.project_metadata.clone());
                         if project.save_to_file(path).is_ok() {
                             self.status_message = format!("Project saved to {}", path.display());
                         }
@@ -397,6 +450,9 @@ impl eframe::App for TextureLabApp {
                 HotkeyAction::OpenExportDialog => {
                     self.status_message = "Opened Export Preflight Drawer (Ctrl+E)".to_string();
                     if let Some(mut dock) = self.dock_state.take() {
+                        if dock.find_tab(&Tab::ExportDrawer).is_none() {
+                            dock.main_surface_mut().push_to_focused_leaf(Tab::ExportDrawer);
+                        }
                         if let Some(loc) = dock.find_tab(&Tab::ExportDrawer) {
                             dock.set_active_tab(loc);
                         }
@@ -412,66 +468,63 @@ impl eframe::App for TextureLabApp {
         // 1.5. Intercept Explorer File Drag & Drop directly onto Canvas
         let dropped_files = ctx.input(|i| i.raw.dropped_files.clone());
         if !dropped_files.is_empty() {
-            let mut spawned_any = false;
-            let mut start_pos = [-self.canvas_state.pan.x + 250.0, -self.canvas_state.pan.y + 150.0];
-            if let Some(ptr) = ctx.pointer_hover_pos() {
-                start_pos = [
-                    (ptr.x - self.canvas_state.pan.x) / self.canvas_state.zoom,
-                    (ptr.y - self.canvas_state.pan.y) / self.canvas_state.zoom,
-                ];
-            }
+            let start_pos = if let Some(ptr) = ctx.pointer_hover_pos() {
+                let pt = self.canvas_state.screen_to_canvas(ptr, self.canvas_state.last_canvas_rect);
+                [pt.x, pt.y]
+            } else {
+                [-self.canvas_state.pan.x + 250.0, -self.canvas_state.pan.y + 150.0]
+            };
 
-            let mut y_offset = 0.0;
-            let mut last_spawned_id = None;
-
-            for file in dropped_files {
-                if let Some(path) = file.path {
-                    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-                    let is_image = matches!(
+            let image_files: Vec<_> = dropped_files
+                .into_iter()
+                .filter_map(|f| f.path)
+                .filter(|p| {
+                    let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+                    matches!(
                         ext.as_str(),
                         "png" | "jpg" | "jpeg" | "tga" | "webp" | "bmp" | "exr" | "tif" | "tiff"
-                    );
+                    )
+                })
+                .collect();
 
-                    if is_image {
-                        let path_str = path.to_string_lossy().to_string();
-                        let metadata = LexicalNormalizer::normalize(&path_str);
-                        let role_label = metadata
+            if !image_files.is_empty() {
+                self.history.record(&self.graph, "Drop textures from Explorer");
+                let desc = crate::nodes::find_descriptor("TextureInput");
+                let mut y_offset = 0.0;
+                let mut last_spawned_id = None;
+
+                for path in image_files {
+                    let path_str = path.to_string_lossy().to_string();
+                    let file_name = path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&path_str)
+                        .to_string();
+                    let metadata = LexicalNormalizer::normalize(&path_str);
+
+                    let node_id = NodeId(self.graph.next_node_id);
+                    if let Some(desc) = desc {
+                        let mut node = desc.create_node(node_id, [start_pos[0], start_pos[1] + y_offset]);
+                        node.label = file_name;
+                        node.set_param("file_path", crate::graph::model::NodeParam::String(path_str.clone()));
+                        node.set_param("path", crate::graph::model::NodeParam::String(path_str.clone()));
+                        let colorspace = metadata
                             .inferred_role
-                            .map(|r| r.display_name())
-                            .unwrap_or("Texture Input");
-                        let label = format!("{} ({})", metadata.clean_stem, role_label);
+                            .map(|r| r.default_colorspace())
+                            .unwrap_or("sRGB");
+                        node.set_param("colorspace", crate::graph::model::NodeParam::String(colorspace.to_string()));
 
-                        let node_id = NodeId(self.graph.next_node_id);
-                        let desc = NODE_CATALOG
-                            .iter()
-                            .find(|d| d.type_name == "TextureInput");
-
-                        if let Some(desc) = desc {
-                            let mut node = desc.create_node(node_id, [start_pos[0], start_pos[1] + y_offset]);
-                            node.label = label;
-                            node.set_param("file_path", crate::graph::model::NodeParam::String(path_str.clone()));
-                            let colorspace = metadata
-                                .inferred_role
-                                .map(|r| r.default_colorspace())
-                                .unwrap_or("sRGB");
-                            node.set_param("colorspace", crate::graph::model::NodeParam::String(colorspace.to_string()));
-
-                            self.graph.add_node(node);
-                            self.evaluator.mark_dirty(&self.graph, node_id);
-                            last_spawned_id = Some(node_id);
-                            spawned_any = true;
-                            y_offset += 150.0;
-                        }
+                        self.graph.add_node(node);
+                        self.evaluator.mark_dirty(&self.graph, node_id);
+                        last_spawned_id = Some(node_id);
+                        y_offset += 150.0;
                     }
                 }
-            }
 
-            if spawned_any {
                 if let Some(sel_id) = last_spawned_id {
                     self.canvas_state.selected_node = Some(sel_id);
                 }
                 self.reevaluate();
-                self.history.record(&self.graph, "Drop textures from Explorer");
                 self.status_message = "Loaded and auto-bound texture sampler from Windows Explorer".to_string();
             }
         }
@@ -485,7 +538,7 @@ impl eframe::App for TextureLabApp {
                         self.evaluator.invalidate_all();
                         self.reevaluate();
                         self.history.clear();
-                        self.history.record(&self.graph, "New Project");
+                        self.project_metadata = ProjectMetadata::default();
                         self.project_file_path = None;
                         ui.close_menu();
                     }
@@ -496,10 +549,10 @@ impl eframe::App for TextureLabApp {
                         {
                             if let Ok(project) = ProjectFile::load_from_file(&path) {
                                 self.graph = project.graph;
+                                self.project_metadata = project.metadata;
                                 self.evaluator.invalidate_all();
                                 self.reevaluate();
                                 self.history.clear();
-                                self.history.record(&self.graph, "Loaded Project");
                                 self.project_file_path = Some(path);
                             }
                         }
@@ -507,13 +560,13 @@ impl eframe::App for TextureLabApp {
                     }
                     if ui.button("Save Project (Ctrl+S)").clicked() {
                         if let Some(path) = &self.project_file_path {
-                            let project = ProjectFile::new(self.graph.clone(), "TextureLab Project");
+                            let project = ProjectFile::with_metadata(self.graph.clone(), self.project_metadata.clone());
                             let _ = project.save_to_file(path);
                         } else if let Some(path) = rfd::FileDialog::new()
                             .add_filter("TextureLab Project", &["tlab"])
                             .save_file()
                         {
-                            let project = ProjectFile::new(self.graph.clone(), "TextureLab Project");
+                            let project = ProjectFile::with_metadata(self.graph.clone(), self.project_metadata.clone());
                             if project.save_to_file(&path).is_ok() {
                                 self.project_file_path = Some(path);
                             }
@@ -525,7 +578,7 @@ impl eframe::App for TextureLabApp {
                             .add_filter("TextureLab Project", &["tlab"])
                             .save_file()
                         {
-                            let project = ProjectFile::new(self.graph.clone(), "TextureLab Project");
+                            let project = ProjectFile::with_metadata(self.graph.clone(), self.project_metadata.clone());
                             if project.save_to_file(&path).is_ok() {
                                 self.project_file_path = Some(path);
                             }
@@ -536,6 +589,9 @@ impl eframe::App for TextureLabApp {
                     if ui.button("Export Textures (Ctrl+E)...").clicked() {
                         self.status_message = "Opened Export Preflight Drawer (Ctrl+E)".to_string();
                         if let Some(mut dock) = self.dock_state.take() {
+                            if dock.find_tab(&Tab::ExportDrawer).is_none() {
+                                dock.main_surface_mut().push_to_focused_leaf(Tab::ExportDrawer);
+                            }
                             if let Some(loc) = dock.find_tab(&Tab::ExportDrawer) {
                                 dock.set_active_tab(loc);
                             }
@@ -584,10 +640,10 @@ impl eframe::App for TextureLabApp {
                     }
                     if ui.button("Delete Selected (Del)").clicked() {
                         if let Some(sel) = self.canvas_state.selected_node.take() {
+                            self.history.record(&self.graph, "Delete node");
                             self.graph.remove_node(sel);
                             self.evaluator.invalidate_all();
                             self.reevaluate();
-                            self.history.record(&self.graph, "Delete node");
                         }
                         ui.close_menu();
                     }
@@ -670,7 +726,7 @@ impl eframe::App for TextureLabApp {
                     ui.separator();
                     for desc in NODE_CATALOG.iter() {
                         let is_allowed = self.edition.is_node_allowed(desc.type_name);
-                        let pro_tag = if !is_allowed { " [PRO 🔒]" } else { "" };
+                        let pro_tag = if !is_allowed { " [PRO]" } else { "" };
                         let label = if let Some(k) = desc.hotkey {
                             format!("{}{}{}", desc.display_name, pro_tag, format!(" [{}]", k))
                         } else {
@@ -721,12 +777,21 @@ impl eframe::App for TextureLabApp {
         // 3. Bottom Status Bar
         TopBottomPanel::bottom("bottom_status_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("●").color(crate::ui::theme::CAT_MATH));
-                ui.label(
-                    egui::RichText::new(&self.status_message)
-                        .color(TEXT_PRIMARY)
-                        .size(12.0),
-                );
+                if self.async_evaluator.is_evaluating() {
+                    ui.label(egui::RichText::new("●").color(crate::ui::theme::ACCENT_AMBER));
+                    ui.label(
+                        egui::RichText::new("Computing in background...")
+                            .color(crate::ui::theme::ACCENT_AMBER)
+                            .size(12.0),
+                    );
+                } else {
+                    ui.label(egui::RichText::new("●").color(crate::ui::theme::CAT_MATH));
+                    ui.label(
+                        egui::RichText::new(&self.status_message)
+                            .color(TEXT_PRIMARY)
+                            .size(12.0),
+                    );
+                }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(
@@ -770,12 +835,12 @@ impl eframe::App for TextureLabApp {
             let mut tab_viewer = AppTabViewer {
                 graph: &mut self.graph,
                 evaluator: &mut self.evaluator,
+                async_evaluator: &mut self.async_evaluator,
                 history: &mut self.history,
                 canvas_state: &mut self.canvas_state,
                 viewport_state: &mut self.viewport_state,
                 library_query: &mut self.library_query,
                 status_message: &mut self.status_message,
-                eval_time_ms: &mut self.eval_time_ms,
                 search_palette: &mut self.search_palette,
                 export_preset_id: &mut self.export_preset_id,
                 export_asset_name: &mut self.export_asset_name,
@@ -850,12 +915,12 @@ impl eframe::App for TextureLabApp {
 struct AppTabViewer<'a> {
     graph: &'a mut Graph,
     evaluator: &'a mut GraphEvaluator,
+    async_evaluator: &'a mut AsyncEvaluator,
     history: &'a mut HistoryStack,
     canvas_state: &'a mut CanvasState,
     viewport_state: &'a mut ViewportState,
     library_query: &'a mut String,
     status_message: &'a mut String,
-    eval_time_ms: &'a mut f64,
     search_palette: &'a mut SearchPaletteState,
     export_preset_id: &'a mut String,
     export_asset_name: &'a mut String,
@@ -881,40 +946,68 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                             self.canvas_state.selected_node = node_id;
                         }
                         CanvasAction::ConnectPins { from, to } => {
-                            if let Ok(()) = self.graph.connect(from.clone(), to.clone()) {
-                                self.evaluator.mark_dirty(self.graph, to.node_id);
-                                let start = Instant::now();
-                                let _ = self.evaluator.evaluate(self.graph);
-                                *self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
+                            if crate::graph::compiler::GraphCompiler::would_create_cycle(self.graph, from.node_id, to.node_id) {
+                                *self.status_message = "Cannot connect: would create circular loop in graph".to_string();
+                            } else {
                                 self.history.record(self.graph, format!("Connect {} -> {}", from.name, to.name));
-                                *self.status_message = format!("Connected {} to {}", from.name, to.name);
+                                if let Ok(()) = self.graph.connect(from.clone(), to.clone()) {
+                                    self.evaluator.mark_dirty(self.graph, to.node_id);
+                                    self.async_evaluator.request_evaluation(
+                                        self.graph,
+                                        vec![to.node_id],
+                                        false,
+                                        self.evaluator.default_resolution(),
+                                    );
+                                    *self.status_message = format!("Connected {} to {}", from.name, to.name);
+                                }
                             }
                         }
                         CanvasAction::DisconnectEdge(edge) => {
+                            self.history.record(self.graph, "Disconnect edge");
                             self.graph.disconnect(&edge.from, &edge.to);
                             self.evaluator.mark_dirty(self.graph, edge.to.node_id);
-                            let _ = self.evaluator.evaluate(self.graph);
-                            self.history.record(self.graph, "Disconnect edge");
+                            self.async_evaluator.request_evaluation(
+                                self.graph,
+                                vec![edge.to.node_id],
+                                false,
+                                self.evaluator.default_resolution(),
+                            );
                         }
                         CanvasAction::DeleteNode(node_id) => {
+                            self.history.record(self.graph, format!("Delete node {}", node_id));
                             self.graph.remove_node(node_id);
                             self.evaluator.invalidate_all();
-                            let _ = self.evaluator.evaluate(self.graph);
-                            self.history.record(self.graph, format!("Delete node {}", node_id));
+                            self.async_evaluator.request_evaluation(
+                                self.graph,
+                                vec![],
+                                true,
+                                self.evaluator.default_resolution(),
+                            );
                             if self.canvas_state.selected_node == Some(node_id) {
                                 self.canvas_state.selected_node = None;
                             }
                         }
                         CanvasAction::DeleteSelected => {
                             if let Some(sel) = self.canvas_state.selected_node.take() {
+                                self.history.record(self.graph, "Delete node");
                                 self.graph.remove_node(sel);
                                 self.evaluator.invalidate_all();
-                                let _ = self.evaluator.evaluate(self.graph);
-                                self.history.record(self.graph, "Delete node");
+                                self.async_evaluator.request_evaluation(
+                                    self.graph,
+                                    vec![],
+                                    true,
+                                    self.evaluator.default_resolution(),
+                                );
                             }
                         }
-                        CanvasAction::NodeMoved { node_id, new_pos: _ } => {
+                        CanvasAction::NodeMoved { node_id, old_pos, new_pos } => {
+                            if let Some(node) = self.graph.get_node_mut(node_id) {
+                                node.position = old_pos;
+                            }
                             self.history.record(self.graph, format!("Move node {}", node_id));
+                            if let Some(node) = self.graph.get_node_mut(node_id) {
+                                node.position = new_pos;
+                            }
                         }
                         CanvasAction::OpenSearchPalette(pos) => {
                             self.search_palette.open_at(pos);
@@ -924,28 +1017,42 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                 .filter(|e| e.from == pin || e.to == pin)
                                 .cloned()
                                 .collect();
-                            for edge in edges_to_remove {
-                                self.graph.disconnect(&edge.from, &edge.to);
-                                self.evaluator.mark_dirty(self.graph, edge.to.node_id);
+                            if !edges_to_remove.is_empty() {
+                                self.history.record(self.graph, format!("Sever pin {}", pin.name));
+                                let mut affected = Vec::new();
+                                for edge in edges_to_remove {
+                                    self.graph.disconnect(&edge.from, &edge.to);
+                                    self.evaluator.mark_dirty(self.graph, edge.to.node_id);
+                                    affected.push(edge.to.node_id);
+                                }
+                                self.async_evaluator.request_evaluation(
+                                    self.graph,
+                                    affected,
+                                    false,
+                                    self.evaluator.default_resolution(),
+                                );
+                                *self.status_message = format!("Severed connections to {}", pin.name);
                             }
-                            let _ = self.evaluator.evaluate(self.graph);
-                            self.history.record(self.graph, format!("Sever pin {}", pin.name));
-                            *self.status_message = format!("Severed connections to {}", pin.name);
                         }
                         CanvasAction::SpawnNodeAt { type_name, pos } => {
-                            if !self.edition.is_node_allowed(&type_name) {
-                                *self.status_message = format!("🔒 '{}' requires TextureLAB Pro edition.", type_name);
-                            } else if let Some(desc) = NODE_CATALOG.iter().find(|d| d.type_name.eq_ignore_ascii_case(&type_name)) {
-                                let node_id = NodeId(self.graph.next_node_id);
-                                let node = desc.create_node(node_id, pos);
-                                self.graph.add_node(node);
-                                self.canvas_state.selected_node = Some(node_id);
-                                self.evaluator.mark_dirty(self.graph, node_id);
-                                let start = Instant::now();
-                                let _ = self.evaluator.evaluate(self.graph);
-                                *self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
-                                self.history.record(self.graph, format!("Spawn {}", desc.display_name));
-                                *self.status_message = format!("Spawned {}", desc.display_name);
+                            if let Some(desc) = crate::nodes::find_descriptor(&type_name) {
+                                if !self.edition.is_node_allowed(desc.type_name) {
+                                    *self.status_message = format!("[PRO] '{}' requires TextureLAB Pro edition.", desc.display_name);
+                                } else {
+                                    self.history.record(self.graph, format!("Spawn {}", desc.display_name));
+                                    let node_id = NodeId(self.graph.next_node_id);
+                                    let node = desc.create_node(node_id, pos);
+                                    self.graph.add_node(node);
+                                    self.canvas_state.selected_node = Some(node_id);
+                                    self.evaluator.mark_dirty(self.graph, node_id);
+                                    self.async_evaluator.request_evaluation(
+                                        self.graph,
+                                        vec![node_id],
+                                        false,
+                                        self.evaluator.default_resolution(),
+                                    );
+                                    *self.status_message = format!("Spawned {}", desc.display_name);
+                                }
                             }
                         }
                         CanvasAction::FrameFocus => {
@@ -1007,28 +1114,41 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
 
             Tab::Inspector => {
                 let selected_id = self.canvas_state.selected_node;
+                let upstream_ctx = selected_id
+                    .map(|id| crate::ui::inspector::detect_upstream_context(&self.graph, id))
+                    .unwrap_or((None, None));
+                let (detected_slot, detected_asset) = (upstream_ctx.0.as_deref(), upstream_ctx.1.as_deref());
                 let node_mut = selected_id.and_then(|id| self.graph.get_node_mut(id));
 
-                if let Some(action) = show_inspector(ui, node_mut) {
+                if let Some(action) = show_inspector(ui, node_mut, (detected_slot, detected_asset)) {
                     match action {
                         InspectorAction::ParamChanged { node_id, param_name, new_value: _ } => {
+                            self.history.record_coalesced(self.graph, format!("Edit {}", param_name), 1.0);
                             self.evaluator.mark_dirty(self.graph, node_id);
-                            let start = Instant::now();
-                            let _ = self.evaluator.evaluate(self.graph);
-                            *self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
-                            self.history.record(self.graph, format!("Edit {}", param_name));
+                            let invalidate_all = param_name == "file_path" || param_name == "path";
+                            self.async_evaluator.request_evaluation(
+                                self.graph,
+                                vec![node_id],
+                                invalidate_all,
+                                self.evaluator.default_resolution(),
+                            );
                             *self.status_message = format!("Updated {}", param_name);
                             ui.ctx().request_repaint();
                         }
                         InspectorAction::LabelChanged { node_id, new_label } => {
-                            self.history.record(self.graph, format!("Rename node {}", node_id));
+                            self.history.record_coalesced(self.graph, format!("Rename node {}", node_id), 1.0);
                             *self.status_message = format!("Renamed node to {}", new_label);
                         }
                         InspectorAction::DeleteNode(node_id) => {
+                            self.history.record(self.graph, format!("Delete node {}", node_id));
                             self.graph.remove_node(node_id);
                             self.evaluator.invalidate_all();
-                            let _ = self.evaluator.evaluate(self.graph);
-                            self.history.record(self.graph, format!("Delete node {}", node_id));
+                            self.async_evaluator.request_evaluation(
+                                self.graph,
+                                vec![],
+                                true,
+                                self.evaluator.default_resolution(),
+                            );
                             self.canvas_state.selected_node = None;
                         }
                     }
@@ -1038,8 +1158,9 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
             Tab::Library => {
                 if let Some(desc) = show_library_panel(ui, self.library_query) {
                     if !self.edition.is_node_allowed(desc.type_name) {
-                        *self.status_message = format!("🔒 '{}' requires TextureLAB Pro edition.", desc.display_name);
+                        *self.status_message = format!("[PRO] '{}' requires TextureLAB Pro edition.", desc.display_name);
                     } else {
+                        self.history.record(self.graph, format!("Spawn {}", desc.display_name));
                         let node_id = NodeId(self.graph.next_node_id);
                         let spawn_pos = [-self.canvas_state.pan.x + 300.0, -self.canvas_state.pan.y + 200.0];
                         let node = desc.create_node(node_id, spawn_pos);
@@ -1047,11 +1168,12 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         self.canvas_state.selected_node = Some(node_id);
 
                         self.evaluator.mark_dirty(self.graph, node_id);
-                        let start = Instant::now();
-                        let _ = self.evaluator.evaluate(self.graph);
-                        *self.eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
-
-                        self.history.record(self.graph, format!("Spawn {}", desc.display_name));
+                        self.async_evaluator.request_evaluation(
+                            self.graph,
+                            vec![node_id],
+                            false,
+                            self.evaluator.default_resolution(),
+                        );
                         *self.status_message = format!("Spawned {}", desc.display_name);
                     }
                 }
@@ -1091,7 +1213,7 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         ui.add_space(8.0);
                         ui.label("Target Directory:");
                         ui.add(egui::TextEdit::singleline(self.export_target_dir).desired_width(200.0));
-                        if ui.button("📁 Browse...").clicked() {
+                        if ui.button("Browse...").clicked() {
                             if let Some(dir) = rfd::FileDialog::new().pick_folder() {
                                 *self.export_target_dir = dir.to_string_lossy().to_string();
                             }
@@ -1103,23 +1225,29 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         .graph
                         .nodes
                         .values()
-                        .filter(|n| n.node_type == "TextureOutput")
+                        .filter(|n| n.node_type == "SaveImage" || n.node_type == "TextureOutput")
                         .collect();
 
                     if output_nodes.is_empty() {
                         ui.label(
-                            egui::RichText::new("No TextureOutput nodes present in the current graph.")
+                            egui::RichText::new("No SaveImage nodes present in the current graph.")
                                 .color(TEXT_MUTED),
                         );
-                        if ui.button("+ Add TextureOutput Node").clicked() {
-                            let desc = NODE_CATALOG.iter().find(|d| d.type_name == "TextureOutput");
+                        if ui.button("+ Add SaveImage Node").clicked() {
+                            let desc = NODE_CATALOG.iter().find(|d| d.type_name == "SaveImage" || d.type_name == "TextureOutput");
                             if let Some(desc) = desc {
                                 let id = NodeId(self.graph.next_node_id);
                                 let node = desc.create_node(id, [600.0, 200.0]);
+                                self.history.record(self.graph, "Add SaveImage");
                                 self.graph.add_node(node);
                                 self.canvas_state.selected_node = Some(id);
                                 self.evaluator.invalidate_all();
-                                let _ = self.evaluator.evaluate(&self.graph);
+                                self.async_evaluator.request_evaluation(
+                                    self.graph,
+                                    vec![],
+                                    true,
+                                    self.evaluator.default_resolution(),
+                                );
                             }
                         }
                     } else {
@@ -1129,7 +1257,7 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         let current_preset = ExportPreset::find_by_id(self.export_preset_id)
                             .unwrap_or_else(|| ExportPreset::builtin_presets().remove(0));
 
-                        let mut items_to_export = Vec::new();
+                        let mut ready_targets: Vec<(PinId, PathBuf)> = Vec::new();
 
                         egui::Grid::new("export_preflight_grid")
                             .striped(true)
@@ -1161,16 +1289,16 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                     ui.label(format!("{}x{}", w, h));
                                     ui.label(&resolved_file);
                                     if !is_fmt_allowed {
-                                        ui.colored_label(crate::ui::theme::CAT_CONSTANTS, "🔒 Pro Format (Locked in Lite)");
+                                        ui.colored_label(crate::ui::theme::CAT_CONSTANTS, "[PRO] Format Locked");
                                     } else if has_input {
-                                        ui.colored_label(crate::ui::theme::CAT_MATH, "✅ Ready");
+                                        ui.colored_label(crate::ui::theme::CAT_MATH, "[Ready]");
                                         let out_pin = PinId::output(node.id, "output");
-                                        if let Some(buf) = self.evaluator.get_output(&out_pin) {
+                                        if self.evaluator.get_output(&out_pin).is_some() {
                                             let target_path = PathBuf::from(&*self.export_target_dir).join(&resolved_file);
-                                            items_to_export.push(ExportItem::new(buf.as_ref().clone(), target_path));
+                                            ready_targets.push((out_pin, target_path));
                                         }
                                     } else {
-                                        ui.colored_label(crate::ui::theme::CAT_CONSTANTS, "⚠ Unlinked");
+                                        ui.colored_label(crate::ui::theme::CAT_CONSTANTS, "[Unlinked]");
                                     }
                                     ui.end_row();
                                 }
@@ -1178,12 +1306,19 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
 
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
-                            let can_export = !items_to_export.is_empty();
-                            if ui.add_enabled(can_export, egui::Button::new("🚀 Export All Ready Maps (Direct Disk Write)")).clicked() {
+                            let can_export = !ready_targets.is_empty();
+                            if ui.add_enabled(can_export, egui::Button::new("Export All Ready Maps (Direct Disk Write)")).clicked() {
+                                let _ = self.evaluator.evaluate(self.graph);
+                                let items_to_export: Vec<ExportItem> = ready_targets
+                                    .into_iter()
+                                    .filter_map(|(pin, path)| {
+                                        self.evaluator.get_output(&pin).map(|buf| ExportItem::new(buf.as_ref().clone(), path))
+                                    })
+                                    .collect();
                                 let report = ExportWriter::execute_export(&items_to_export);
                                 if report.is_success() {
                                     let msg = format!(
-                                        "✅ Successfully exported {} files ({:.2} MB) in {}ms",
+                                        "Successfully exported {} files ({:.2} MB) in {}ms",
                                         report.files_written.len(),
                                         report.bytes_written as f64 / 1_048_576.0,
                                         report.elapsed_ms
@@ -1191,7 +1326,7 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                     *self.status_message = msg.clone();
                                     *self.export_report_summary = Some(msg);
                                 } else {
-                                    let err_msg = format!("❌ Export error: {}", report.errors.join("; "));
+                                    let err_msg = format!("Export error: {}", report.errors.join("; "));
                                     *self.status_message = err_msg.clone();
                                     *self.export_report_summary = Some(err_msg);
                                 }
@@ -1302,6 +1437,7 @@ mod tests {
         assert!(Edition::Lite.is_node_allowed("LayerBlend"));
         assert!(Edition::Lite.is_node_allowed("TextureInput"));
         assert!(Edition::Lite.is_node_allowed("TextureOutput"));
+        assert!(Edition::Lite.is_node_allowed("SaveImage"));
 
         // Pro-only nodes locked in Lite
         assert!(!Edition::Lite.is_node_allowed("NormalBlendRNM"));
@@ -1403,4 +1539,64 @@ mod tests {
         assert!(app.status_message.contains("Auto-arranged back-hierarchy of Node#3"));
         assert_eq!(app.canvas_state.pan, initial_pan, "Camera pan must remain unchanged");
     }
+
+    #[test]
+    fn test_spawn_node_undo_roundtrip() {
+        let mut app = TextureLabApp::default();
+        let initial_count = app.graph.nodes.len();
+        assert_eq!(app.history.undo_depth(), 0, "Initial app history depth must be 0");
+
+        let spawned = app.spawn_node_by_type("Invert").expect("Should spawn Invert");
+        assert_eq!(app.graph.nodes.len(), initial_count + 1);
+        assert_eq!(app.history.undo_depth(), 1);
+        assert_eq!(app.history.undo_description(), Some("Spawn Invert"));
+
+        // Undoing must restore exact prior node count and remove the spawned node
+        let undone_graph = app.history.undo(&app.graph).expect("Undo should succeed");
+        app.graph = undone_graph;
+        assert_eq!(app.graph.nodes.len(), initial_count);
+        assert!(!app.graph.nodes.contains_key(&spawned));
+        assert_eq!(app.history.undo_depth(), 0);
+
+        // Redoing must restore the spawned node
+        let redone_graph = app.history.redo(&app.graph).expect("Redo should succeed");
+        app.graph = redone_graph;
+        assert_eq!(app.graph.nodes.len(), initial_count + 1);
+        assert!(app.graph.nodes.contains_key(&spawned));
+    }
+
+    #[test]
+    fn test_spawn_node_aliases() {
+        let mut app = TextureLabApp::default();
+        let add_id = app.spawn_node_by_type("Add").expect("Add alias should resolve");
+        assert_eq!(app.graph.nodes[&add_id].node_type, "Add");
+
+        let mul_id = app.spawn_node_by_type("Multiply").expect("Multiply alias should resolve");
+        assert_eq!(app.graph.nodes[&mul_id].node_type, "Multiply");
+
+        let rnm_id = app.spawn_node_by_type("RNM").expect("RNM alias should resolve");
+        assert_eq!(app.graph.nodes[&rnm_id].node_type, "NormalBlendRNM");
+    }
+
+    #[test]
+    fn test_delete_node_undo_roundtrip() {
+        let mut app = TextureLabApp::default();
+        let initial_count = app.graph.nodes.len();
+
+        let target_node = NodeId(1);
+        assert!(app.graph.nodes.contains_key(&target_node));
+
+        // Delete node with proper pre-mutation recording
+        app.history.record(&app.graph, "Delete node");
+        app.graph.remove_node(target_node);
+        assert_eq!(app.graph.nodes.len(), initial_count - 1);
+        assert!(!app.graph.nodes.contains_key(&target_node));
+
+        // Undo must restore the deleted node and all its socket data
+        let restored = app.history.undo(&app.graph).expect("Undo should succeed");
+        app.graph = restored;
+        assert_eq!(app.graph.nodes.len(), initial_count);
+        assert!(app.graph.nodes.contains_key(&target_node));
+    }
 }
+

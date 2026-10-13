@@ -375,8 +375,17 @@ impl Graph {
         }
 
         // In DCC graph workflows, input sockets accept only a single incoming connection.
-        // Replace existing incoming edge on `to`.
-        self.edges.retain(|e| e.to != to);
+        // Temporarily extract existing incoming edge on `to` to test cycle safety.
+        let prev_edge_idx = self.edges.iter().position(|e| e.to == to);
+        let prev_edge = prev_edge_idx.map(|idx| self.edges.remove(idx));
+
+        if crate::graph::compiler::GraphCompiler::would_create_cycle(self, from.node_id, to.node_id) {
+            // Restore previous edge if cycle was detected
+            if let Some(edge) = prev_edge {
+                self.edges.push(edge);
+            }
+            return Err(GraphError::CycleDetected);
+        }
 
         self.edges.push(Edge::new(from, to));
         Ok(())
@@ -447,9 +456,22 @@ pub struct ProjectMetadata {
     pub working_resolution: (u32, u32),
 }
 
-fn default_timestamp() -> String {
+impl Default for ProjectMetadata {
+    fn default() -> Self {
+        Self {
+            name: "TextureLab Project".to_string(),
+            author: "User".to_string(),
+            created_at: default_timestamp(),
+            modified_at: default_timestamp(),
+            working_resolution: default_working_resolution(),
+        }
+    }
+}
+
+pub fn default_timestamp() -> String {
     chrono::Utc::now().to_rfc3339()
 }
+
 
 fn default_working_resolution() -> (u32, u32) {
     (2048, 2048)
@@ -519,6 +541,18 @@ impl ProjectFile {
             graph,
         }
     }
+
+    /// Creates a ProjectFile preserving existing project metadata and refreshing modified_at.
+    pub fn with_metadata(graph: Graph, mut metadata: ProjectMetadata) -> Self {
+        metadata.modified_at = default_timestamp();
+        Self {
+            format_version: default_format_version(),
+            app_version: default_app_version(),
+            metadata,
+            graph,
+        }
+    }
+
 
     /// Serializes the project to formatted JSON string.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
@@ -618,5 +652,32 @@ pub mod tests {
         );
         let res = n1_restored.get_param("resolution").unwrap().as_resolution();
         assert_eq!(res, Some((4096, 2048)));
+    }
+
+    #[test]
+    pub fn test_graph_connect_cycle_prevention() {
+        let mut graph = Graph::new();
+        let n1 = graph.create_node("ConstantColor", "N1", [0.0, 0.0]);
+        let n2 = graph.create_node("Invert", "N2", [200.0, 0.0]);
+        let n3 = graph.create_node("Invert", "N3", [400.0, 0.0]);
+
+        let p1_out = PinId::output(n1, "output");
+        let p2_in = PinId::input(n2, "input");
+        let p2_out = PinId::output(n2, "output");
+        let p3_in = PinId::input(n3, "input");
+        let p3_out = PinId::output(n3, "output");
+
+        // Valid chain: N1 -> N2 -> N3
+        assert!(graph.connect(p1_out, p2_in.clone()).is_ok());
+        assert!(graph.connect(p2_out, p3_in).is_ok());
+        assert_eq!(graph.edges.len(), 2);
+
+        // Attempting to connect N3 -> N2 forms a cycle and must be rejected
+        let cycle_res = graph.connect(p3_out, p2_in.clone());
+        assert!(matches!(cycle_res, Err(GraphError::CycleDetected)));
+
+        // Previous incoming edge N1 -> N2 must be preserved untouched!
+        assert_eq!(graph.edges.len(), 2);
+        assert_eq!(graph.incoming_edge(&p2_in).unwrap().from.node_id, n1);
     }
 }

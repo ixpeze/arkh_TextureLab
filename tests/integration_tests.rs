@@ -301,8 +301,11 @@ fn test_cycle_detection() {
     // Verify predictive cycle detection
     assert!(GraphCompiler::would_create_cycle(&graph, n3, n1));
 
-    // Force circular edge: 3 -> 1
-    let _ = graph.connect(PinId::output(n3, "out"), PinId::input(n1, "in"));
+    // Verify graph.connect rejects cycle at model boundary
+    assert!(graph.connect(PinId::output(n3, "out"), PinId::input(n1, "in")).is_err());
+
+    // Force circular edge directly into graph to test GraphCompiler Kahn cycle detection
+    graph.edges.push(texturelab::graph::model::Edge::new(PinId::output(n3, "out"), PinId::input(n1, "in")));
 
     let compile_result = GraphCompiler::compile(&graph);
     assert_eq!(compile_result, Err(CompileError::CycleDetected));
@@ -821,7 +824,7 @@ fn test_pack_wizard_auto_graph_generation() {
     assert_eq!(graph.nodes.len(), 5);
     let inputs: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "TextureInput").collect();
     let combiners: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "ChannelCombine").collect();
-    let outputs: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "TextureOutput").collect();
+    let outputs: Vec<_> = graph.nodes.values().filter(|n| n.node_type == "SaveImage" || n.node_type == "TextureOutput").collect();
 
     assert_eq!(inputs.len(), 3);
     assert_eq!(combiners.len(), 1);
@@ -1662,6 +1665,109 @@ fn test_2d_viewport_selection_and_live_update() {
     assert_eq!(prev_unpinned.node_id, Some(NodeId(1)));
     assert!(!prev_unpinned.is_pinned);
 }
+
+#[test]
+fn test_end_to_end_cycle_rejection_in_graph() {
+    let mut graph = Graph::new();
+    let n1 = graph.create_node("ConstantScalar", "S1", [0.0, 0.0]);
+    let n2 = graph.create_node("Math", "M1", [200.0, 0.0]);
+    let n3 = graph.create_node("Math", "M2", [400.0, 0.0]);
+
+    if let Some(node) = graph.get_node_mut(n1) {
+        node.add_output("output");
+    }
+    if let Some(node) = graph.get_node_mut(n2) {
+        node.add_input("A");
+        node.add_output("output");
+    }
+    if let Some(node) = graph.get_node_mut(n3) {
+        node.add_input("A");
+        node.add_output("output");
+    }
+
+    // Connect N1 -> N2 -> N3
+    assert!(graph.connect(PinId::output(n1, "output"), PinId::input(n2, "A")).is_ok());
+    assert!(graph.connect(PinId::output(n2, "output"), PinId::input(n3, "A")).is_ok());
+
+    // Attempt feedback cycle: N3 -> N2 must be rejected!
+    let cycle_res = graph.connect(PinId::output(n3, "output"), PinId::input(n2, "A"));
+    assert!(cycle_res.is_err(), "Graph::connect must reject circular feedback loop");
+    assert_eq!(graph.edges.len(), 2, "Edge count must remain untouched after cycle rejection");
+}
+
+#[test]
+fn test_end_to_end_multi_input_retention() {
+    use std::sync::Arc;
+    let mut graph = Graph::new();
+    let mut n1 = Node::new(NodeId(10), "TextureInput", "Base", [0.0, 0.0]);
+    let pin_a = n1.add_output("output");
+    graph.add_node(n1);
+
+    let mut n2 = Node::new(NodeId(20), "TextureInput", "Layer", [0.0, 100.0]);
+    let pin_b = n2.add_output("output");
+    graph.add_node(n2);
+
+    let mut evaluator = GraphEvaluator::new((16, 16));
+    let tex_a = Arc::new(TextureBuffer::solid_color(16, 16, 255, 0, 0, 255));
+    let tex_b = Arc::new(TextureBuffer::solid_color(16, 16, 0, 255, 0, 255));
+
+    evaluator.set_input_texture(NodeId(10), tex_a);
+    evaluator.set_input_texture(NodeId(20), tex_b);
+    evaluator.evaluate(&graph).expect("Evaluation failed");
+
+    // Both textures must be retained in the executor without one overwriting the other
+    let out_a = evaluator.get_output(&pin_a).expect("Input pin_a must be retained");
+    let out_b = evaluator.get_output(&pin_b).expect("Input pin_b must be retained");
+
+    assert_eq!(out_a.get_pixel(0, 0), [255, 0, 0, 255]);
+    assert_eq!(out_b.get_pixel(0, 0), [0, 255, 0, 255]);
+}
+
+#[test]
+fn test_end_to_end_hold_key_aliases_census() {
+    use texturelab::nodes::find_descriptor;
+
+    let desc_add = find_descriptor("Add").expect("Descriptor for Add must exist");
+    assert_eq!(desc_add.type_name, "Add");
+    assert_eq!(desc_add.hotkey, Some("A"));
+
+    let desc_mul = find_descriptor("Multiply").expect("Descriptor for Multiply must exist");
+    assert_eq!(desc_mul.type_name, "Multiply");
+    assert_eq!(desc_mul.hotkey, Some("M"));
+
+    let desc_rnm = find_descriptor("RNM").expect("Descriptor for RNM alias must exist");
+    assert_eq!(desc_rnm.type_name, "NormalBlendRNM");
+}
+
+#[test]
+fn test_end_to_end_screen_to_canvas_drag_drop_alignment() {
+    use egui::{Pos2, Rect, Vec2};
+    use texturelab::ui::canvas::CanvasState;
+
+    let mut state = CanvasState::new();
+    state.pan = Vec2::new(150.0, 80.0);
+    state.zoom = 1.5;
+
+    // Simulate canvas located inside a docking tab with screen rect [200, 100] to [1200, 800]
+    let canvas_rect = Rect::from_min_size(Pos2::new(200.0, 100.0), Vec2::new(1000.0, 700.0));
+    state.last_canvas_rect = canvas_rect;
+
+    // Screen cursor position at (500, 400)
+    let screen_cursor = Pos2::new(500.0, 400.0);
+    let canvas_pt = state.screen_to_canvas(screen_cursor, state.last_canvas_rect);
+
+    // Expected canvas position:
+    // (500 - 200 - 150) / 1.5 = 150 / 1.5 = 100.0
+    // (400 - 100 - 80) / 1.5 = 220 / 1.5 = 146.66667
+    assert!((canvas_pt.x - 100.0).abs() < 1e-4);
+    assert!((canvas_pt.y - 146.66667).abs() < 1e-4);
+
+    // Inverse roundtrip: canvas_to_screen must return exact screen_cursor
+    let roundtrip_screen = state.canvas_to_screen(canvas_pt, state.last_canvas_rect);
+    assert!((roundtrip_screen.x - screen_cursor.x).abs() < 1e-4);
+    assert!((roundtrip_screen.y - screen_cursor.y).abs() < 1e-4);
+}
+
 
 
 

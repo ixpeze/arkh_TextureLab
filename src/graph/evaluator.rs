@@ -8,11 +8,13 @@ use crate::graph::compiler::{CompileError, GraphCompiler};
 use crate::graph::model::{Graph, Node, NodeId, PinId};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 /// Errors encountered during graph evaluation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum EvaluationError {
     Compile(CompileError),
     NodeNotFound(NodeId),
@@ -48,6 +50,8 @@ pub trait NodeExecutor: Send + Sync {
         inputs: &HashMap<String, SharedTextureBuffer>,
         resolution: (u32, u32),
     ) -> Result<HashMap<String, SharedTextureBuffer>, EvaluationError>;
+
+    fn set_input_texture(&mut self, _node_id: NodeId, _buffer: SharedTextureBuffer) {}
 }
 
 /// Built-in fallback executor handling baseline Phase 2 node primitives.
@@ -74,6 +78,10 @@ impl Default for DefaultNodeExecutor {
 }
 
 impl NodeExecutor for DefaultNodeExecutor {
+    fn set_input_texture(&mut self, node_id: NodeId, buffer: SharedTextureBuffer) {
+        self.input_textures.insert(node_id, buffer);
+    }
+
     fn execute(
         &self,
         node: &Node,
@@ -258,11 +266,9 @@ impl GraphEvaluator {
         self.invalidate_all();
     }
 
-    /// Registers a custom input texture for a node.
+    /// Registers a custom input texture for a node without wiping other registered textures.
     pub fn set_input_texture(&mut self, node_id: NodeId, buffer: SharedTextureBuffer) {
-        let mut exec = crate::nodes::PbrNodeExecutor::new();
-        exec.set_input_texture(node_id, Arc::clone(&buffer));
-        self.executor = Box::new(exec);
+        self.executor.set_input_texture(node_id, Arc::clone(&buffer));
         self.dirty_nodes.insert(node_id);
     }
 
@@ -280,6 +286,18 @@ impl GraphEvaluator {
     /// Retrieves an evaluated output buffer from cache by PinId.
     pub fn get_output(&self, pin: &PinId) -> Option<SharedTextureBuffer> {
         self.cache.get(pin).cloned()
+    }
+
+    /// Returns an immutable reference to the memoized socket cache.
+    pub fn cache(&self) -> &HashMap<PinId, SharedTextureBuffer> {
+        &self.cache
+    }
+
+    /// Replaces the socket cache with an updated snapshot from background worker evaluation,
+    /// and resets dirty node tracking.
+    pub fn apply_cache_update(&mut self, new_cache: HashMap<PinId, SharedTextureBuffer>) {
+        self.cache = new_cache;
+        self.dirty_nodes.clear();
     }
 
     /// Invalidates all cached evaluation outputs.
@@ -392,6 +410,185 @@ impl GraphEvaluator {
             cache_hits: self.cache_hits,
             cache_misses: self.cache_misses,
         })
+    }
+}
+
+/// Request sent to the background evaluation worker.
+#[derive(Clone, Debug)]
+pub struct AsyncEvalRequest {
+    /// Monotonically increasing generation number for sequencing and natural debouncing.
+    pub generation: u64,
+    /// Cloned snapshot of the current DAG.
+    pub graph: Graph,
+    /// Specific nodes that were modified.
+    pub dirty_nodes: Vec<NodeId>,
+    /// Whether all cached outputs should be discarded before evaluation.
+    pub invalidate_all: bool,
+    /// Working resolution to evaluate at.
+    pub resolution: (u32, u32),
+}
+
+/// Response returned from the background evaluation worker to the UI thread.
+pub struct AsyncEvalResponse {
+    /// Generation number corresponding to the completed evaluation.
+    pub generation: u64,
+    /// Evaluation report with metrics or compilation/execution error.
+    pub report: Result<EvaluationReport, EvaluationError>,
+    /// Memoized socket outputs (cheap Arc clones).
+    pub cache_snapshot: HashMap<PinId, SharedTextureBuffer>,
+    /// Total wall-clock time spent in milliseconds.
+    pub eval_time_ms: f64,
+}
+
+/// Non-blocking background evaluation pipeline decoupling heavy Rayon computation
+/// from the 60/144 FPS UI thread.
+pub struct AsyncEvaluator {
+    req_tx: Sender<AsyncEvalRequest>,
+    resp_rx: Receiver<AsyncEvalResponse>,
+    _worker: Option<JoinHandle<()>>,
+    current_generation: u64,
+    applied_generation: u64,
+    is_evaluating: bool,
+}
+
+impl Default for AsyncEvaluator {
+    fn default() -> Self {
+        Self::new((1024, 1024))
+    }
+}
+
+impl AsyncEvaluator {
+    /// Spawns a dedicated background worker thread with its own memoized `GraphEvaluator`.
+    pub fn new(default_resolution: (u32, u32)) -> Self {
+        let (req_tx, req_rx) = mpsc::channel::<AsyncEvalRequest>();
+        let (resp_tx, resp_rx) = mpsc::channel::<AsyncEvalResponse>();
+
+        let worker = thread::Builder::new()
+            .name("texturelab-eval-worker".to_string())
+            .spawn(move || {
+                let mut evaluator = GraphEvaluator::new(default_resolution);
+                while let Ok(mut req) = req_rx.recv() {
+                    // Natural debouncing: drain any newer requests that arrived while waiting/processing
+                    while let Ok(newer) = req_rx.try_recv() {
+                        req = newer;
+                    }
+
+                    if evaluator.default_resolution() != req.resolution {
+                        evaluator.set_default_resolution(req.resolution);
+                    }
+
+                    if req.invalidate_all {
+                        evaluator.invalidate_all();
+                    } else {
+                        for node_id in &req.dirty_nodes {
+                            evaluator.mark_dirty(&req.graph, *node_id);
+                        }
+                    }
+
+                    let start = Instant::now();
+                    let res = evaluator.evaluate(&req.graph);
+                    let eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
+                    let cache_snapshot = evaluator.cache.clone();
+
+                    if resp_tx
+                        .send(AsyncEvalResponse {
+                            generation: req.generation,
+                            report: res,
+                            cache_snapshot,
+                            eval_time_ms,
+                        })
+                        .is_err()
+                    {
+                        // Main thread has dropped receiver; shut down worker cleanly
+                        break;
+                    }
+                }
+            })
+            .ok();
+
+        Self {
+            req_tx,
+            resp_rx,
+            _worker: worker,
+            current_generation: 0,
+            applied_generation: 0,
+            is_evaluating: false,
+        }
+    }
+
+    /// Submits a DAG evaluation request to the background worker.
+    /// Returns the monotonic generation ID assigned to this request.
+    pub fn request_evaluation(
+        &mut self,
+        graph: &Graph,
+        dirty_nodes: Vec<NodeId>,
+        invalidate_all: bool,
+        resolution: (u32, u32),
+    ) -> u64 {
+        self.current_generation += 1;
+        let generation = self.current_generation;
+        let req = AsyncEvalRequest {
+            generation,
+            graph: graph.clone(),
+            dirty_nodes,
+            invalidate_all,
+            resolution,
+        };
+        let _ = self.req_tx.send(req);
+        self.is_evaluating = true;
+        generation
+    }
+
+    /// Polls for completed evaluation responses from the background worker without blocking.
+    /// If multiple responses are queued up, drains them and returns only the newest valid generation.
+    pub fn try_recv(&mut self) -> Option<AsyncEvalResponse> {
+        let mut latest = None;
+        loop {
+            match self.resp_rx.try_recv() {
+                Ok(resp) => {
+                    if resp.generation >= self.applied_generation {
+                        self.applied_generation = resp.generation;
+                        latest = Some(resp);
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => break,
+            }
+        }
+
+        if self.applied_generation >= self.current_generation {
+            self.is_evaluating = false;
+        }
+
+        latest
+    }
+
+    /// Blocks until the pending evaluation pass completes, up to a timeout.
+    /// Used for deterministic test verification and export preflight guarantees.
+    pub fn wait_for_completion(&mut self, timeout: Duration) -> Option<AsyncEvalResponse> {
+        let deadline = Instant::now() + timeout;
+        while self.is_evaluating && Instant::now() < deadline {
+            if let Some(resp) = self.try_recv() {
+                return Some(resp);
+            }
+            thread::sleep(Duration::from_millis(2));
+        }
+        self.try_recv()
+    }
+
+    /// Returns whether an evaluation request is currently in flight on the worker thread.
+    pub fn is_evaluating(&self) -> bool {
+        self.is_evaluating
+    }
+
+    /// Returns the most recently submitted generation ID.
+    pub fn current_generation(&self) -> u64 {
+        self.current_generation
+    }
+
+    /// Returns the most recently completed and applied generation ID.
+    pub fn applied_generation(&self) -> u64 {
+        self.applied_generation
     }
 }
 
@@ -528,5 +725,99 @@ pub mod tests {
             "Cache hit must be ultra-fast, took {:?}",
             elapsed
         );
+    }
+
+    #[test]
+    pub fn test_multiple_input_textures_retained() {
+        let mut graph = Graph::new();
+        let mut n1 = Node::new(NodeId(1), "TextureInput", "Input A", [0.0, 0.0]);
+        let p1_out = n1.add_output("output");
+        graph.add_node(n1);
+
+        let mut n2 = Node::new(NodeId(2), "TextureInput", "Input B", [200.0, 0.0]);
+        let p2_out = n2.add_output("output");
+        graph.add_node(n2);
+
+        let mut evaluator = GraphEvaluator::new((8, 8));
+        let buf_red = Arc::new(TextureBuffer::solid_color(8, 8, 255, 0, 0, 255));
+        let buf_green = Arc::new(TextureBuffer::solid_color(8, 8, 0, 255, 0, 255));
+
+        evaluator.set_input_texture(NodeId(1), buf_red);
+        evaluator.set_input_texture(NodeId(2), buf_green);
+
+        evaluator.evaluate(&graph).expect("Evaluation failed");
+
+        let out_a = evaluator.get_output(&p1_out).expect("Output A missing");
+        let out_b = evaluator.get_output(&p2_out).expect("Output B missing");
+
+        assert_eq!(out_a.get_pixel(0, 0), [255, 0, 0, 255]);
+        assert_eq!(out_b.get_pixel(0, 0), [0, 255, 0, 255]);
+    }
+
+    #[test]
+    pub fn test_async_evaluator_execution_and_cache() {
+        let mut graph = Graph::new();
+        let mut n1 = Node::new(NodeId(1), "ConstantColor", "Color", [0.0, 0.0]);
+        n1.set_param("color", NodeParam::Color([1.0, 0.0, 0.0, 1.0])); // Pure Red
+        let p1 = n1.add_output("output");
+        graph.add_node(n1);
+
+        let mut n2 = Node::new(NodeId(2), "Invert", "Invert", [200.0, 0.0]);
+        let p2_in = n2.add_input("input");
+        let p2_out = n2.add_output("output");
+        graph.add_node(n2);
+
+        graph.connect(p1, p2_in).unwrap();
+
+        let mut async_eval = AsyncEvaluator::new((16, 16));
+        let gen = async_eval.request_evaluation(&graph, vec![NodeId(1), NodeId(2)], false, (16, 16));
+        assert_eq!(gen, 1);
+        assert!(async_eval.is_evaluating());
+
+        let resp = async_eval
+            .wait_for_completion(Duration::from_secs(3))
+            .expect("Async evaluation must complete within 3 seconds");
+
+        assert_eq!(resp.generation, 1);
+        assert!(!async_eval.is_evaluating());
+
+        let out = resp.cache_snapshot.get(&p2_out).expect("Output missing in snapshot");
+        assert_eq!(out.width, 16);
+        assert_eq!(out.height, 16);
+        assert_eq!(out.get_pixel(0, 0), [0, 255, 255, 255]); // Cyan
+    }
+
+    #[test]
+    pub fn test_async_evaluator_generation_debouncing() {
+        let mut graph = Graph::new();
+        let mut n1 = Node::new(NodeId(1), "ConstantColor", "Color", [0.0, 0.0]);
+        n1.set_param("color", NodeParam::Color([0.0, 1.0, 0.0, 1.0])); // Green
+        let p1 = n1.add_output("output");
+        graph.add_node(n1);
+
+        let mut async_eval = AsyncEvaluator::new((16, 16));
+
+        // Submit generation 1
+        let g1 = async_eval.request_evaluation(&graph, vec![NodeId(1)], false, (16, 16));
+        assert_eq!(g1, 1);
+
+        // Rapidly change color to Blue and submit generation 2
+        if let Some(n) = graph.get_node_mut(NodeId(1)) {
+            n.set_param("color", NodeParam::Color([0.0, 0.0, 1.0, 1.0]));
+        }
+        let g2 = async_eval.request_evaluation(&graph, vec![NodeId(1)], false, (16, 16));
+        assert_eq!(g2, 2);
+
+        // Wait for final completion
+        let resp = async_eval
+            .wait_for_completion(Duration::from_secs(3))
+            .expect("Async evaluation must complete");
+
+        // Debouncing / monotonic ordering ensures newest applied generation is g2
+        assert_eq!(async_eval.applied_generation(), 2);
+        assert!(!async_eval.is_evaluating());
+
+        let out = resp.cache_snapshot.get(&p1).expect("Output missing in snapshot");
+        assert_eq!(out.get_pixel(0, 0), [0, 0, 255, 255]); // Blue
     }
 }

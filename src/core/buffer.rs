@@ -4,7 +4,8 @@
 //! Rayon-parallel channel packing, swizzling, power-of-two (POT) routines, and
 //! permanent resolution for legacy alpha premultiplication data loss (audit issue F-01).
 
-use image::{imageops::FilterType, ImageBuffer, RgbaImage};
+pub use image::imageops::FilterType;
+use image::{ImageBuffer, RgbaImage};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
