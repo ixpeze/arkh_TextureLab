@@ -1,87 +1,75 @@
 # ARKH TextureLab
 
-> PBR Texture Authoring and Channel Packing Workstation.
+> PBR Texture Pipeline Workstation — pack, convert, validate, and batch-export texture sets.
 
-ARKH TextureLab is a professional, high-velocity workstation designed for technical artists, game developers, and 3D visualization professionals. It streamlines PBR texture authoring, channel multiplexing (pack/unpack), lexical naming normalization, Reoriented Normal Mapping (RNM), and direct disk export in a single native portable executable.
+ARKH TextureLab is a native desktop workstation for technical artists and game developers. It handles PBR channel packing, lexical naming normalisation, format conversion, and batch export through a node-graph interface — all in a single portable executable.
 
 ---
 
 ## Highlights
 
-* **100% Pure Rust Engine**: Built with `eframe`, `egui`, `egui_dock`, and `rayon` with zero browser overhead or memory leaks. Sub-80ms cold startup and ~12 MB self-contained binary footprint.
-* **Topological DAG Evaluator**: Reactive node graph execution with Kahn's topological sort, cycle detection, dirty-state propagation, and 100-step undo/redo.
-* **Unreal Engine Navigation Standards**:
-  * Right-click drag: smooth canvas panning.
-  * Right-click tap (< 5px): instant quick search spawn palette.
-  * `Alt + Left Click` on socket pin: severs all connections on that pin.
-  * `Alt + Left Click` on wire: severs the targeted Bezier edge.
-  * `Hold Key + Left Click` quick-spawn: `T` (TextureInput), `1` (ConstantScalar), `3` (ConstantColor), `M` (Multiply), `A` (Add), `L` (LayerBlend), `O` (Invert).
-  * `F` key: frames canvas camera on active selection or entire graph.
-* **Drag-and-Drop Ingestion**:
-  * Drag images directly from **Windows Explorer** onto the canvas: automatically runs lexical PBR role classification (60+ conventions) and instantiates bound `TextureInput` samplers.
-  * Drag nodes from the **Node Library** left panel onto the canvas with glowing placement ghost preview.
-* **Comprehensive Codecs**: Byte-exact un-premultiplied PNG and Truevision TGA 2.0 with custom footer compliance, plus WebP, JPEG, and BMP.
-* **PBR Lexical Normalizer**: Automatic map categorization and slot assignment supporting 60+ industry conventions (Megascans, Poly Haven, Substance, Quixel).
-* **Industry Presets**: One-click channel packing presets for Unreal Engine (ORM), Unity HDRP (MaskMap), Blender Principled, and custom token pipelines.
+* **100 % Pure Rust**: Built with `eframe` 0.31, `egui` 0.31, `egui_dock` 0.16, and `rayon`. Sub-100 ms cold startup, ~6 MB portable binary, zero runtime dependencies.
+* **Topological DAG Evaluator**: Reactive node-graph execution via Kahn's topological sort with cycle detection, dirty-subgraph propagation, memoised cache, and 100-step undo/redo.
+* **19 Node Types Across 8 Categories**: I/O, Constants, Channel Ops, Colour Adjust, Normal Ops, Blend Ops, Math (13 operations), and Transform.
+* **PBR Lexical Normaliser**: 60+ industry naming conventions (Megascans, Poly Haven, Substance, Quixel) with auto-role classification and one-click pack wizard.
+* **Industry Export Presets**: Unreal Engine ORM, Unity HDRP MaskMap, Blender Principled, CryEngine, and custom token pipelines.
+* **Codecs**: Lossless 8-bit and 16-bit PNG, TGA 2.0 with custom footer, WebP, JPEG, BMP.
+* **Canvas Navigation**: Right-click pan, right-click tap spawn palette, Alt+Click wire/pin disconnect, Hold-Key+Click quick spawn, F to frame selection. Drag from Node Library or Windows Explorer with auto PBR role tagging.
 
 ---
 
 ## Quickstart
 
-### Automated Windows Scripts
-* [`setup.bat`](setup.bat): Automated toolchain verification, test suite run, and portable `.exe` build.
-* [`run_desktop.bat`](run_desktop.bat): Launches the standalone portable workstation executable.
+### Windows Scripts
+* [`setup.bat`](setup.bat) — Toolchain check, test suite, portable `.exe` build.
+* [`run_desktop.bat`](run_desktop.bat) — Launch the portable workstation.
 
-### Native Rust Engine Commands
+### Cargo Commands
 ```powershell
-# Run native app in debug mode
-cargo run
-
-# Run native app in optimized release mode
-cargo run --release
-
-# Run unit and integration test suite (150+ tests)
-cargo test
-
-# Build production portable executable
-cargo build --release
+cargo run              # Debug mode
+cargo run --release    # Optimised release mode
+cargo test             # 173 unit + integration tests
+cargo build --release  # Portable executable → target/release/texturelab.exe
 ```
 
 ---
 
-## Workstation Hotkeys
+## Hotkeys
 
-| Shortcut | Target | Action |
-|---|---|---|
-| `Tab` / Right Click Tap | Quick Search | Fuzzy search palette to spawn any node |
-| `F` | Frame View | Centers camera on active node selection |
-| `Alt + Click` | Wire / Socket Cut | Severs wire or breaks all connections on pin |
-| `Hold T + Click` | Quick Spawn | Spawns `TextureInput` node at cursor |
-| `Hold 1 + Click` | Quick Spawn | Spawns `ConstantScalar` node at cursor |
-| `Hold 3 + Click` | Quick Spawn | Spawns `ConstantColor` node at cursor |
-| `Hold M + Click` | Quick Spawn | Spawns `Multiply` math operator at cursor |
-| `Hold A + Click` | Quick Spawn | Spawns `Add` math operator at cursor |
-| `Hold L + Click` | Quick Spawn | Spawns `LayerBlend` lerp node at cursor |
-| `Hold O + Click` | Quick Spawn | Spawns `Invert` (OneMinus) node at cursor |
-| `S` | Channel Splitter | Spawns channel splitter |
-| `C` / `P` | Channel Combiner | Spawns channel combiner |
-| `N` | Normal Flip Green | Toggles DirectX (-Y) $\leftrightarrow$ OpenGL (+Y) tangent space |
-| `Ctrl + Z` | Undo | Reverts last transaction (100-step buffer) |
-| `Ctrl + Y` | Redo | Re-applies undone transaction |
-| `Ctrl + S` | Save | Serializes active graph to `.tlab` format |
-| `Ctrl + E` | Export | Opens preflight batch export validation drawer |
+Hotkeys are defined in [`src/hotkeys/mod.rs`](src/hotkeys/mod.rs).
+
+| Shortcut | Action |
+|---|---|
+| `Tab` / Right-click tap | Open fuzzy search spawn palette |
+| `F` | Frame camera on selection |
+| `Alt + Click` wire or pin | Sever connection |
+| `1 + Click` | Quick-spawn Constant Scalar |
+| `3 + Click` | Quick-spawn Constant Color |
+| `M + Click` | Quick-spawn Multiply |
+| `B + Click` | Quick-spawn Layer Blend |
+| `S + Click` | Quick-spawn Channel Splitter |
+| `C` / `P + Click` | Quick-spawn Channel Combiner |
+| `N + Click` | Quick-spawn Normal Flip Green |
+| `L + Click` | Quick-spawn Levels |
+| `I + Click` | Quick-spawn Invert |
+| `Delete` / `Backspace` | Delete selected nodes |
+| `Ctrl + Z` | Undo (100-step buffer) |
+| `Ctrl + Y` | Redo |
+| `Ctrl + S` | Save project (`.tlab`) |
+| `Ctrl + E` | Export preflight drawer |
 
 ---
 
 ## Documentation
 
-* [System Architecture](docs/ARCHITECTURE.md) — Subsystem breakdown, DAG compiler, and data flow.
-* [Developer Setup & Contributing](docs/DEV_SETUP.md) — Comprehensive build instructions and test commands.
-* [Strategic Roadmap](docs/ROADMAP.md) — Milestone planning, 3D viewport, and feature pipeline.
-* [Specifications](docs/specs/) — Upcoming architectural specifications and design proposals.
+* [System Architecture](docs/ARCHITECTURE.md) — Subsystem breakdown, DAG compiler, data flow.
+* [Developer Setup](docs/DEV_SETUP.md) — Build instructions, test commands, directory map.
+* [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) — Phased feature plan and agent prompts.
+* [Design Guide](docs/design/) — Visual specs for nodes, sidebar, and viewport.
+* [Archived Specs](docs/archive/) — Completed design specs from v1.0 development.
 
 ---
 
 ## License & Attribution
 
-Developed by ARKH LAB. Bundled third-party dependencies are licensed under their respective open-source licenses as documented in [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
+Developed by ARKH LAB. Third-party licences: [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
