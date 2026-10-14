@@ -8,6 +8,7 @@ pub mod hotkeys;
 pub mod nodes;
 pub mod normalizer;
 pub mod settings;
+pub mod templates;
 pub mod ui;
 
 pub use settings::AppSettings;

@@ -512,6 +512,27 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                 );
                             }
                         }
+                        CanvasAction::LoadTemplate(template_name) => {
+                            if let Some(t) = crate::templates::builtin_templates().into_iter().find(|t| t.name == template_name) {
+                                self.history.record(self.graph, format!("Load Template: {}", t.name));
+                                if let Ok(project) = t.load_project() {
+                                    *self.graph = project.graph;
+                                    self.canvas_state.selected_node = self.graph.nodes.keys().next().copied();
+                                    self.canvas_state.dismiss_splash = false;
+                                    self.evaluator.invalidate_all();
+                                    let start = std::time::Instant::now();
+                                    let _ = self.evaluator.evaluate(self.graph);
+                                    let elapsed_ms = start.elapsed().as_secs_f64() * 1000.0;
+                                    self.async_evaluator.request_evaluation(
+                                        self.graph,
+                                        vec![],
+                                        true,
+                                        self.evaluator.default_resolution(),
+                                    );
+                                    *self.status_message = format!("Loaded template: {} ({:.2}ms)", t.name, elapsed_ms);
+                                }
+                            }
+                        }
                     }
                 }
             }

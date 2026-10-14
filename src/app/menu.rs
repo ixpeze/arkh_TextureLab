@@ -20,8 +20,17 @@ impl TextureLabApp {
                     self.history.clear();
                     self.project_metadata = ProjectMetadata::default();
                     self.project_file_path = None;
+                    self.canvas_state.dismiss_splash = false;
                     ui.close_menu();
                 }
+                ui.menu_button("New from Template", |ui| {
+                    for template in crate::templates::builtin_templates() {
+                        if ui.button(template.name).on_hover_text(template.description).clicked() {
+                            self.load_template(&template);
+                            ui.close_menu();
+                        }
+                    }
+                });
                 if ui.button("Open Project (.tlab)...").clicked() {
                     if let Some(path) = rfd::FileDialog::new()
                         .add_filter("TextureLab Project", &["tlab", "json"])

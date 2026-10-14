@@ -1,0 +1,140 @@
+{
+  "format_version": 1,
+  "app_version": "1.0.0",
+  "metadata": {
+    "name": "Normal Map Convert",
+    "author": "TextureLab",
+    "created_at": "2026-01-01T00:00:00Z",
+    "modified_at": "2026-01-01T00:00:00Z",
+    "working_resolution": [
+      2048,
+      2048
+    ]
+  },
+  "graph": {
+    "nodes": {
+      "1": {
+        "id": 1,
+        "node_type": "TextureInput",
+        "label": "Normal Map (DirectX / OpenGL)",
+        "position": [
+          100.0,
+          200.0
+        ],
+        "inputs": [],
+        "outputs": [
+          {
+            "node_id": 1,
+            "name": "output",
+            "is_input": false
+          },
+          {
+            "node_id": 1,
+            "name": "RGBA",
+            "is_input": false
+          },
+          {
+            "node_id": 1,
+            "name": "R",
+            "is_input": false
+          },
+          {
+            "node_id": 1,
+            "name": "G",
+            "is_input": false
+          },
+          {
+            "node_id": 1,
+            "name": "B",
+            "is_input": false
+          },
+          {
+            "node_id": 1,
+            "name": "A",
+            "is_input": false
+          }
+        ],
+        "params": {}
+      },
+      "2": {
+        "id": 2,
+        "node_type": "NormalFlipGreen",
+        "label": "Normal Flip Green (DX <-> GL)",
+        "position": [
+          420.0,
+          200.0
+        ],
+        "inputs": [
+          {
+            "node_id": 2,
+            "name": "input",
+            "is_input": true
+          }
+        ],
+        "outputs": [
+          {
+            "node_id": 2,
+            "name": "output",
+            "is_input": false
+          }
+        ],
+        "params": {}
+      },
+      "3": {
+        "id": 3,
+        "node_type": "SaveImage",
+        "label": "Save Converted Normal",
+        "position": [
+          740.0,
+          200.0
+        ],
+        "inputs": [
+          {
+            "node_id": 3,
+            "name": "input",
+            "is_input": true
+          }
+        ],
+        "outputs": [
+          {
+            "node_id": 3,
+            "name": "output",
+            "is_input": false
+          }
+        ],
+        "params": {
+          "slot_name": {
+            "String": "Normal_Converted"
+          }
+        }
+      }
+    },
+    "edges": [
+      {
+        "from": {
+          "node_id": 1,
+          "name": "output",
+          "is_input": false
+        },
+        "to": {
+          "node_id": 2,
+          "name": "input",
+          "is_input": true
+        }
+      },
+      {
+        "from": {
+          "node_id": 2,
+          "name": "output",
+          "is_input": false
+        },
+        "to": {
+          "node_id": 3,
+          "name": "input",
+          "is_input": true
+        }
+      }
+    ],
+    "next_node_id": 4
+  }
+}

@@ -22,8 +22,9 @@ use egui::{
 };
 use crate::graph::model::{Edge, Graph, Node, NodeId, NodeParam, PinId};
 use crate::ui::theme::{
-    pin_wire_color, ACCENT_AMBER, BG_CANVAS, BORDER_DARK, GRID_AXIS, GRID_DOT,
-    GRID_DOT_MAJOR, TEXT_PRIMARY, TEXT_SECONDARY,
+    pin_wire_color, ACCENT_AMBER, BG_CANVAS, BG_CARD, BG_CARD_SELECTED, BG_INSET,
+    BORDER_DARK, CAT_BLEND, CAT_IO, CAT_NORMAL, CAT_TRANSFORM, CAT_UTILITY,
+    GRID_AXIS, GRID_DOT, GRID_DOT_MAJOR, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY,
 };
 use self::cards::render_node_card;
 
@@ -52,6 +53,7 @@ pub enum CanvasAction {
     SpawnNodeAt { type_name: String, pos: [f32; 2] },
     FrameFocus,
     AutoLayout,
+    LoadTemplate(String),
 }
 
 /// Persistent canvas navigation and interaction state.
@@ -69,6 +71,7 @@ pub struct CanvasState {
     box_select_current: Option<Pos2>,
     pub last_canvas_rect: Rect,
     pub clipboard: Option<(Vec<Node>, Vec<Edge>)>,
+    pub dismiss_splash: bool,
 }
 
 impl Default for CanvasState {
@@ -87,6 +90,7 @@ impl Default for CanvasState {
             box_select_current: None,
             last_canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(1920.0, 1080.0)),
             clipboard: None,
+            dismiss_splash: false,
         }
     }
 }
@@ -170,13 +174,24 @@ impl CanvasState {
             ui.ctx().request_repaint();
         }
 
+        // Reset dismiss_splash if nodes are added so it re-appears if graph becomes empty again
+        if !graph.nodes.is_empty() {
+            self.dismiss_splash = false;
+        }
+
+        let is_splash_visible = graph.nodes.is_empty() && !self.dismiss_splash;
+        let card_w = 480.0_f32.min(rect.width() - 40.0);
+        let card_h = 370.0_f32.min(rect.height() - 40.0);
+        let card_rect = Rect::from_center_size(rect.center(), Vec2::new(card_w, card_h));
+        let is_over_splash = is_splash_visible && response.hover_pos().is_some_and(|p| card_rect.contains(p));
+
         // 1. Pan and Zoom Handling
         let is_middle_drag = response.dragged_by(egui::PointerButton::Middle);
         let is_space_drag = ui.input(|i| i.key_down(Key::Space))
             && response.dragged_by(egui::PointerButton::Primary);
         let is_secondary_drag = response.dragged_by(egui::PointerButton::Secondary);
 
-        if is_middle_drag || is_space_drag || (is_secondary_drag && self.dragging_node.is_none()) {
+        if (is_middle_drag || is_space_drag || (is_secondary_drag && self.dragging_node.is_none())) && !is_over_splash {
             self.target_pan += response.drag_delta();
         }
 
@@ -495,7 +510,7 @@ impl CanvasState {
         let is_primary_drag = response.dragged_by(egui::PointerButton::Primary);
         if is_primary_drag && !is_space_drag && self.dragging_node.is_none() && self.wire_drag.is_none() {
             if let Some(ptr) = response.interact_pointer_pos() {
-                if self.box_select_start.is_none() && response.drag_started() && clicked_node.is_none() {
+                if self.box_select_start.is_none() && response.drag_started() && clicked_node.is_none() && !is_over_splash {
                     self.box_select_start = Some(ptr);
                 }
                 if self.box_select_start.is_some() {
@@ -571,7 +586,7 @@ impl CanvasState {
         }
 
         // Selection update or Hold-Key Quick Spawn on single click (when not Alt cutting)
-        if response.clicked() && !is_alt_down && !is_space_drag {
+        if response.clicked() && !is_alt_down && !is_space_drag && !is_over_splash {
             if let Some(id) = clicked_node {
                 self.selected_node = Some(id);
                 actions.push(CanvasAction::SelectNode(Some(id)));
@@ -614,7 +629,7 @@ impl CanvasState {
         }
 
         // Double-click on empty canvas spawns Comment at cursor (Part C)
-        if response.double_clicked() && hovered_pin.is_none() && clicked_node.is_none() && hovered_wire.is_none() {
+        if response.double_clicked() && hovered_pin.is_none() && clicked_node.is_none() && hovered_wire.is_none() && !is_over_splash {
             if let Some(mouse_screen) = response.interact_pointer_pos() {
                 let canvas_pos = self.screen_to_canvas(mouse_screen, rect);
                 actions.push(CanvasAction::SpawnNodeAt {
@@ -741,7 +756,7 @@ impl CanvasState {
         }
 
         // Right click tap on empty canvas opens quick search palette
-        if response.secondary_clicked() && hovered_pin.is_none() && clicked_node.is_none() {
+        if response.secondary_clicked() && hovered_pin.is_none() && clicked_node.is_none() && !is_over_splash {
             if let Some(mouse_screen) = response.interact_pointer_pos() {
                 let canvas_pos = self.screen_to_canvas(mouse_screen, rect);
                 actions.push(CanvasAction::OpenSearchPalette([canvas_pos.x, canvas_pos.y]));
@@ -761,6 +776,11 @@ impl CanvasState {
             if let Some(sel) = self.selected_node {
                 actions.push(CanvasAction::DeleteNode(sel));
             }
+        }
+
+        // 6.5 Render "Start" Splash Card if graph is empty
+        if is_splash_visible {
+            self.render_start_splash(&painter, &response, card_rect, &mut actions);
         }
 
         // 7. Sleek Floating Canvas HUD (Bottom Left Pill Badge)
@@ -820,6 +840,171 @@ impl CanvasState {
         }
 
         actions
+    }
+
+    /// Renders the centered "Start" splash card when the graph is empty, providing immediate 1-click starter template access.
+    fn render_start_splash(
+        &mut self,
+        painter: &Painter,
+        response: &egui::Response,
+        card_rect: Rect,
+        actions: &mut Vec<CanvasAction>,
+    ) {
+        // Card Background & Border
+        painter.rect_filled(card_rect, 8.0, BG_CARD);
+        painter.rect_stroke(card_rect, 8.0, Stroke::new(1.0_f32, BORDER_DARK), StrokeKind::Inside);
+
+        // Signature Top Amber Bar
+        let top_bar = Rect::from_min_size(card_rect.min, Vec2::new(card_rect.width(), 3.0));
+        painter.rect_filled(top_bar, 8.0, ACCENT_AMBER);
+
+        // Header Title
+        let title_pos = card_rect.min + Vec2::new(20.0, 18.0);
+        painter.text(
+            title_pos,
+            egui::Align2::LEFT_TOP,
+            "Starter Templates",
+            egui::FontId::proportional(16.0),
+            TEXT_PRIMARY,
+        );
+
+        // Header Subtitle
+        let subtitle_pos = title_pos + Vec2::new(0.0, 22.0);
+        painter.text(
+            subtitle_pos,
+            egui::Align2::LEFT_TOP,
+            "Choose a pre-built workflow graph to begin, or start blank.",
+            egui::FontId::proportional(11.5),
+            TEXT_SECONDARY,
+        );
+
+        // Dismiss button in header
+        let dismiss_rect = Rect::from_min_size(
+            Pos2::new(card_rect.max.x - 76.0, card_rect.min.y + 16.0),
+            Vec2::new(60.0, 22.0),
+        );
+        let dismiss_hovered = response.hover_pos().is_some_and(|p| dismiss_rect.contains(p));
+        let dismiss_bg = if dismiss_hovered {
+            Color32::from_rgba_premultiplied(48, 56, 68, 240)
+        } else {
+            Color32::from_black_alpha(140)
+        };
+        painter.rect_filled(dismiss_rect, 4.0, dismiss_bg);
+        painter.rect_stroke(
+            dismiss_rect,
+            4.0,
+            Stroke::new(1.0_f32, if dismiss_hovered { ACCENT_AMBER } else { BORDER_DARK }),
+            StrokeKind::Inside,
+        );
+        painter.text(
+            dismiss_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "Dismiss",
+            egui::FontId::proportional(11.0),
+            if dismiss_hovered { TEXT_PRIMARY } else { TEXT_SECONDARY },
+        );
+        if dismiss_hovered && response.clicked() {
+            self.dismiss_splash = true;
+        }
+
+        // Templates List
+        let start_y = card_rect.min.y + 60.0;
+        let templates = crate::templates::builtin_templates();
+        for (i, template) in templates.iter().enumerate() {
+            let item_rect = Rect::from_min_size(
+                Pos2::new(card_rect.min.x + 16.0, start_y + i as f32 * 54.0),
+                Vec2::new(card_rect.width() - 32.0, 48.0),
+            );
+            let item_hovered = response.hover_pos().is_some_and(|p| item_rect.contains(p));
+
+            let item_bg = if item_hovered {
+                BG_CARD_SELECTED
+            } else {
+                BG_INSET
+            };
+            let item_stroke_col = if item_hovered {
+                ACCENT_AMBER
+            } else {
+                BORDER_DARK
+            };
+
+            painter.rect_filled(item_rect, 6.0, item_bg);
+            painter.rect_stroke(item_rect, 6.0, Stroke::new(1.0_f32, item_stroke_col), StrokeKind::Inside);
+
+            // Badge Pill
+            let (badge_text, badge_color) = match template.name {
+                "Empty Graph" => ("BLANK", CAT_UTILITY),
+                "UE5 ORM Pack" => ("UE5", CAT_BLEND),
+                "Unity MaskMap" => ("UNITY", CAT_NORMAL),
+                "Blender Principled BSDF" => ("BLENDER", CAT_TRANSFORM),
+                "Normal Map Convert" => ("NORMAL", CAT_IO),
+                _ => ("GRAPH", CAT_UTILITY),
+            };
+
+            let badge_rect = Rect::from_min_size(
+                Pos2::new(item_rect.min.x + 10.0, item_rect.min.y + 14.0),
+                Vec2::new(54.0, 20.0),
+            );
+            painter.rect_filled(
+                badge_rect,
+                4.0,
+                Color32::from_rgba_premultiplied(badge_color.r() / 4, badge_color.g() / 4, badge_color.b() / 4, 160),
+            );
+            painter.rect_stroke(badge_rect, 4.0, Stroke::new(1.0_f32, badge_color), StrokeKind::Inside);
+            painter.text(
+                badge_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                badge_text,
+                egui::FontId::proportional(10.0),
+                badge_color,
+            );
+
+            // Template Name
+            painter.text(
+                Pos2::new(item_rect.min.x + 72.0, item_rect.min.y + 8.0),
+                egui::Align2::LEFT_TOP,
+                template.name,
+                egui::FontId::proportional(12.5),
+                TEXT_PRIMARY,
+            );
+
+            // Template Description
+            painter.text(
+                Pos2::new(item_rect.min.x + 72.0, item_rect.min.y + 26.0),
+                egui::Align2::LEFT_TOP,
+                template.description,
+                egui::FontId::proportional(10.5),
+                if item_hovered { TEXT_SECONDARY } else { TEXT_MUTED },
+            );
+
+            // Right action indicator
+            if item_hovered {
+                painter.text(
+                    Pos2::new(item_rect.max.x - 14.0, item_rect.center().y),
+                    egui::Align2::RIGHT_CENTER,
+                    "Open →",
+                    egui::FontId::proportional(11.0),
+                    ACCENT_AMBER,
+                );
+            }
+
+            if item_hovered && response.clicked() {
+                actions.push(CanvasAction::LoadTemplate(template.name.to_string()));
+                if template.name == "Empty Graph" {
+                    self.dismiss_splash = true;
+                }
+            }
+        }
+
+        // Footer Tip
+        let footer_pos = Pos2::new(card_rect.center().x, card_rect.max.y - 10.0);
+        painter.text(
+            footer_pos,
+            egui::Align2::CENTER_BOTTOM,
+            "Drag & drop textures from Explorer directly onto the canvas  •  Press Tab for Quick Search",
+            egui::FontId::proportional(10.5),
+            TEXT_MUTED,
+        );
     }
 }
 
@@ -905,9 +1090,11 @@ mod tests {
         };
         let act_focus = CanvasAction::FrameFocus;
         let act_layout = CanvasAction::AutoLayout;
+        let act_template = CanvasAction::LoadTemplate("UE5 ORM Pack".to_string());
 
         assert_ne!(act_sever, act_focus);
         assert_ne!(act_spawn, act_focus);
         assert_ne!(act_layout, act_focus);
+        assert_ne!(act_template, act_focus);
     }
 }

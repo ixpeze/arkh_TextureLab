@@ -1979,10 +1979,66 @@ fn test_preferences_dialog_state_and_draft() {
         PreferencesDialogResult::Cancel => panic!("Expected Save result"),
     }
 }
+/// TC-513: Starter Template Gallery & Undo Snapshot (P2-T7)
+#[test]
+fn test_builtin_templates_gallery_and_undo() {
+    use texturelab::app::TextureLabApp;
+    use texturelab::templates::builtin_templates;
 
+    let mut app = TextureLabApp::default();
+    let initial_node_count = app.graph.nodes.len();
+    assert!(initial_node_count > 0, "Default app starts with starter graph");
 
+    // 1. Verify 5 built-in templates exist in gallery catalog
+    let templates = builtin_templates();
+    assert_eq!(templates.len(), 5);
 
+    // 2. Load "Empty Graph" template
+    let empty_loaded = app.load_template_by_name("Empty Graph");
+    assert!(empty_loaded);
+    assert_eq!(app.graph.nodes.len(), 0);
+    assert_eq!(app.graph.edges.len(), 0);
+    assert!(!app.canvas_state.dismiss_splash, "Splash card remains available on empty graph");
 
+    // 3. Undo restores the starter graph
+    let prev_graph = app.history.undo(&app.graph).expect("Undo snapshot must exist for template load");
+    app.graph = prev_graph;
+    assert_eq!(app.graph.nodes.len(), initial_node_count);
 
+    // 4. Load UE5 ORM Pack
+    let ue5_loaded = app.load_template_by_name("UE5 ORM Pack");
+    assert!(ue5_loaded);
+    assert_eq!(app.graph.nodes.len(), 5);
+    assert_eq!(app.graph.edges.len(), 4);
+    assert!(app.graph.nodes.values().any(|n| n.node_type == "ChannelCombine"));
+    assert!(app.graph.nodes.values().any(|n| n.node_type == "SaveImage"));
+
+    // 5. Load Unity MaskMap
+    let unity_loaded = app.load_template_by_name("Unity MaskMap");
+    assert!(unity_loaded);
+    assert_eq!(app.graph.nodes.len(), 6);
+    assert_eq!(app.graph.edges.len(), 5);
+
+    // 6. Load Blender Principled BSDF
+    let blender_loaded = app.load_template_by_name("Blender Principled BSDF");
+    assert!(blender_loaded);
+    assert_eq!(app.graph.nodes.len(), 10);
+    assert_eq!(app.graph.edges.len(), 5);
+
+    // 7. Load Normal Map Convert
+    let normal_loaded = app.load_template_by_name("Normal Map Convert");
+    assert!(normal_loaded);
+    assert_eq!(app.graph.nodes.len(), 3);
+    assert_eq!(app.graph.edges.len(), 2);
+    assert!(app.graph.nodes.values().any(|n| n.node_type == "NormalFlipGreen"));
+
+    // 8. Sequential undo back to Blender Principled BSDF
+    let undone_blender = app.history.undo(&app.graph).expect("Must undo Normal Map Convert");
+    app.graph = undone_blender;
+    assert_eq!(app.graph.nodes.len(), 10);
+
+    // 9. Non-existent template name returns false
+    assert!(!app.load_template_by_name("Unknown Template"));
+}
 
 

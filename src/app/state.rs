@@ -203,6 +203,42 @@ impl TextureLabApp {
         self.version
     }
 
+    /// Loads a starter template, replacing the current graph with an undo snapshot.
+    pub fn load_template(&mut self, template: &crate::templates::TemplateEntry) -> bool {
+        if let Ok(project) = template.load_project() {
+            self.history.record(&self.graph, format!("Load Template: {}", template.name));
+            self.graph = project.graph;
+            self.project_metadata = project.metadata;
+            self.project_file_path = None;
+            self.canvas_state.selected_node = self.graph.nodes.keys().next().copied();
+            self.canvas_state.dismiss_splash = false;
+            self.evaluator.invalidate_all();
+            self.reevaluate();
+            self.async_evaluator.request_evaluation(
+                &self.graph,
+                vec![],
+                true,
+                self.evaluator.default_resolution(),
+            );
+            self.status_message = format!("Loaded template: {}", template.name);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Loads a starter template by its name.
+    pub fn load_template_by_name(&mut self, name: &str) -> bool {
+        if let Some(template) = crate::templates::builtin_templates()
+            .into_iter()
+            .find(|t| t.name.eq_ignore_ascii_case(name))
+        {
+            self.load_template(&template)
+        } else {
+            false
+        }
+    }
+
     /// Automatically organizes nodes into a compact, non-overlapping hierarchical layout.
     ///
     /// If a node is selected, organizes only its upstream back-hierarchy (Right to Left)
