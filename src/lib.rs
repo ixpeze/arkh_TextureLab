@@ -1,6 +1,7 @@
 //! TextureLab — PBR Texture Authoring and Channel Packing.
 
 pub mod app;
+pub mod batch;
 pub mod core;
 pub mod export;
 pub mod graph;

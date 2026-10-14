@@ -43,6 +43,7 @@ pub struct TextureLabApp {
     pub export_report_summary: Option<String>,
     pub user_presets: Vec<UserPreset>,
     pub preset_designer_dialog: PresetDesignerDialog,
+    pub batch_processor: crate::batch::BatchProcessor,
 }
 
 
@@ -103,6 +104,7 @@ impl TextureLabApp {
             export_report_summary: None,
             user_presets: load_presets(),
             preset_designer_dialog: PresetDesignerDialog::new(),
+            batch_processor: crate::batch::BatchProcessor::new(),
         }
     }
 
@@ -259,6 +261,20 @@ impl TextureLabApp {
         self.status_message = "Opened Texture Set Validator panel".to_string();
     }
 
+    /// Opens or focuses the Batch Processor dock tab.
+    pub fn open_batch_tab(&mut self) {
+        if let Some(mut dock) = self.dock_state.take() {
+            if dock.find_tab(&Tab::Batch).is_none() {
+                dock.main_surface_mut().push_to_focused_leaf(Tab::Batch);
+            }
+            if let Some(loc) = dock.find_tab(&Tab::Batch) {
+                dock.set_active_tab(loc);
+            }
+            self.dock_state = Some(dock);
+        }
+        self.status_message = "Opened Batch Processor panel".to_string();
+    }
+
     /// Automatically organizes nodes into a compact, non-overlapping hierarchical layout.
     ///
     /// If a node is selected, organizes only its upstream back-hierarchy (Right to Left)
@@ -389,6 +405,7 @@ impl Default for TextureLabApp {
             export_report_summary: None,
             user_presets: UserPreset::default_presets(),
             preset_designer_dialog: PresetDesignerDialog::new(),
+            batch_processor: crate::batch::BatchProcessor::new(),
         }
     }
 }

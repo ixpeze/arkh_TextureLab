@@ -35,6 +35,26 @@ impl eframe::App for TextureLabApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(16));
         }
 
+        // Sequential batch processor execution (one set per step to prevent memory explosion)
+        if self.batch_processor.is_running {
+            match self.batch_processor.process_next() {
+                Ok(rep) => {
+                    self.status_message = format!("Batch processed: {}", rep.set_name);
+                    ctx.request_repaint();
+                }
+                Err(crate::batch::BatchError::NoPendingJobs) => {
+                    self.batch_processor.is_running = false;
+                    self.status_message = "All queued batch sets processed successfully.".to_string();
+                    ctx.request_repaint();
+                }
+                Err(e) => {
+                    self.batch_processor.is_running = false;
+                    self.status_message = format!("Batch execution stopped: {}", e);
+                    ctx.request_repaint();
+                }
+            }
+        }
+
         // Sync 2D Viewport locked node to canvas state
         self.canvas_state.locked_viewport_node = self.viewport_state.locked_node;
 
@@ -285,6 +305,7 @@ impl eframe::App for TextureLabApp {
                 export_report_summary: &mut self.export_report_summary,
                 user_presets: &mut self.user_presets,
                 preset_designer_dialog: &mut self.preset_designer_dialog,
+                batch_processor: &mut self.batch_processor,
             };
 
             DockArea::new(&mut dock_state)
@@ -405,6 +426,7 @@ struct AppTabViewer<'a> {
     export_report_summary: &'a mut Option<String>,
     user_presets: &'a mut Vec<crate::export::UserPreset>,
     preset_designer_dialog: &'a mut crate::export::PresetDesignerDialog,
+    batch_processor: &'a mut crate::batch::BatchProcessor,
 }
 
 impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
@@ -863,6 +885,15 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                     Some(self.history),
                     Some(self.async_evaluator),
                     Some(self.status_message),
+                );
+            }
+
+            Tab::Batch => {
+                crate::ui::batch::show_batch_panel(
+                    ui,
+                    self.batch_processor,
+                    self.user_presets,
+                    self.status_message,
                 );
             }
         }

@@ -262,6 +262,10 @@ impl TextureLabApp {
                     self.open_validator_tab();
                     ui.close_menu();
                 }
+                if ui.button("Batch Processor").clicked() {
+                    self.open_batch_tab();
+                    ui.close_menu();
+                }
             });
 
             ui.menu_button("Nodes", |ui| {

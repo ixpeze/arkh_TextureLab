@@ -697,10 +697,10 @@ folders, apply a graph template + export preset, and batch-export.
 - `git commit -m "feat(batch): batch texture set processor with queue UI"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
 ```
 
 ---

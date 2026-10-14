@@ -2123,7 +2123,7 @@ fn test_spec_gloss_to_metal_rough_dag_pipeline() {
 fn test_export_preset_designer_channel_routing_and_persistence() {
     use texturelab::export::{
         load_presets_from_path, save_presets_to_path, ChannelSource, PresetDesignerDialog,
-        PresetDesignerResult, PresetOutputFormat, UserPreset,
+        PresetOutputFormat, UserPreset,
     };
     use texturelab::export::TokenContext;
 

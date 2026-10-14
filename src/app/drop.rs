@@ -19,9 +19,26 @@ impl TextureLabApp {
             [-self.canvas_state.pan.x + 250.0, -self.canvas_state.pan.y + 150.0]
         };
 
-        let image_files: Vec<_> = dropped_files
+        let (folder_paths, file_paths): (Vec<_>, Vec<_>) = dropped_files
             .into_iter()
             .filter_map(|f| f.path)
+            .partition(|p| p.is_dir());
+
+        if !folder_paths.is_empty() {
+            let mut added = 0;
+            for folder in folder_paths {
+                if self.batch_processor.add_folder(folder, None, None).is_ok() {
+                    added += 1;
+                }
+            }
+            if added > 0 {
+                self.status_message = format!("Added {} texture set folder(s) to Batch Processor queue", added);
+                self.open_batch_tab();
+            }
+        }
+
+        let image_files: Vec<_> = file_paths
+            .into_iter()
             .filter(|p| {
                 let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
                 matches!(

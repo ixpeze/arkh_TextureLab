@@ -1,5 +1,6 @@
 //! Workstation UI layout, canvas, docking, and theme (Phase 5).
 
+pub mod batch;
 pub mod canvas;
 pub mod inspector;
 pub mod library;
@@ -22,6 +23,7 @@ pub enum Tab {
     Library,
     ExportDrawer,
     Validator,
+    Batch,
 }
 
 impl Tab {
@@ -33,6 +35,7 @@ impl Tab {
             Self::Library => "Node Library",
             Self::ExportDrawer => "Export",
             Self::Validator => "Validator",
+            Self::Batch => "Batch Processor",
         }
     }
 }
@@ -94,8 +97,9 @@ mod tests {
         assert!(tabs.contains(&Tab::Viewport2D));
         assert!(tabs.contains(&Tab::Inspector));
         assert!(tabs.contains(&Tab::Library));
-        // ExportDrawer and Validator are hidden by default
+        // ExportDrawer, Validator, and Batch are hidden by default
         assert!(!tabs.contains(&Tab::ExportDrawer));
         assert!(!tabs.contains(&Tab::Validator));
+        assert!(!tabs.contains(&Tab::Batch));
     }
 }
