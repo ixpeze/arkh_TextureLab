@@ -7,7 +7,7 @@ use crate::core::buffer::{SharedTextureBuffer, TextureBuffer};
 use crate::graph::compiler::{CompileError, GraphCompiler};
 use crate::graph::model::{Graph, Node, NodeId, PinId};
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -116,8 +116,8 @@ impl NodeExecutor for DefaultNodeExecutor {
             "ConstantColor" | "Color" => {
                 let color = node.get_color("color", [1.0, 1.0, 1.0, 1.0]);
                 let buf = TextureBuffer::solid_color(
-                    width,
-                    height,
+                    1,
+                    1,
                     (color[0] * 255.0).clamp(0.0, 255.0) as u8,
                     (color[1] * 255.0).clamp(0.0, 255.0) as u8,
                     (color[2] * 255.0).clamp(0.0, 255.0) as u8,
@@ -130,7 +130,7 @@ impl NodeExecutor for DefaultNodeExecutor {
             "ConstantScalar" | "Scalar" => {
                 let val = node.get_float("value", 1.0);
                 let byte_val = (val * 255.0).clamp(0.0, 255.0) as u8;
-                let buf = TextureBuffer::solid_color(width, height, byte_val, byte_val, byte_val, 255);
+                let buf = TextureBuffer::solid_color(1, 1, byte_val, byte_val, byte_val, byte_val);
                 let shared = Arc::new(buf);
                 outputs.insert("output".to_string(), Arc::clone(&shared));
                 outputs.insert("value".to_string(), shared);
@@ -238,6 +238,12 @@ pub struct GraphEvaluator {
     pub node_exec_counts: HashMap<NodeId, usize>,
     /// Active node computation executor
     executor: Box<dyn NodeExecutor>,
+    /// Maximum cache memory budget in bytes (default 2 GB = 2_147_483_648).
+    pub max_cache_bytes: usize,
+    /// Current total memory usage in bytes of cached buffers.
+    current_cache_bytes: usize,
+    /// FIFO insertion order of cached pins for memory budget eviction.
+    cache_order: VecDeque<PinId>,
 }
 
 impl Default for GraphEvaluator {
@@ -257,6 +263,9 @@ impl GraphEvaluator {
             cache_misses: 0,
             node_exec_counts: HashMap::new(),
             executor: Box::new(crate::nodes::PbrNodeExecutor::new()),
+            max_cache_bytes: 2_147_483_648, // 2 GB default
+            current_cache_bytes: 0,
+            cache_order: VecDeque::new(),
         }
     }
 
@@ -293,16 +302,58 @@ impl GraphEvaluator {
         &self.cache
     }
 
+    /// Returns the current total cache memory usage in bytes.
+    pub fn current_cache_bytes(&self) -> usize {
+        self.current_cache_bytes
+    }
+
+    /// Sets the maximum cache budget in bytes and evicts oldest entries if over budget.
+    pub fn set_max_cache_bytes(&mut self, max_bytes: usize) {
+        self.max_cache_bytes = max_bytes;
+        self.enforce_cache_budget();
+    }
+
+    /// Inserts a buffer into cache, tracking total bytes and enforcing budget eviction.
+    pub fn insert_cache_entry(&mut self, pin: PinId, buf: SharedTextureBuffer) {
+        let buf_len = buf.byte_len();
+        if let Some(old) = self.cache.insert(pin.clone(), buf) {
+            self.current_cache_bytes = self.current_cache_bytes.saturating_sub(old.byte_len());
+        }
+        self.current_cache_bytes += buf_len;
+        self.cache_order.push_back(pin);
+        self.enforce_cache_budget();
+    }
+
+    /// Evicts oldest cache entries (FIFO insertion order) until cache bytes <= max_cache_bytes.
+    pub fn enforce_cache_budget(&mut self) {
+        while self.current_cache_bytes > self.max_cache_bytes && !self.cache_order.is_empty() {
+            if let Some(oldest_pin) = self.cache_order.pop_front() {
+                if let Some(removed) = self.cache.remove(&oldest_pin) {
+                    self.current_cache_bytes = self.current_cache_bytes.saturating_sub(removed.byte_len());
+                }
+            }
+        }
+    }
+
     /// Replaces the socket cache with an updated snapshot from background worker evaluation,
-    /// and resets dirty node tracking.
+    /// and resets dirty node tracking while maintaining cache budget.
     pub fn apply_cache_update(&mut self, new_cache: HashMap<PinId, SharedTextureBuffer>) {
         self.cache = new_cache;
+        self.cache_order.clear();
+        self.current_cache_bytes = 0;
+        for (pin, buf) in &self.cache {
+            self.current_cache_bytes += buf.byte_len();
+            self.cache_order.push_back(pin.clone());
+        }
         self.dirty_nodes.clear();
+        self.enforce_cache_budget();
     }
 
     /// Invalidates all cached evaluation outputs.
     pub fn invalidate_all(&mut self) {
         self.cache.clear();
+        self.cache_order.clear();
+        self.current_cache_bytes = 0;
         self.dirty_nodes.clear();
     }
 
@@ -315,15 +366,23 @@ impl GraphEvaluator {
 
         for id in affected {
             self.dirty_nodes.insert(id);
-            self.cache.retain(|pin, _| pin.node_id != id);
+            self.cache.retain(|pin, buf| {
+                if pin.node_id == id {
+                    self.current_cache_bytes = self.current_cache_bytes.saturating_sub(buf.byte_len());
+                    false
+                } else {
+                    true
+                }
+            });
         }
+        self.cache_order.retain(|pin| self.cache.contains_key(pin));
     }
 
     /// Determines the working dimensions for a node.
     ///
     /// Resolution resolution precedence:
     /// 1. Node's explicit `resolution` or `width`/`height` parameters.
-    /// 2. Dimensions inherited from connected upstream inputs (preserving non-square aspect ratios like 4096x2048).
+    /// 2. Dimensions inherited from connected upstream inputs (preserving non-square aspect ratios like 4096x2048, skipping 1x1 broadcast buffers).
     /// 3. Graph default working resolution.
     pub fn resolve_node_dimensions(&self, graph: &Graph, node: &Node) -> (u32, u32) {
         // 1. Explicit parameter
@@ -342,10 +401,12 @@ impl GraphEvaluator {
             }
         }
 
-        // 2. Propagate from connected upstream inputs
+        // 2. Propagate from connected upstream inputs (skipping 1x1 broadcast buffers)
         for edge in graph.edges_to(node.id) {
             if let Some(buf) = self.cache.get(&edge.from) {
-                return (buf.width, buf.height);
+                if !buf.is_broadcast() {
+                    return (buf.width, buf.height);
+                }
             }
         }
 
@@ -382,7 +443,7 @@ impl GraphEvaluator {
             self.cache_misses += 1;
             *self.node_exec_counts.entry(node_id).or_insert(0) += 1;
 
-            // Gather inputs from upstream pins
+            // Gather inputs from upstream pins (1x1 broadcast buffers are passed as-is without resizing)
             let mut inputs = HashMap::new();
             for edge in graph.edges_to(node_id) {
                 if let Some(buf) = self.cache.get(&edge.from) {
@@ -396,7 +457,7 @@ impl GraphEvaluator {
             // Store outputs in cache
             for (pin_name, buf) in outputs {
                 let pin_id = PinId::output(node_id, pin_name);
-                self.cache.insert(pin_id, buf);
+                self.insert_cache_entry(pin_id, buf);
             }
 
             self.dirty_nodes.remove(&node_id);
@@ -600,7 +661,7 @@ pub mod tests {
     #[test]
     pub fn test_evaluator_basic_pipeline() {
         let mut graph = Graph::new();
-        let mut n1 = Node::new(NodeId(1), "ConstantColor", "Color", [0.0, 0.0]);
+        let mut n1 = Node::new(NodeId(1), "TextureInput", "Color", [0.0, 0.0]);
         n1.set_param("color", NodeParam::Color([1.0, 0.0, 0.0, 1.0])); // Pure Red
         let p1 = n1.add_output("output");
         graph.add_node(n1);
@@ -681,7 +742,7 @@ pub mod tests {
         let mut graph = Graph::new();
 
         // Node 1: explicit non-square 4096x2048 resolution
-        let mut n1 = Node::new(NodeId(1), "ConstantColor", "NonSquare", [0.0, 0.0]);
+        let mut n1 = Node::new(NodeId(1), "TextureInput", "NonSquare", [0.0, 0.0]);
         n1.set_param("resolution", NodeParam::Resolution { width: 4096, height: 2048 });
         let p1_out = n1.add_output("output");
         graph.add_node(n1);
@@ -757,7 +818,7 @@ pub mod tests {
     #[test]
     pub fn test_async_evaluator_execution_and_cache() {
         let mut graph = Graph::new();
-        let mut n1 = Node::new(NodeId(1), "ConstantColor", "Color", [0.0, 0.0]);
+        let mut n1 = Node::new(NodeId(1), "TextureInput", "Color", [0.0, 0.0]);
         n1.set_param("color", NodeParam::Color([1.0, 0.0, 0.0, 1.0])); // Pure Red
         let p1 = n1.add_output("output");
         graph.add_node(n1);
@@ -790,7 +851,7 @@ pub mod tests {
     #[test]
     pub fn test_async_evaluator_generation_debouncing() {
         let mut graph = Graph::new();
-        let mut n1 = Node::new(NodeId(1), "ConstantColor", "Color", [0.0, 0.0]);
+        let mut n1 = Node::new(NodeId(1), "TextureInput", "Color", [0.0, 0.0]);
         n1.set_param("color", NodeParam::Color([0.0, 1.0, 0.0, 1.0])); // Green
         let p1 = n1.add_output("output");
         graph.add_node(n1);
@@ -819,5 +880,90 @@ pub mod tests {
 
         let out = resp.cache_snapshot.get(&p1).expect("Output missing in snapshot");
         assert_eq!(out.get_pixel(0, 0), [0, 0, 255, 255]); // Blue
+    }
+
+    /// Verifies 1x1 broadcast buffer sampling operates seamlessly with a 4K texture buffer in Math nodes.
+    #[test]
+    pub fn test_broadcast_sampling_works_at_4k() {
+        let mut graph = Graph::new();
+
+        // 4K Texture Input (all 200)
+        let mut n1 = Node::new(NodeId(1), "TextureInput", "Base4K", [0.0, 0.0]);
+        n1.set_param("resolution", NodeParam::Resolution { width: 4096, height: 4096 });
+        n1.set_param("color", NodeParam::Color([200.0 / 255.0, 200.0 / 255.0, 200.0 / 255.0, 1.0]));
+        let p1 = n1.add_output("output");
+        graph.add_node(n1);
+
+        // 1x1 Constant Scalar (0.5)
+        let mut n2 = Node::new(NodeId(2), "ConstantScalar", "Factor", [0.0, 100.0]);
+        n2.set_param("value", NodeParam::Float(0.5));
+        let p2 = n2.add_output("output");
+        graph.add_node(n2);
+
+        // Math: Multiply 4K by 0.5 broadcast scalar
+        let mut n3 = Node::new(NodeId(3), "Math", "Mult", [200.0, 50.0]);
+        n3.set_param("operation", NodeParam::String("Multiply".to_string()));
+        let p3_a = n3.add_input("A");
+        let p3_b = n3.add_input("B");
+        let p3_out = n3.add_output("output");
+        graph.add_node(n3);
+
+        graph.connect(p1, p3_a).unwrap();
+        graph.connect(p2, p3_b).unwrap();
+
+        let mut evaluator = GraphEvaluator::new((1024, 1024));
+        let start = Instant::now();
+        evaluator.evaluate(&graph).expect("4K broadcast evaluation failed");
+        let elapsed = start.elapsed();
+        println!("4K Broadcast evaluation elapsed: {:?}", elapsed);
+
+        let out = evaluator.get_output(&p3_out).expect("Output missing");
+        assert_eq!(out.width, 4096);
+        assert_eq!(out.height, 4096);
+        let px_corner = out.get_pixel(0, 0);
+        let px_center = out.get_pixel(2048, 2048);
+        assert!((px_corner[0] as i32 - 100).abs() <= 2);
+        assert_eq!(px_corner, px_center);
+    }
+
+    /// Verifies cache memory budget enforcement evicts oldest entries (FIFO).
+    #[test]
+    pub fn test_cache_eviction_triggers_at_low_budget() {
+        let mut graph = Graph::new();
+
+        // Node 1: 64x64 buffer (64*64*4 = 16,384 bytes)
+        let mut n1 = Node::new(NodeId(1), "TextureInput", "N1", [0.0, 0.0]);
+        n1.set_param("resolution", NodeParam::Resolution { width: 64, height: 64 });
+        let p1 = n1.add_output("output");
+        graph.add_node(n1);
+
+        // Node 2: 64x64 buffer (16,384 bytes)
+        let mut n2 = Node::new(NodeId(2), "TextureInput", "N2", [0.0, 100.0]);
+        n2.set_param("resolution", NodeParam::Resolution { width: 64, height: 64 });
+        let _p2 = n2.add_output("output");
+        graph.add_node(n2);
+
+        // Node 3: 64x64 buffer (16,384 bytes)
+        let mut n3 = Node::new(NodeId(3), "TextureInput", "N3", [0.0, 200.0]);
+        n3.set_param("resolution", NodeParam::Resolution { width: 64, height: 64 });
+        let p3 = n3.add_output("output");
+        graph.add_node(n3);
+
+        let mut evaluator = GraphEvaluator::new((64, 64));
+        // Budget allows 1 node's outputs (~32,768 bytes), evicting earlier nodes (40,000 bytes < 65,536 bytes)
+        evaluator.set_max_cache_bytes(40_000);
+
+        evaluator.evaluate(&graph).expect("Evaluation failed");
+
+        assert!(
+            evaluator.current_cache_bytes() <= 40_000,
+            "Cache bytes {} must not exceed max budget 40,000",
+            evaluator.current_cache_bytes()
+        );
+
+        // Oldest inserted entry (Node 1) should have been evicted to respect the budget
+        assert!(evaluator.get_output(&p1).is_none(), "Oldest entry should be evicted");
+        // Newest entry (Node 3) must be present in cache
+        assert!(evaluator.get_output(&p3).is_some(), "Newest entry must remain in cache");
     }
 }

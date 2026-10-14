@@ -37,6 +37,71 @@ pub struct TextureBuffer16 {
     pub data: Vec<u16>, // RGBA 16-bit interleaved
 }
 
+impl TextureBuffer16 {
+    /// Creates a new 16-bit RGBA texture buffer with zeroed memory.
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            width,
+            height,
+            data: vec![0u16; (width as usize) * (height as usize) * 4],
+        }
+    }
+
+    /// Downscales 16-bit RGBA integer buffer (0..=65535) to 8-bit `TextureBuffer` (0..=255).
+    pub fn to_u8(&self) -> TextureBuffer {
+        TextureBuffer::from_rgba16(self.width, self.height, &self.data)
+    }
+
+    /// Checks if this buffer represents a single broadcast pixel (1x1).
+    #[inline(always)]
+    pub fn is_broadcast(&self) -> bool {
+        self.width == 1 && self.height == 1
+    }
+
+    /// Returns the single broadcast pixel (0, 0).
+    #[inline(always)]
+    pub fn broadcast_pixel(&self) -> [u16; 4] {
+        if self.data.len() >= 4 {
+            [self.data[0], self.data[1], self.data[2], self.data[3]]
+        } else {
+            [0, 0, 0, 0]
+        }
+    }
+
+    /// Total number of pixels in this buffer.
+    #[inline(always)]
+    pub fn pixel_count(&self) -> usize {
+        (self.width as usize) * (self.height as usize)
+    }
+
+    /// Total number of raw RGBA16 bytes in this buffer.
+    #[inline(always)]
+    pub fn byte_len(&self) -> usize {
+        self.pixel_count() * 8
+    }
+
+    /// Safely gets a full RGBA16 pixel at coordinates (x, y).
+    #[inline(always)]
+    pub fn get_pixel(&self, x: u32, y: u32) -> [u16; 4] {
+        if x < self.width && y < self.height {
+            let idx = ((y * self.width + x) * 4) as usize;
+            [self.data[idx], self.data[idx + 1], self.data[idx + 2], self.data[idx + 3]]
+        } else {
+            [0, 0, 0, 0]
+        }
+    }
+
+    /// Samples a pixel from this buffer: returns `broadcast_pixel()` if 1x1, else `get_pixel(x, y)`.
+    #[inline(always)]
+    pub fn sample_pixel(&self, x: u32, y: u32) -> [u16; 4] {
+        if self.is_broadcast() {
+            self.broadcast_pixel()
+        } else {
+            self.get_pixel(x, y)
+        }
+    }
+}
+
 /// 32-bit floating point texture buffer for physical shading & HDR calculations.
 #[derive(Clone, Debug, PartialEq)]
 pub struct TextureBufferF32 {
@@ -196,6 +261,28 @@ impl TextureBuffer {
         }
     }
 
+    /// Checks if this buffer represents a single broadcast pixel (1x1).
+    #[inline(always)]
+    pub fn is_broadcast(&self) -> bool {
+        self.width == 1 && self.height == 1
+    }
+
+    /// Returns the single broadcast pixel at (0, 0).
+    #[inline(always)]
+    pub fn broadcast_pixel(&self) -> [u8; 4] {
+        self.get_pixel(0, 0)
+    }
+
+    /// Samples a pixel from this buffer: returns `broadcast_pixel()` if 1x1, else `get_pixel(x, y)`.
+    #[inline(always)]
+    pub fn sample_pixel(&self, x: u32, y: u32) -> [u8; 4] {
+        if self.is_broadcast() {
+            self.broadcast_pixel()
+        } else {
+            self.get_pixel(x, y)
+        }
+    }
+
     /// Packs independent channels into a single RGBA `TextureBuffer` using Rayon parallel execution.
     ///
     /// Respects fallback defaults when any channel input is omitted (`None`).
@@ -214,6 +301,11 @@ impl TextureBuffer {
         let out_slice = out.image.as_mut();
         let row_stride = (width * 4) as usize;
 
+        let r_broadcast = r.filter(|buf| buf.is_broadcast()).map(|buf| buf.broadcast_pixel()[0]);
+        let g_broadcast = g.filter(|buf| buf.is_broadcast()).map(|buf| buf.broadcast_pixel()[1]);
+        let b_broadcast = b.filter(|buf| buf.is_broadcast()).map(|buf| buf.broadcast_pixel()[2]);
+        let a_broadcast = a.filter(|buf| buf.is_broadcast()).map(|buf| buf.broadcast_pixel()[3]);
+
         // Parallelize across rows to eliminate expensive div/mod in inner loop
         out_slice
             .par_chunks_exact_mut(row_stride)
@@ -223,53 +315,61 @@ impl TextureBuffer {
                 row.chunks_exact_mut(4).enumerate().for_each(|(x_idx, px)| {
                     let x = x_idx as u32;
 
-                    px[0] = r
-                        .map(|buf| {
-                            if buf.width == width && buf.height == height {
-                                buf.get_sample(x, y, 0)
-                            } else {
-                                let sx = (x * buf.width) / width;
-                                let sy = (y * buf.height) / height;
-                                buf.get_sample(sx, sy, 0)
-                            }
-                        })
-                        .unwrap_or(fallback[0]);
+                    px[0] = if let Some(v) = r_broadcast {
+                        v
+                    } else if let Some(buf) = r {
+                        if buf.width == width && buf.height == height {
+                            buf.get_sample(x, y, 0)
+                        } else {
+                            let sx = (x * buf.width) / width;
+                            let sy = (y * buf.height) / height;
+                            buf.get_sample(sx, sy, 0)
+                        }
+                    } else {
+                        fallback[0]
+                    };
 
-                    px[1] = g
-                        .map(|buf| {
-                            if buf.width == width && buf.height == height {
-                                buf.get_sample(x, y, 1)
-                            } else {
-                                let sx = (x * buf.width) / width;
-                                let sy = (y * buf.height) / height;
-                                buf.get_sample(sx, sy, 1)
-                            }
-                        })
-                        .unwrap_or(fallback[1]);
+                    px[1] = if let Some(v) = g_broadcast {
+                        v
+                    } else if let Some(buf) = g {
+                        if buf.width == width && buf.height == height {
+                            buf.get_sample(x, y, 1)
+                        } else {
+                            let sx = (x * buf.width) / width;
+                            let sy = (y * buf.height) / height;
+                            buf.get_sample(sx, sy, 1)
+                        }
+                    } else {
+                        fallback[1]
+                    };
 
-                    px[2] = b
-                        .map(|buf| {
-                            if buf.width == width && buf.height == height {
-                                buf.get_sample(x, y, 2)
-                            } else {
-                                let sx = (x * buf.width) / width;
-                                let sy = (y * buf.height) / height;
-                                buf.get_sample(sx, sy, 2)
-                            }
-                        })
-                        .unwrap_or(fallback[2]);
+                    px[2] = if let Some(v) = b_broadcast {
+                        v
+                    } else if let Some(buf) = b {
+                        if buf.width == width && buf.height == height {
+                            buf.get_sample(x, y, 2)
+                        } else {
+                            let sx = (x * buf.width) / width;
+                            let sy = (y * buf.height) / height;
+                            buf.get_sample(sx, sy, 2)
+                        }
+                    } else {
+                        fallback[2]
+                    };
 
-                    px[3] = a
-                        .map(|buf| {
-                            if buf.width == width && buf.height == height {
-                                buf.get_sample(x, y, 3)
-                            } else {
-                                let sx = (x * buf.width) / width;
-                                let sy = (y * buf.height) / height;
-                                buf.get_sample(sx, sy, 3)
-                            }
-                        })
-                        .unwrap_or(fallback[3]);
+                    px[3] = if let Some(v) = a_broadcast {
+                        v
+                    } else if let Some(buf) = a {
+                        if buf.width == width && buf.height == height {
+                            buf.get_sample(x, y, 3)
+                        } else {
+                            let sx = (x * buf.width) / width;
+                            let sy = (y * buf.height) / height;
+                            buf.get_sample(sx, sy, 3)
+                        }
+                    } else {
+                        fallback[3]
+                    };
                 });
             });
 
@@ -415,6 +515,15 @@ impl TextureBuffer {
         out
     }
 
+    /// Upscales 8-bit RGBA buffer to 16-bit `TextureBuffer16` (0..=255 -> 0..=65535).
+    pub fn to_u16(&self) -> TextureBuffer16 {
+        TextureBuffer16 {
+            width: self.width,
+            height: self.height,
+            data: self.to_rgba16(),
+        }
+    }
+
     /// Creates an 8-bit `TextureBuffer` from 16-bit RGBA integer buffer.
     pub fn from_rgba16(width: u32, height: u32, data: &[u16]) -> Self {
         let mut out = Self::new(width, height);
@@ -515,6 +624,13 @@ impl TextureBuffer {
         let pot_h = Self::next_pot(self.height);
         self.resize(pot_w, pot_h, filter)
     }
+}
+
+/// Helper function returning `broadcast_pixel()` if buffer is 1x1 broadcast,
+/// else `get_pixel(x, y)`.
+#[inline(always)]
+pub fn sample_pixel(buf: &TextureBuffer, x: u32, y: u32) -> [u8; 4] {
+    buf.sample_pixel(x, y)
 }
 
 trait TupleHelper<T> {
@@ -658,5 +774,36 @@ pub mod tests {
         // We ensure test runs safely in all environments.
         #[cfg(not(debug_assertions))]
         assert!(elapsed.as_millis() < 50, "4K Pack must complete in < 50ms, took {:?}", elapsed);
+    }
+
+    #[test]
+    pub fn test_texture_buffer_u16_roundtrip() {
+        let mut buf = TextureBuffer::new(2, 2);
+        buf.set_pixel(0, 0, [0, 128, 255, 200]);
+        buf.set_pixel(1, 1, [10, 20, 30, 40]);
+
+        let buf16 = buf.to_u16();
+        assert_eq!(buf16.width, 2);
+        assert_eq!(buf16.height, 2);
+        assert_eq!(buf16.get_pixel(0, 0), [0, 128 * 257, 255 * 257, 200 * 257]);
+
+        let back_u8 = buf16.to_u8();
+        assert_eq!(back_u8.get_pixel(0, 0), [0, 128, 255, 200]);
+        assert_eq!(back_u8.get_pixel(1, 1), [10, 20, 30, 40]);
+    }
+
+    #[test]
+    pub fn test_broadcast_pixel_methods() {
+        let single = TextureBuffer::solid_color(1, 1, 42, 84, 126, 255);
+        assert!(single.is_broadcast());
+        assert_eq!(single.broadcast_pixel(), [42, 84, 126, 255]);
+        assert_eq!(sample_pixel(&single, 100, 200), [42, 84, 126, 255]);
+        assert_eq!(single.sample_pixel(50, 50), [42, 84, 126, 255]);
+
+        let multi = TextureBuffer::new(16, 16);
+        assert!(!multi.is_broadcast());
+
+        let single16 = TextureBuffer16::new(1, 1);
+        assert!(single16.is_broadcast());
     }
 }

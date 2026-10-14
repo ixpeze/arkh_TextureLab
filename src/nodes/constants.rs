@@ -67,16 +67,15 @@ impl ConstantColorNodeData {
     }
 }
 
-/// Executes a `ConstantScalar` node, generating a solid scalar buffer (R=G=B=val, A=255).
+/// Executes a `ConstantScalar` node, generating a 1x1 broadcast scalar buffer (R=G=B=A=val).
 pub fn execute_constant_scalar(
     node: &Node,
-    resolution: (u32, u32),
+    _resolution: (u32, u32),
 ) -> Result<HashMap<String, SharedTextureBuffer>, EvaluationError> {
-    let (width, height) = resolution;
     let val = node.get_float("value", 1.0);
     let byte_val = (val * 255.0).clamp(0.0, 255.0) as u8;
 
-    let buf = TextureBuffer::solid_color(width, height, byte_val, byte_val, byte_val, 255);
+    let buf = TextureBuffer::solid_color(1, 1, byte_val, byte_val, byte_val, byte_val);
     let shared = Arc::new(buf);
 
     let mut outputs = HashMap::new();
@@ -87,19 +86,18 @@ pub fn execute_constant_scalar(
     Ok(outputs)
 }
 
-/// Executes a `ConstantColor` node, generating an RGBA solid color buffer and individual channel buffers.
+/// Executes a `ConstantColor` node, generating a 1x1 broadcast RGBA solid color buffer and individual channel buffers.
 pub fn execute_constant_color(
     node: &Node,
-    resolution: (u32, u32),
+    _resolution: (u32, u32),
 ) -> Result<HashMap<String, SharedTextureBuffer>, EvaluationError> {
-    let (width, height) = resolution;
     let color = node.get_color("color", [1.0, 1.0, 1.0, 1.0]);
     let r = (color[0] * 255.0).clamp(0.0, 255.0) as u8;
     let g = (color[1] * 255.0).clamp(0.0, 255.0) as u8;
     let b = (color[2] * 255.0).clamp(0.0, 255.0) as u8;
     let a = (color[3] * 255.0).clamp(0.0, 255.0) as u8;
 
-    let buf = TextureBuffer::solid_color(width, height, r, g, b, a);
+    let buf = TextureBuffer::solid_color(1, 1, r, g, b, a);
     let shared = Arc::new(buf);
 
     let mut outputs = HashMap::new();
@@ -108,10 +106,10 @@ pub fn execute_constant_color(
 
     // Provide individual split channels if needed
     if node.outputs.iter().any(|p| p.name == "R" || p.name == "G" || p.name == "B" || p.name == "A") {
-        outputs.insert("R".to_string(), Arc::new(TextureBuffer::solid_color(width, height, r, r, r, 255)));
-        outputs.insert("G".to_string(), Arc::new(TextureBuffer::solid_color(width, height, g, g, g, 255)));
-        outputs.insert("B".to_string(), Arc::new(TextureBuffer::solid_color(width, height, b, b, b, 255)));
-        outputs.insert("A".to_string(), Arc::new(TextureBuffer::solid_color(width, height, a, a, a, 255)));
+        outputs.insert("R".to_string(), Arc::new(TextureBuffer::solid_color(1, 1, r, r, r, 255)));
+        outputs.insert("G".to_string(), Arc::new(TextureBuffer::solid_color(1, 1, g, g, g, 255)));
+        outputs.insert("B".to_string(), Arc::new(TextureBuffer::solid_color(1, 1, b, b, b, 255)));
+        outputs.insert("A".to_string(), Arc::new(TextureBuffer::solid_color(1, 1, a, a, a, 255)));
     }
 
     Ok(outputs)
@@ -128,7 +126,23 @@ pub mod tests {
         node.set_param("value", NodeParam::Float(0.5));
         let outputs = execute_constant_scalar(&node, (16, 16)).unwrap();
         let buf = outputs.get("output").unwrap();
-        assert_eq!(buf.get_pixel(0, 0), [127, 127, 127, 255]);
+        assert_eq!(buf.width, 1);
+        assert_eq!(buf.height, 1);
+        assert!(buf.is_broadcast());
+        assert_eq!(buf.get_pixel(0, 0), [127, 127, 127, 127]);
+    }
+
+    #[test]
+    pub fn test_constant_scalar_outputs_1x1() {
+        let mut node = Node::new(NodeId(1), "ConstantScalar", "Metallic", [0.0, 0.0]);
+        node.set_param("value", NodeParam::Float(0.8));
+        let outputs = execute_constant_scalar(&node, (4096, 4096)).unwrap();
+        let buf = outputs.get("output").unwrap();
+        assert_eq!(buf.width, 1);
+        assert_eq!(buf.height, 1);
+        assert!(buf.is_broadcast());
+        let expected = (0.8f32 * 255.0).clamp(0.0, 255.0) as u8;
+        assert_eq!(buf.broadcast_pixel(), [expected, expected, expected, expected]);
     }
 
     #[test]
@@ -137,6 +151,9 @@ pub mod tests {
         node.set_param("color", NodeParam::Color([1.0, 0.0, 0.5, 1.0]));
         let outputs = execute_constant_color(&node, (8, 8)).unwrap();
         let buf = outputs.get("output").unwrap();
+        assert_eq!(buf.width, 1);
+        assert_eq!(buf.height, 1);
+        assert!(buf.is_broadcast());
         assert_eq!(buf.get_pixel(0, 0), [255, 0, 127, 255]);
     }
 }

@@ -464,7 +464,7 @@ fn test_transactional_history_stack_undo_redo() {
 fn test_non_square_4k_aspect_propagation() {
     let mut graph = Graph::new();
 
-    let mut n1 = Node::new(NodeId(1), "ConstantColor", "Panoramic Albedo", [0.0, 0.0]);
+    let mut n1 = Node::new(NodeId(1), "TextureInput", "Panoramic Albedo", [0.0, 0.0]);
     n1.set_param("resolution", NodeParam::Resolution { width: 4096, height: 2048 });
     let p1_out = n1.add_output("output");
     graph.add_node(n1);

@@ -147,6 +147,9 @@ pub fn apply_math_op(
     width: u32,
     height: u32,
 ) -> TextureBuffer {
+    let a_broadcast = a_buf.and_then(|a| if a.is_broadcast() { Some(a.broadcast_pixel()) } else { None });
+    let b_broadcast = b_buf.and_then(|b| if b.is_broadcast() { Some(b.broadcast_pixel()) } else { None });
+
     let mut out = TextureBuffer::new(width, height);
     let out_raw = out.image.as_mut();
     let row_stride = (width * 4) as usize;
@@ -159,7 +162,9 @@ pub fn apply_math_op(
             row.chunks_exact_mut(4).enumerate().for_each(|(x_idx, px)| {
                 let x = x_idx as u32;
 
-                let a_px = if let Some(a) = a_buf {
+                let a_px = if let Some(px) = a_broadcast {
+                    px
+                } else if let Some(a) = a_buf {
                     let sx = if a.width == width { x } else { (x * a.width) / width };
                     let sy = if a.height == height { y } else { (y * a.height) / height };
                     a.get_pixel(sx, sy)
@@ -168,7 +173,9 @@ pub fn apply_math_op(
                     [v, v, v, 255]
                 };
 
-                let b_px = if let Some(b) = b_buf {
+                let b_px = if let Some(px) = b_broadcast {
+                    px
+                } else if let Some(b) = b_buf {
                     let sx = if b.width == width { x } else { (x * b.width) / width };
                     let sy = if b.height == height { y } else { (y * b.height) / height };
                     b.get_pixel(sx, sy)

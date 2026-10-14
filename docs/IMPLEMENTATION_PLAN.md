@@ -335,10 +335,10 @@ full-resolution buffers wasting memory.
 - `git commit -m "feat(engine): 16-bit pipeline, constant broadcast, cache budget"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
 ```
 
 ---

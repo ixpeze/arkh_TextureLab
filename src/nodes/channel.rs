@@ -103,19 +103,34 @@ impl ChannelMixerRow {
         let raw_val = if self.source_channel == ChannelSelector::Constant {
             (self.fallback * 255.0).clamp(0.0, 255.0) as u8
         } else if let Some(buf) = src_buf {
-            let sx = if buf.width == target_w { x } else { (x * buf.width) / target_w };
-            let sy = if buf.height == target_h { y } else { (y * buf.height) / target_h };
-            match self.source_channel {
-                ChannelSelector::R => buf.get_sample(sx, sy, 0),
-                ChannelSelector::G => buf.get_sample(sx, sy, 1),
-                ChannelSelector::B => buf.get_sample(sx, sy, 2),
-                ChannelSelector::A => buf.get_sample(sx, sy, 3),
-                ChannelSelector::Luminance => {
-                    let px = buf.get_pixel(sx, sy);
-                    let lum = 0.2126 * (px[0] as f32) + 0.7152 * (px[1] as f32) + 0.0722 * (px[2] as f32);
-                    lum.round().clamp(0.0, 255.0) as u8
+            if buf.is_broadcast() {
+                let px = buf.broadcast_pixel();
+                match self.source_channel {
+                    ChannelSelector::R => px[0],
+                    ChannelSelector::G => px[1],
+                    ChannelSelector::B => px[2],
+                    ChannelSelector::A => px[3],
+                    ChannelSelector::Luminance => {
+                        let lum = 0.2126 * (px[0] as f32) + 0.7152 * (px[1] as f32) + 0.0722 * (px[2] as f32);
+                        lum.round().clamp(0.0, 255.0) as u8
+                    }
+                    ChannelSelector::Constant => (self.fallback * 255.0).clamp(0.0, 255.0) as u8,
                 }
-                ChannelSelector::Constant => (self.fallback * 255.0).clamp(0.0, 255.0) as u8,
+            } else {
+                let sx = if buf.width == target_w { x } else { (x * buf.width) / target_w };
+                let sy = if buf.height == target_h { y } else { (y * buf.height) / target_h };
+                match self.source_channel {
+                    ChannelSelector::R => buf.get_sample(sx, sy, 0),
+                    ChannelSelector::G => buf.get_sample(sx, sy, 1),
+                    ChannelSelector::B => buf.get_sample(sx, sy, 2),
+                    ChannelSelector::A => buf.get_sample(sx, sy, 3),
+                    ChannelSelector::Luminance => {
+                        let px = buf.get_pixel(sx, sy);
+                        let lum = 0.2126 * (px[0] as f32) + 0.7152 * (px[1] as f32) + 0.0722 * (px[2] as f32);
+                        lum.round().clamp(0.0, 255.0) as u8
+                    }
+                    ChannelSelector::Constant => (self.fallback * 255.0).clamp(0.0, 255.0) as u8,
+                }
             }
         } else {
             (self.fallback * 255.0).clamp(0.0, 255.0) as u8
@@ -227,6 +242,11 @@ impl ChannelCombiner {
         width: u32,
         height: u32,
     ) -> TextureBuffer {
+        let r_broadcast = r.and_then(|buf| if buf.is_broadcast() { Some(buf.broadcast_pixel()) } else { None });
+        let g_broadcast = g.and_then(|buf| if buf.is_broadcast() { Some(buf.broadcast_pixel()) } else { None });
+        let b_broadcast = b.and_then(|buf| if buf.is_broadcast() { Some(buf.broadcast_pixel()) } else { None });
+        let a_broadcast = a.and_then(|buf| if buf.is_broadcast() { Some(buf.broadcast_pixel()) } else { None });
+
         let mut out = TextureBuffer::new(width, height);
         let out_slice = out.image.as_mut();
         let row_stride = (width * 4) as usize;
@@ -239,16 +259,25 @@ impl ChannelCombiner {
                 row.chunks_exact_mut(4).enumerate().for_each(|(x_idx, px)| {
                     let x = x_idx as u32;
 
-                    px[0] = r
-                        .map(|buf| {
+                    px[0] = if let Some(p) = r_broadcast {
+                        p[0]
+                    } else {
+                        r.map(|buf| {
                             let sx = if buf.width == width { x } else { (x * buf.width) / width };
                             let sy = if buf.height == height { y } else { (y * buf.height) / height };
                             buf.get_sample(sx, sy, 0)
                         })
-                        .unwrap_or(fallback[0]);
+                        .unwrap_or(fallback[0])
+                    };
 
-                    px[1] = g
-                        .map(|buf| {
+                    px[1] = if let Some(p) = g_broadcast {
+                        if p[0] == p[1] && p[1] == p[2] {
+                            p[0]
+                        } else {
+                            p[1]
+                        }
+                    } else {
+                        g.map(|buf| {
                             let sx = if buf.width == width { x } else { (x * buf.width) / width };
                             let sy = if buf.height == height { y } else { (y * buf.height) / height };
                             // If input is single-channel grayscale (R=G=B), sample 0; otherwise channel 1
@@ -259,10 +288,17 @@ impl ChannelCombiner {
                                 p[1]
                             }
                         })
-                        .unwrap_or(fallback[1]);
+                        .unwrap_or(fallback[1])
+                    };
 
-                    px[2] = b
-                        .map(|buf| {
+                    px[2] = if let Some(p) = b_broadcast {
+                        if p[0] == p[1] && p[1] == p[2] {
+                            p[0]
+                        } else {
+                            p[2]
+                        }
+                    } else {
+                        b.map(|buf| {
                             let sx = if buf.width == width { x } else { (x * buf.width) / width };
                             let sy = if buf.height == height { y } else { (y * buf.height) / height };
                             let p = buf.get_pixel(sx, sy);
@@ -272,10 +308,17 @@ impl ChannelCombiner {
                                 p[2]
                             }
                         })
-                        .unwrap_or(fallback[2]);
+                        .unwrap_or(fallback[2])
+                    };
 
-                    px[3] = a
-                        .map(|buf| {
+                    px[3] = if let Some(p) = a_broadcast {
+                        if p[0] == p[1] && p[1] == p[2] {
+                            p[0]
+                        } else {
+                            p[3]
+                        }
+                    } else {
+                        a.map(|buf| {
                             let sx = if buf.width == width { x } else { (x * buf.width) / width };
                             let sy = if buf.height == height { y } else { (y * buf.height) / height };
                             let p = buf.get_pixel(sx, sy);
@@ -286,7 +329,8 @@ impl ChannelCombiner {
                                 p[3]
                             }
                         })
-                        .unwrap_or(fallback[3]);
+                        .unwrap_or(fallback[3])
+                    };
                 });
             });
 

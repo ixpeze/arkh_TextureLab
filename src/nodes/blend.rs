@@ -75,6 +75,9 @@ pub fn blend_normals_rnm(base: &TextureBuffer, detail: &TextureBuffer) -> Textur
     let width = base.width.max(detail.width);
     let height = base.height.max(detail.height);
 
+    let b_broadcast = if base.is_broadcast() { Some(base.broadcast_pixel()) } else { None };
+    let d_broadcast = if detail.is_broadcast() { Some(detail.broadcast_pixel()) } else { None };
+
     let mut out = TextureBuffer::new(width, height);
     let out_raw = out.image.as_mut();
     let row_stride = (width * 4) as usize;
@@ -87,14 +90,22 @@ pub fn blend_normals_rnm(base: &TextureBuffer, detail: &TextureBuffer) -> Textur
             row.chunks_exact_mut(4).enumerate().for_each(|(x_idx, px)| {
                 let x = x_idx as u32;
 
-                let b_px = base.get_pixel(
-                    if base.width == width { x } else { (x * base.width) / width },
-                    if base.height == height { y } else { (y * base.height) / height },
-                );
-                let d_px = detail.get_pixel(
-                    if detail.width == width { x } else { (x * detail.width) / width },
-                    if detail.height == height { y } else { (y * detail.height) / height },
-                );
+                let b_px = if let Some(px) = b_broadcast {
+                    px
+                } else {
+                    base.get_pixel(
+                        if base.width == width { x } else { (x * base.width) / width },
+                        if base.height == height { y } else { (y * base.height) / height },
+                    )
+                };
+                let d_px = if let Some(px) = d_broadcast {
+                    px
+                } else {
+                    detail.get_pixel(
+                        if detail.width == width { x } else { (x * detail.width) / width },
+                        if detail.height == height { y } else { (y * detail.height) / height },
+                    )
+                };
 
                 let n1_x = (b_px[0] as f32 / 255.0) * 2.0 - 1.0;
                 let n1_y = (b_px[1] as f32 / 255.0) * 2.0 - 1.0;
@@ -150,6 +161,10 @@ pub fn blend_layers(
     let height = base.height.max(layer.height);
     let opacity = opacity.clamp(0.0, 1.0);
 
+    let b_broadcast = if base.is_broadcast() { Some(base.broadcast_pixel()) } else { None };
+    let l_broadcast = if layer.is_broadcast() { Some(layer.broadcast_pixel()) } else { None };
+    let m_broadcast = mask.and_then(|m| if m.is_broadcast() { Some(m.broadcast_pixel()[0]) } else { None });
+
     let mut out = TextureBuffer::new(width, height);
     let out_raw = out.image.as_mut();
     let row_stride = (width * 4) as usize;
@@ -162,16 +177,26 @@ pub fn blend_layers(
             row.chunks_exact_mut(4).enumerate().for_each(|(x_idx, px)| {
                 let x = x_idx as u32;
 
-                let a_px = base.get_pixel(
-                    if base.width == width { x } else { (x * base.width) / width },
-                    if base.height == height { y } else { (y * base.height) / height },
-                );
-                let b_px = layer.get_pixel(
-                    if layer.width == width { x } else { (x * layer.width) / width },
-                    if layer.height == height { y } else { (y * layer.height) / height },
-                );
+                let a_px = if let Some(px) = b_broadcast {
+                    px
+                } else {
+                    base.get_pixel(
+                        if base.width == width { x } else { (x * base.width) / width },
+                        if base.height == height { y } else { (y * base.height) / height },
+                    )
+                };
+                let b_px = if let Some(px) = l_broadcast {
+                    px
+                } else {
+                    layer.get_pixel(
+                        if layer.width == width { x } else { (x * layer.width) / width },
+                        if layer.height == height { y } else { (y * layer.height) / height },
+                    )
+                };
 
-                let mask_val = if let Some(m) = mask {
+                let mask_val = if let Some(val) = m_broadcast {
+                    val as f32 / 255.0
+                } else if let Some(m) = mask {
                     let mx = if m.width == width { x } else { (x * m.width) / width };
                     let my = if m.height == height { y } else { (y * m.height) / height };
                     m.get_sample(mx, my, 0) as f32 / 255.0
