@@ -170,6 +170,13 @@ pub fn save_bmp<P: AsRef<Path>>(buffer: &TextureBuffer, path: P) -> Result<(), C
     Ok(())
 }
 
+/// Saves a `TextureBuffer` to disk as an OpenEXR file.
+pub fn save_exr<P: AsRef<Path>>(buffer: &TextureBuffer, path: P) -> Result<(), CodecError> {
+    let dyn_img = image::DynamicImage::ImageRgba8(buffer.image.clone());
+    dyn_img.save_with_format(path, image::ImageFormat::OpenExr)?;
+    Ok(())
+}
+
 /// Saves a `TextureBuffer` to disk, automatically inferring the codec from the file extension.
 pub fn save_image<P: AsRef<Path>>(buffer: &TextureBuffer, path: P) -> Result<(), CodecError> {
     let path_ref = path.as_ref();
@@ -180,6 +187,7 @@ pub fn save_image<P: AsRef<Path>>(buffer: &TextureBuffer, path: P) -> Result<(),
         .to_ascii_lowercase();
     match ext.as_str() {
         "tga" => crate::export::tga::save_tga_file(buffer, path_ref, 32).map_err(|e| CodecError::IoError(e.to_string())),
+        "exr" => save_exr(buffer, path_ref),
         "jpg" | "jpeg" => save_jpeg(buffer, path_ref, 95),
         "webp" => save_webp(buffer, path_ref),
         "bmp" => save_bmp(buffer, path_ref),

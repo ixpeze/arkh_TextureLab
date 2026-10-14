@@ -746,11 +746,11 @@ TextureLab into build scripts and CI/CD pipelines.
 - `git commit -m "feat(cli): add texturelab-cli headless binary"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
-- [ ] `cargo build --release` — two binaries
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
+- [x] `cargo build --release` — two binaries
 ```
 
 ---

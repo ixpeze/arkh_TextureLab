@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod batch;
+pub mod cli;
 pub mod core;
 pub mod export;
 pub mod graph;

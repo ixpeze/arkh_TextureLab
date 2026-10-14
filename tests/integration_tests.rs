@@ -2342,6 +2342,86 @@ fn test_texture_set_validator_missing_maps_unconnected() {
     assert!(report.has_errors());
 }
 
+// =========================================================================
+// P3-T5: Headless CLI Integration Tests
+// =========================================================================
+
+#[test]
+fn test_cli_headless_pipeline_full_run() {
+    use texturelab::cli;
+
+    let out_dir = std::env::temp_dir().join(format!("tlab_cli_integ_{}", std::process::id()));
+    let args = vec![
+        "texturelab-cli".to_string(),
+        "--graph".to_string(),
+        "assets/templates/ue5_orm_pack.tlab".to_string(),
+        "--input".to_string(),
+        "samples/1k/".to_string(),
+        "--output".to_string(),
+        out_dir.to_string_lossy().to_string(),
+        "--preset".to_string(),
+        "UE5_ORM".to_string(),
+        "--resolution".to_string(),
+        "1024x1024".to_string(),
+        "--format".to_string(),
+        "TGA".to_string(),
+        "--quiet".to_string(),
+    ];
+
+    let code = cli::run(args).expect("CLI execution must not error out");
+    assert_eq!(code, 0, "CLI exit code must be 0 for successful run");
+
+    // Check exported file exists
+    let expected_file = out_dir.join("T_anthracite_cast_concrete_ORM.tga");
+    assert!(expected_file.exists(), "Exported TGA file must exist on disk");
+    assert!(fs::metadata(&expected_file).unwrap().len() > 0, "Exported file must not be empty");
+
+    let _ = fs::remove_dir_all(&out_dir);
+}
+
+#[test]
+fn test_cli_headless_invalid_arguments_exit_code() {
+    use texturelab::cli;
+
+    // Missing --graph and --input
+    let code_missing = cli::run(vec!["texturelab-cli"]).expect("run should handle error gracefully");
+    assert_eq!(code_missing, 1, "Exit code must be 1 on missing required arguments");
+
+    // Invalid resolution
+    let code_bad_res = cli::run(vec![
+        "texturelab-cli",
+        "--graph",
+        "assets/templates/ue5_orm_pack.tlab",
+        "--input",
+        "samples/1k/",
+        "--resolution",
+        "invalid_res",
+    ]);
+    assert!(code_bad_res.is_err() || code_bad_res.unwrap() == 1);
+
+    // Invalid input directory
+    let code_bad_dir = cli::run(vec![
+        "texturelab-cli",
+        "--graph",
+        "assets/templates/ue5_orm_pack.tlab",
+        "--input",
+        "non_existent_folder_abc_123",
+    ]);
+    assert_eq!(code_bad_dir.unwrap(), 1);
+}
+
+#[test]
+fn test_cli_headless_help_and_version() {
+    use texturelab::cli;
+
+    let code_help = cli::run(vec!["texturelab-cli", "--help"]).expect("Help must succeed");
+    assert_eq!(code_help, 0);
+
+    let code_ver = cli::run(vec!["texturelab-cli", "-v"]).expect("Version must succeed");
+    assert_eq!(code_ver, 0);
+}
+
+
 
 
 

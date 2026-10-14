@@ -104,6 +104,8 @@ pub enum ExportFormat {
     Tga,
     /// Portable Network Graphics (8-bit or 16-bit).
     Png,
+    /// OpenEXR high dynamic range image format.
+    Exr,
     /// Joint Photographic Experts Group (JPEG / JPG).
     Jpg,
     /// Google WebP format.
@@ -138,6 +140,7 @@ impl ExportItem {
             .as_deref()
         {
             Some("tga") => ExportFormat::Tga,
+            Some("exr") => ExportFormat::Exr,
             Some("png") => ExportFormat::Png,
             Some("jpg") | Some("jpeg") => ExportFormat::Jpg,
             Some("webp") => ExportFormat::Webp,
@@ -371,6 +374,7 @@ impl ExportWriter {
         let effective_format = match item.format {
             ExportFormat::Tga => ExportFormat::Tga,
             ExportFormat::Png => ExportFormat::Png,
+            ExportFormat::Exr => ExportFormat::Exr,
             ExportFormat::Jpg => ExportFormat::Jpg,
             ExportFormat::Webp => ExportFormat::Webp,
             ExportFormat::Bmp => ExportFormat::Bmp,
@@ -382,6 +386,7 @@ impl ExportWriter {
                     .to_ascii_lowercase();
                 match ext.as_str() {
                     "tga" => ExportFormat::Tga,
+                    "exr" => ExportFormat::Exr,
                     "jpg" | "jpeg" => ExportFormat::Jpg,
                     "webp" => ExportFormat::Webp,
                     "bmp" => ExportFormat::Bmp,
@@ -399,6 +404,10 @@ impl ExportWriter {
             ExportFormat::Png => {
                 save_png(&item.buffer, &temp_path)
                     .map_err(|e| format!("PNG write error for {:?}: {}", dest_path, e))
+            }
+            ExportFormat::Exr => {
+                crate::export::codecs::save_exr(&item.buffer, &temp_path)
+                    .map_err(|e| format!("EXR write error for {:?}: {}", dest_path, e))
             }
             ExportFormat::Jpg => {
                 crate::export::codecs::save_jpeg(&item.buffer, &temp_path, 95)

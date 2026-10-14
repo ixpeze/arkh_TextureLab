@@ -5,11 +5,23 @@ edition = "2021"
 authors = ["ARKH LAB"]
 description = "PBR Texture Authoring and Channel Packing Workstation"
 
+[lib]
+name = "texturelab"
+path = "src/lib.rs"
+
+[[bin]]
+name = "texturelab"
+path = "src/main.rs"
+
+[[bin]]
+name = "texturelab-cli"
+path = "src/bin/cli.rs"
+
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 egui = "0.31"
 egui_dock = { version = "0.16", features = ["serde"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tga", "bmp", "rayon"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tga", "bmp", "rayon", "exr"] }
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
