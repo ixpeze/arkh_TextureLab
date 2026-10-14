@@ -70,6 +70,12 @@ pub struct ColorSpaceLut {
     srgb_to_linear_f32: [f32; 256],
 }
 
+impl Default for ColorSpaceLut {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ColorSpaceLut {
     /// Generates precomputed lookup tables.
     pub fn new() -> Self {
@@ -163,7 +169,7 @@ mod tests {
 
         // Mid-gray 128 in 8-bit sRGB corresponds to ~0.214 in Linear, which maps to ~54 in linear 8-bit
         let mid_linear = srgb_to_linear_u8(128);
-        assert!(mid_linear >= 52 && mid_linear <= 56, "Mid-gray sRGB 128 -> linear should be ~54, got {}", mid_linear);
+        assert!((52..=56).contains(&mid_linear), "Mid-gray sRGB 128 -> linear should be ~54, got {}", mid_linear);
     }
 
     #[test]

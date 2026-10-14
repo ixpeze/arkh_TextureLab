@@ -12,18 +12,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Strategy for Power-of-Two dimension rounding.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum PotRoundMode {
     None,
+    #[default]
     Nearest,
     Next,
     Prev,
-}
-
-impl Default for PotRoundMode {
-    fn default() -> Self {
-        Self::Nearest
-    }
 }
 
 impl PotRoundMode {
@@ -38,17 +33,12 @@ impl PotRoundMode {
 }
 
 /// Supported filter kernels for resampling.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ResizeFilter {
     Nearest,
+    #[default]
     Bilinear,
     Lanczos3,
-}
-
-impl Default for ResizeFilter {
-    fn default() -> Self {
-        Self::Bilinear
-    }
 }
 
 impl ResizeFilter {

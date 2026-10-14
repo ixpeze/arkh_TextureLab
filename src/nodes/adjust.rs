@@ -66,12 +66,12 @@ impl LevelsNodeData {
         let range = (in_high - in_low).max(0.0001);
 
         let mut lut = [0u8; 256];
-        for i in 0..256 {
+        for (i, entry) in lut.iter_mut().enumerate() {
             let v = i as f32 / 255.0;
             let clamped = ((v - in_low) / range).clamp(0.0, 1.0);
             let val = clamped.powf(1.0 / gamma);
             let mapped = out_low + val * (out_high - out_low);
-            lut[i] = (mapped * 255.0 + 0.5).clamp(0.0, 255.0) as u8;
+            *entry = (mapped * 255.0 + 0.5).clamp(0.0, 255.0) as u8;
         }
         lut
     }
@@ -201,10 +201,10 @@ pub fn apply_levels(src: &TextureBuffer, data: &LevelsNodeData) -> TextureBuffer
 /// Applies brightness and contrast adjustment.
 pub fn apply_brightness_contrast(src: &TextureBuffer, brightness: f32, contrast: f32) -> TextureBuffer {
     let mut lut = [0u8; 256];
-    for i in 0..256 {
+    for (i, entry) in lut.iter_mut().enumerate() {
         let v = i as f32 / 255.0;
         let val = (v - 0.5) * contrast + 0.5 + brightness;
-        lut[i] = (val.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+        *entry = (val.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
     }
 
     let mut out = TextureBuffer::new(src.width, src.height);

@@ -13,20 +13,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Source channel selector for swizzle routing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ChannelSelector {
+    #[default]
     R,
     G,
     B,
     A,
     Luminance,
     Constant,
-}
-
-impl Default for ChannelSelector {
-    fn default() -> Self {
-        Self::R
-    }
 }
 
 impl ChannelSelector {
@@ -222,6 +217,7 @@ pub struct ChannelCombiner;
 
 impl ChannelCombiner {
     /// Packs independent channel buffers into a single RGBA buffer with Rayon parallelization.
+    #[allow(clippy::chunks_exact_to_as_chunks)] // Evaluated: array_chunks_mut is not available on stable Rust; chunks_exact_mut provides stable and portable fixed-size chunking
     pub fn combine(
         r: Option<&TextureBuffer>,
         g: Option<&TextureBuffer>,
@@ -375,6 +371,7 @@ pub fn execute_channel_split(
 }
 
 /// Executes a `ChannelMixer` / `Swizzle` node with 4-row routing matrix.
+#[allow(clippy::chunks_exact_to_as_chunks)] // Evaluated: array_chunks_mut is not available on stable Rust; chunks_exact_mut provides stable and portable fixed-size chunking
 pub fn execute_channel_mixer(
     node: &Node,
     inputs: &HashMap<String, SharedTextureBuffer>,

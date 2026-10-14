@@ -294,7 +294,7 @@ pub fn show_library_panel(
                         } else {
                             n.display_name.to_lowercase().contains(&query_lower)
                                 || n.type_name.to_lowercase().contains(&query_lower)
-                                || n.hotkey.map_or(false, |k| k.to_lowercase().contains(&query_lower))
+                                || n.hotkey.is_some_and(|k| k.to_lowercase().contains(&query_lower))
                         }
                     })
                     .collect();
@@ -477,7 +477,7 @@ pub fn filter_catalog(query: &str) -> Vec<&'static NodeDescriptor> {
             n.display_name.to_lowercase().contains(&q)
                 || n.type_name.to_lowercase().contains(&q)
                 || n.category.to_string().to_lowercase().contains(&q)
-                || n.hotkey.map_or(false, |k| k.to_lowercase().contains(&q))
+                || n.hotkey.is_some_and(|k| k.to_lowercase().contains(&q))
         })
         .collect()
 }

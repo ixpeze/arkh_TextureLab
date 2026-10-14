@@ -101,7 +101,7 @@ impl TokenResolver {
         let raw = Self::resolve_raw(pattern, ctx);
 
         // Check if an extension is already present (e.g. .png, .tga)
-        let has_extension = raw.rsplit_once('.').map_or(false, |(_, ext)| {
+        let has_extension = raw.rsplit_once('.').is_some_and(|(_, ext)| {
             !ext.is_empty()
                 && ext.len() <= 5
                 && ext.chars().all(|c| c.is_ascii_alphanumeric())

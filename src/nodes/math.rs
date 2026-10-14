@@ -13,8 +13,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Supported 13 mathematical operations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum MathOp {
+    #[default]
     Add,
     Subtract,
     Multiply,
@@ -28,12 +29,6 @@ pub enum MathOp {
     Smoothstep,
     Modulo,
     Invert,
-}
-
-impl Default for MathOp {
-    fn default() -> Self {
-        Self::Add
-    }
 }
 
 impl MathOp {
@@ -115,18 +110,40 @@ impl MathOp {
     }
 }
 
+/// Configuration parameters for applying a mathematical operation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MathOpParams {
+    pub op: MathOp,
+    pub scalar_a: f32,
+    pub scalar_b: f32,
+    pub edge0: f32,
+    pub edge1: f32,
+    pub min_val: f32,
+    pub max_val: f32,
+    pub affect_alpha: bool,
+}
+
+impl Default for MathOpParams {
+    fn default() -> Self {
+        Self {
+            op: MathOp::Add,
+            scalar_a: 0.0,
+            scalar_b: 0.5,
+            edge0: 0.5,
+            edge1: 1.0,
+            min_val: 0.0,
+            max_val: 1.0,
+            affect_alpha: false,
+        }
+    }
+}
+
 /// Applies a mathematical operation between input textures and/or constant scalar fallbacks.
+#[allow(clippy::chunks_exact_to_as_chunks)] // Evaluated: array_chunks_mut is not available on stable Rust; chunks_exact_mut provides stable and portable fixed-size chunking
 pub fn apply_math_op(
     a_buf: Option<&TextureBuffer>,
     b_buf: Option<&TextureBuffer>,
-    op: MathOp,
-    scalar_a: f32,
-    scalar_b: f32,
-    edge0: f32,
-    edge1: f32,
-    min_val: f32,
-    max_val: f32,
-    affect_alpha: bool,
+    params: MathOpParams,
     width: u32,
     height: u32,
 ) -> TextureBuffer {
@@ -147,7 +164,7 @@ pub fn apply_math_op(
                     let sy = if a.height == height { y } else { (y * a.height) / height };
                     a.get_pixel(sx, sy)
                 } else {
-                    let v = (scalar_a * 255.0).clamp(0.0, 255.0) as u8;
+                    let v = (params.scalar_a * 255.0).clamp(0.0, 255.0) as u8;
                     [v, v, v, 255]
                 };
 
@@ -156,21 +173,21 @@ pub fn apply_math_op(
                     let sy = if b.height == height { y } else { (y * b.height) / height };
                     b.get_pixel(sx, sy)
                 } else {
-                    let v = (scalar_b * 255.0).clamp(0.0, 255.0) as u8;
+                    let v = (params.scalar_b * 255.0).clamp(0.0, 255.0) as u8;
                     [v, v, v, 255]
                 };
 
                 for c in 0..3 {
                     let an = a_px[c] as f32 / 255.0;
                     let bn = b_px[c] as f32 / 255.0;
-                    let res = op.compute(an, bn, edge0, edge1, min_val, max_val);
+                    let res = params.op.compute(an, bn, params.edge0, params.edge1, params.min_val, params.max_val);
                     px[c] = (res * 255.0 + 0.5).clamp(0.0, 255.0) as u8;
                 }
 
-                if affect_alpha {
+                if params.affect_alpha {
                     let an = a_px[3] as f32 / 255.0;
                     let bn = b_px[3] as f32 / 255.0;
-                    let res = op.compute(an, bn, edge0, edge1, min_val, max_val);
+                    let res = params.op.compute(an, bn, params.edge0, params.edge1, params.min_val, params.max_val);
                     px[3] = (res * 255.0 + 0.5).clamp(0.0, 255.0) as u8;
                 } else {
                     px[3] = a_px[3];
@@ -207,9 +224,7 @@ pub fn execute_math(
     let max_val = node.get_float("max_val", 1.0);
     let affect_alpha = node.get_bool("affect_alpha", false);
 
-    let result = apply_math_op(
-        a_buf.map(|a| a.as_ref()),
-        b_buf.map(|b| b.as_ref()),
+    let params = MathOpParams {
         op,
         scalar_a,
         scalar_b,
@@ -218,6 +233,12 @@ pub fn execute_math(
         min_val,
         max_val,
         affect_alpha,
+    };
+
+    let result = apply_math_op(
+        a_buf.map(|a| a.as_ref()),
+        b_buf.map(|b| b.as_ref()),
+        params,
         width,
         height,
     );
@@ -289,17 +310,21 @@ pub mod tests {
         let a = TextureBuffer::solid_color(16, 16, 100, 100, 100, 255);
         let b = TextureBuffer::solid_color(16, 16, 50, 50, 50, 255);
 
+        let params = MathOpParams {
+            op: MathOp::Add,
+            scalar_a: 0.0,
+            scalar_b: 0.0,
+            edge0: 0.0,
+            edge1: 1.0,
+            min_val: 0.0,
+            max_val: 1.0,
+            affect_alpha: false,
+        };
+
         let result = apply_math_op(
             Some(&a),
             Some(&b),
-            MathOp::Add,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-            0.0,
-            1.0,
-            false,
+            params,
             16,
             16,
         );

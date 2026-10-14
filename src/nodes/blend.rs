@@ -12,8 +12,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Supported blend modes for the `LayerBlend` node.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BlendMode {
+    #[default]
     Normal,
     Multiply,
     Add,
@@ -22,12 +23,6 @@ pub enum BlendMode {
     Overlay,
     Darken,
     Lighten,
-}
-
-impl Default for BlendMode {
-    fn default() -> Self {
-        Self::Normal
-    }
 }
 
 impl BlendMode {
@@ -75,6 +70,7 @@ impl BlendMode {
 /// $$\vec{u} = N_2 \cdot (-2.0, -2.0, 2.0) + (1.0, 1.0, -1.0)$$
 /// $$\vec{r} = \vec{t} \cdot (\vec{t} \cdot \vec{u}) - \vec{u} \cdot t_z$$
 /// $$\vec{N}_{out} = \text{normalize}(\vec{r}) \cdot 0.5 + 0.5$$
+#[allow(clippy::chunks_exact_to_as_chunks)] // Evaluated: array_chunks_mut is not available on stable Rust; chunks_exact_mut provides stable and portable fixed-size chunking
 pub fn blend_normals_rnm(base: &TextureBuffer, detail: &TextureBuffer) -> TextureBuffer {
     let width = base.width.max(detail.width);
     let height = base.height.max(detail.height);
@@ -142,6 +138,7 @@ pub fn blend_normals_rnm(base: &TextureBuffer, detail: &TextureBuffer) -> Textur
 ///
 /// $$\text{weight} = \text{clamp}(\text{opacity} \times \text{mask}, 0.0, 1.0)$$
 /// $$\text{Result} = A \times (1.0 - \text{weight}) + B_{blended} \times \text{weight}$$
+#[allow(clippy::chunks_exact_to_as_chunks)] // Evaluated: array_chunks_mut is not available on stable Rust; chunks_exact_mut provides stable and portable fixed-size chunking
 pub fn blend_layers(
     base: &TextureBuffer,
     layer: &TextureBuffer,

@@ -286,16 +286,15 @@ impl CanvasState {
             let is_viewport_locked = self.locked_viewport_node == Some(node.id);
             let screen_pos = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
 
-            let (node_rect, pin_coords) = render_node_card(
-                &painter,
-                node,
+            let params = NodeCardRenderParams {
                 screen_pos,
-                self.zoom,
+                zoom: self.zoom,
                 lod,
                 is_selected,
                 is_viewport_locked,
-                hovered_pin.as_ref(),
-            );
+                hovered_pin_id: hovered_pin.as_ref(),
+            };
+            let (node_rect, pin_coords) = render_node_card(&painter, node, &params);
 
             // Register pin screen coordinates
             for (pin_id, coord) in pin_coords {
@@ -321,12 +320,13 @@ impl CanvasState {
                 }
             }
 
-            if self.dragging_node == Some(node.id) {
-                if response.dragged_by(egui::PointerButton::Primary) && !ui.input(|i| i.key_down(Key::Space)) {
-                    let delta = response.drag_delta() / self.zoom;
-                    node.position[0] += delta.x;
-                    node.position[1] += delta.y;
-                }
+            if self.dragging_node == Some(node.id)
+                && response.dragged_by(egui::PointerButton::Primary)
+                && !ui.input(|i| i.key_down(Key::Space))
+            {
+                let delta = response.drag_delta() / self.zoom;
+                node.position[0] += delta.x;
+                node.position[1] += delta.y;
             }
         }
 
@@ -834,16 +834,17 @@ pub fn get_texture_input_filename(node: &Node) -> String {
     }
 }
 
+pub type ChannelBadgeTag = (&'static str, Color32, Color32);
+pub type ChannelBadgeTuple = (
+    Option<ChannelBadgeTag>,
+    Option<ChannelBadgeTag>,
+    Option<ChannelBadgeTag>,
+    Option<ChannelBadgeTag>,
+);
+
 /// Dynamically detects token-tags for R, G, B, A connectors from texture filename or label.
 /// Returns (R_tag, G_tag, B_tag, A_tag) where each tag is Option<(&'static str, Color32, Color32)>.
-pub fn detect_texture_channel_tags(
-    source_name: &str,
-) -> (
-    Option<(&'static str, Color32, Color32)>,
-    Option<(&'static str, Color32, Color32)>,
-    Option<(&'static str, Color32, Color32)>,
-    Option<(&'static str, Color32, Color32)>,
-) {
+pub fn detect_texture_channel_tags(source_name: &str) -> ChannelBadgeTuple {
     let clean = std::path::Path::new(source_name)
         .file_stem()
         .and_then(|s| s.to_str())
@@ -941,7 +942,7 @@ pub fn detect_texture_channel_tags(
     }
 
     // 2. Single Map or Role-based detection via LexicalNormalizer
-    match LexicalNormalizer::infer_role(&clean) {
+    match LexicalNormalizer::infer_role(clean) {
         Some(PbrRole::AmbientOcclusion) => (Some(tag_ao), None, None, None),
         Some(PbrRole::Roughness) => (Some(tag_rough), None, None, None),
         Some(PbrRole::Glossiness) => (Some(tag_gloss), None, None, None),
@@ -1001,17 +1002,31 @@ pub fn detect_texture_channel_tags(
     }
 }
 
+/// Parameters for rendering a node card on canvas.
+#[derive(Clone, Copy, Debug)]
+pub struct NodeCardRenderParams<'a> {
+    pub screen_pos: Pos2,
+    pub zoom: f32,
+    pub lod: NodeLod,
+    pub is_selected: bool,
+    pub is_viewport_locked: bool,
+    pub hovered_pin_id: Option<&'a PinId>,
+}
+
 /// Renders a single node card according to active LOD level (React/xyflow NodeCard architecture).
 fn render_node_card(
     painter: &Painter,
     node: &Node,
-    screen_pos: Pos2,
-    zoom: f32,
-    lod: NodeLod,
-    is_selected: bool,
-    is_viewport_locked: bool,
-    hovered_pin_id: Option<&PinId>,
+    params: &NodeCardRenderParams<'_>,
 ) -> (Rect, Vec<(PinId, Pos2)>) {
+    let NodeCardRenderParams {
+        screen_pos,
+        zoom,
+        lod,
+        is_selected,
+        is_viewport_locked,
+        hovered_pin_id,
+    } = *params;
     let cat = infer_category(&node.node_type);
     let cat_col = category_color(cat);
 
@@ -1057,8 +1072,8 @@ fn render_node_card(
 
             // 4. Raised Card Header Surface with subtle category tint
             let r_top = egui::CornerRadius {
-                nw: (corner_r as u8).min(255),
-                ne: (corner_r as u8).min(255),
+                nw: corner_r as u8,
+                ne: corner_r as u8,
                 sw: 0,
                 se: 0,
             };
@@ -1350,8 +1365,8 @@ fn render_node_card(
 
             // 3.0px Category Bar with rounded top corners
             let r_top = egui::CornerRadius {
-                nw: (corner_r as u8).min(255),
-                ne: (corner_r as u8).min(255),
+                nw: corner_r as u8,
+                ne: corner_r as u8,
                 sw: 0,
                 se: 0,
             };
@@ -1545,7 +1560,7 @@ mod tests {
         node_compact.add_input("B");
         node_compact.add_output("Out");
         let w_compact = calculate_node_width(&node_compact);
-        assert!(w_compact >= 200.0 && w_compact <= 280.0);
+        assert!((200.0..=280.0).contains(&w_compact));
 
         // Node with lengthy custom label
         let mut node_long = Node::new(NodeId(2), "TextureInput", "TextureInput", [0.0, 0.0]);

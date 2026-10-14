@@ -716,7 +716,7 @@ fn test_math_operations() {
         // Standard inputs
         let normal_res = op.compute(0.6, 0.3, 0.0, 1.0, 0.0, 1.0);
         assert!(!normal_res.is_nan(), "Op {:?} produced NaN", op);
-        assert!(normal_res >= 0.0 && normal_res <= 1.0, "Op {:?} out of bounds", op);
+        assert!((0.0..=1.0).contains(&normal_res), "Op {:?} out of bounds", op);
     }
 }
 
@@ -1313,7 +1313,7 @@ fn test_full_width_horizontal_socket_drag_and_drop() {
         .unwrap();
     let node1 = desc_tex.create_node(n1_id, [100.0, 100.0]);
     let w1 = calculate_node_width(&node1);
-    assert!(w1 >= 200.0 && w1 <= 280.0);
+    assert!((200.0..=280.0).contains(&w1));
     graph.add_node(node1);
 
     // Node 2: Math (e.g. Multiply/Add) with inputs A, B and output 'output' (Dual-sided node)
@@ -1323,7 +1323,7 @@ fn test_full_width_horizontal_socket_drag_and_drop() {
         .unwrap();
     let node2 = desc_math.create_node(n2_id, [400.0, 100.0]);
     let w2 = calculate_node_width(&node2);
-    assert!(w2 >= 200.0 && w2 <= 280.0);
+    assert!((200.0..=280.0).contains(&w2));
     graph.add_node(node2);
 
     // Simulate full-width horizontal hit-test logic

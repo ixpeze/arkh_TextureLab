@@ -242,6 +242,7 @@ pub fn encode_tga_24(buffer: &TextureBuffer) -> Result<Vec<u8>, TgaError> {
 }
 
 /// Decodes an uncompressed Truevision TGA byte buffer into a `TextureBuffer`.
+#[allow(clippy::chunks_exact_to_as_chunks)] // Evaluated: array_chunks / array_chunks_mut are not available on stable Rust; chunks_exact and chunks_exact_mut provide stable and portable fixed-size chunking
 pub fn decode_tga(bytes: &[u8]) -> Result<TextureBuffer, TgaError> {
     if bytes.len() < TGA_HEADER_SIZE {
         return Err(TgaError::BufferTooSmall {

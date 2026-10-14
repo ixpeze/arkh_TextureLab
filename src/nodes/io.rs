@@ -11,19 +11,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 /// Supported image formats for I/O operations.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TextureFileFormat {
+    #[default]
     Auto,
     Png,
     Tga,
     Exr,
     Jpg,
-}
-
-impl Default for TextureFileFormat {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 impl std::fmt::Display for TextureFileFormat {
@@ -39,17 +34,12 @@ impl std::fmt::Display for TextureFileFormat {
 }
 
 /// Bit-depth format configuration for texture buffers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TextureBitDepth {
+    #[default]
     U8,
     U16,
     F32,
-}
-
-impl Default for TextureBitDepth {
-    fn default() -> Self {
-        Self::U8
-    }
 }
 
 impl std::fmt::Display for TextureBitDepth {
@@ -63,17 +53,12 @@ impl std::fmt::Display for TextureBitDepth {
 }
 
 /// Color space interpretation for texture channels.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum TextureColorSpace {
+    #[default]
     #[serde(alias = "sRgb", alias = "sRGB")]
     SRgb,
     Linear,
-}
-
-impl Default for TextureColorSpace {
-    fn default() -> Self {
-        Self::SRgb
-    }
 }
 
 impl std::fmt::Display for TextureColorSpace {

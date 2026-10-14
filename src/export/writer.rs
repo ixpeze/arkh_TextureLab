@@ -319,7 +319,7 @@ impl ExportWriter {
         // 2. Execute Parallel Atomic Writes via Rayon
         let results: Vec<Result<(PathBuf, u64), String>> = items
             .par_iter()
-            .map(|item| Self::write_single_atomic(item))
+            .map(Self::write_single_atomic)
             .collect();
 
         // 3. Assemble Export Execution Report

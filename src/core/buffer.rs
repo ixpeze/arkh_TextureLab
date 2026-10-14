@@ -200,6 +200,7 @@ impl TextureBuffer {
     ///
     /// Respects fallback defaults when any channel input is omitted (`None`).
     /// Row-chunked parallelism eliminates division/modulo operations, yielding < 50ms 4K packing.
+    #[allow(clippy::chunks_exact_to_as_chunks)] // Evaluated: array_chunks_mut is not available on stable Rust; chunks_exact_mut provides stable and portable fixed-size chunking
     pub fn pack_channels(
         r: Option<&TextureBuffer>,
         g: Option<&TextureBuffer>,
@@ -276,6 +277,7 @@ impl TextureBuffer {
     }
 
     /// Advanced channel packing allowing selection of any source channel index (0..=3) from each input.
+    #[allow(clippy::chunks_exact_to_as_chunks)] // Evaluated: array_chunks_mut is not available on stable Rust; chunks_exact_mut provides stable and portable fixed-size chunking
     pub fn pack_from_channels(
         r: Option<(&TextureBuffer, usize)>,
         g: Option<(&TextureBuffer, usize)>,

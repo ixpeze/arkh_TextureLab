@@ -231,11 +231,12 @@ pub fn resolve_viewport_preview(
                         best_output_node = Some(node);
                         max_x = node.position[0];
                     }
-                } else if best_output_node.is_none() && !node.outputs.is_empty() {
-                    if node.position[0] > max_x {
-                        best_output_node = Some(node);
-                        max_x = node.position[0];
-                    }
+                } else if best_output_node.is_none()
+                    && !node.outputs.is_empty()
+                    && node.position[0] > max_x
+                {
+                    best_output_node = Some(node);
+                    max_x = node.position[0];
                 }
             }
             best_output_node

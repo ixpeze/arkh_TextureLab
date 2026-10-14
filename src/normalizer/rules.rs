@@ -260,10 +260,8 @@ impl LexicalNormalizer {
                 }
 
                 // Match on compound combinations (e.g., "base_color", "ambient_occlusion")
-                if full_lower.contains(&alias) || concatenated.contains(&alias) {
-                    if alias.len() >= 4 {
-                        score = score.max(8.0 + (alias.len() as f32) * 0.2);
-                    }
+                if (full_lower.contains(&alias) || concatenated.contains(&alias)) && alias.len() >= 4 {
+                    score = score.max(8.0 + (alias.len() as f32) * 0.2);
                 }
 
                 // Isolated token match

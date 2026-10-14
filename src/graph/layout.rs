@@ -583,10 +583,10 @@ fn layout_connected_component(
     }
 
     // Forward pass: align downstream nodes with upstream source pin sockets
-    for r in 1..=max_rank {
+    for layer in layers.iter_mut().skip(1) {
         let mut desired_ys: HashMap<NodeId, f32> = HashMap::new();
 
-        for &id in &layers[r] {
+        for &id in layer.iter() {
             let node = &graph.nodes[&id];
             let incoming_edges: Vec<&Edge> = graph.edges_to(id);
 
@@ -610,7 +610,7 @@ fn layout_connected_component(
         }
 
         // Sort nodes in column by desired Y (maintaining topological order)
-        layers[r].sort_by(|&a, &b| {
+        layer.sort_by(|&a, &b| {
             desired_ys[&a]
                 .partial_cmp(&desired_ys[&b])
                 .unwrap_or(a.cmp(&b))
@@ -618,7 +618,7 @@ fn layout_connected_component(
 
         // Compact downward placement preventing overlaps
         let mut last_bottom = f32::MIN;
-        for &id in &layers[r] {
+        for &id in layer.iter() {
             let node = &graph.nodes[&id];
             let h = calculate_node_height(node);
             let ideal_y = desired_ys[&id];
@@ -670,8 +670,8 @@ fn layout_connected_component(
     }
 
     // Also enforce final separation across all downstream columns
-    for r in 1..=max_rank {
-        enforce_column_separation(&layers[r], graph, &mut pos_y, start_y);
+    for layer in layers.iter().skip(1) {
+        enforce_column_separation(layer, graph, &mut pos_y, start_y);
     }
 
     // Build final positions map and calculate bounding height
