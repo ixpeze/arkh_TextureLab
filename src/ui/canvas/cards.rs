@@ -863,7 +863,8 @@ pub fn infer_category(node_type: &str) -> NodeCategory {
     match node_type {
         "SaveImage" | "TextureInput" | "TextureOutput" | "Input" | "Output" => NodeCategory::Io,
         "ConstantScalar" | "ConstantColor" | "Scalar" | "Color" => NodeCategory::Constants,
-        "ChannelCombine" | "ChannelSplit" | "ChannelMixer" | "ChannelPack" | "ChannelUnpack" => {
+        "ChannelCombine" | "ChannelSplit" | "ChannelMixer" | "ChannelPack" | "ChannelUnpack"
+        | "SpecGlossToMetalRough" => {
             NodeCategory::ChannelOps
         }
         "Invert" | "Levels" | "BrightnessContrast" => NodeCategory::ColorAdjust,

@@ -14,6 +14,7 @@ pub mod adjust;
 pub mod blend;
 pub mod channel;
 pub mod constants;
+pub mod convert;
 pub mod io;
 pub mod math;
 pub mod transform;
@@ -27,6 +28,10 @@ pub use channel::{
     ChannelCombiner, ChannelMixerNodeData, ChannelMixerRow, ChannelSelector, ChannelSplitter,
 };
 pub use constants::{ConstantColorNodeData, ConstantScalarNodeData};
+pub use convert::{
+    convert_spec_gloss_to_metal_rough, execute_spec_gloss_to_metal_rough,
+    SpecGlossToMetalRoughNodeData,
+};
 pub use io::{
     TextureBitDepth, TextureColorSpace, TextureFileFormat, TextureInputNodeData,
     TextureOutputNodeData,
@@ -95,6 +100,9 @@ impl NodeExecutor for PbrNodeExecutor {
                 channel::execute_channel_split(node, inputs, resolution)
             }
             "ChannelMixer" | "Swizzle" => channel::execute_channel_mixer(node, inputs, resolution),
+            "SpecGlossToMetalRough" | "SpecGlossConverter" | "SpecToMetal" => {
+                convert::execute_spec_gloss_to_metal_rough(node, inputs, resolution)
+            }
 
             // Adjustments
             "Invert" => adjust::execute_invert(node, inputs, resolution),
@@ -275,6 +283,14 @@ pub static NODE_CATALOG: &[NodeDescriptor] = &[
         default_inputs: &["input"],
         default_outputs: &["output", "RGBA"],
     },
+    NodeDescriptor {
+        type_name: "SpecGlossToMetalRough",
+        display_name: "Spec/Gloss to Metal/Rough",
+        category: NodeCategory::ChannelOps,
+        hotkey: None,
+        default_inputs: &["diffuse", "specular", "glossiness"],
+        default_outputs: &["base_color", "metallic", "roughness"],
+    },
     // 4. Color & Adjust
     NodeDescriptor {
         type_name: "Invert",
@@ -418,6 +434,9 @@ pub fn find_descriptor(type_name: &str) -> Option<&'static NodeDescriptor> {
             NODE_CATALOG.iter().find(|d| d.type_name == "ChannelSplit")
         }
         "SWIZZLE" => NODE_CATALOG.iter().find(|d| d.type_name == "ChannelMixer"),
+        "SPECGLOSSTOMETALROUGH" | "SPECGLOSS" | "SPECTOMETAL" | "CONVERTSPECGLOSS" => {
+            NODE_CATALOG.iter().find(|d| d.type_name == "SpecGlossToMetalRough")
+        }
         "ONEMINUS" => NODE_CATALOG.iter().find(|d| d.type_name == "Invert"),
         "FLIPGREEN" | "NORMALINVERTY" => {
             NODE_CATALOG.iter().find(|d| d.type_name == "NormalFlipGreen")
@@ -451,6 +470,8 @@ pub mod tests {
         assert!(find_descriptor("ChannelPack").is_some());
         assert!(find_descriptor("Comment").is_some());
         assert!(find_descriptor("Reroute").is_some());
+        assert!(find_descriptor("SpecGlossToMetalRough").is_some());
+        assert!(find_descriptor("SpecGloss").is_some());
     }
 
     #[test]
@@ -488,5 +509,17 @@ pub mod tests {
         let node = desc.create_node(NodeId(100), [50.0, 60.0]);
         assert_eq!(node.inputs.len(), 1);
         assert_eq!(node.outputs.len(), 1);
+    }
+
+    #[test]
+    pub fn test_spec_gloss_node_catalog() {
+        let desc = find_descriptor("SpecGlossToMetalRough").expect("SpecGlossToMetalRough should exist");
+        assert_eq!(desc.category, NodeCategory::ChannelOps);
+        assert_eq!(desc.default_inputs, &["diffuse", "specular", "glossiness"]);
+        assert_eq!(desc.default_outputs, &["base_color", "metallic", "roughness"]);
+
+        let node = desc.create_node(NodeId(101), [10.0, 20.0]);
+        assert_eq!(node.inputs.len(), 3);
+        assert_eq!(node.outputs.len(), 3);
     }
 }

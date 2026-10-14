@@ -101,7 +101,7 @@ Clean up code health issues found during analysis before adding features.
 ### Phase 3 — Pipeline Features (F1, F2, F4, F5, F8)
 | Task | Files | What |
 |---|---|---|
-| P3-T1 | `src/nodes/mod.rs`, new `src/nodes/convert.rs` | `SpecGlossToMetalRough` node: converts Specular+Glossiness textures to Metallic+Roughness using energy-conservation approximation. Uses existing glossiness alias dictionary. |
+| P3-T1 | `src/nodes/mod.rs`, new `src/nodes/convert.rs` | ✅ Done — `SpecGlossToMetalRough` node: converts Specular+Glossiness textures to Metallic+Roughness using energy-conservation approximation. |
 | P3-T2 | new `src/export/preset_designer.rs` | User-definable export presets: name, per-channel source routing (node output + channel selector), output format, bit depth, token pattern. Serialised to `presets.json`. |
 | P3-T3 | `src/ui/inspector.rs` or new `src/ui/validator.rs` | Texture Set Validator panel: checks completeness (missing maps), resolution consistency, POT compliance, naming convention adherence. Displays pass/warn/fail badges. |
 | P3-T4 | new `src/batch/mod.rs`, `src/batch/processor.rs` | Batch Processor: queue multiple texture sets (folders), apply a graph template + export preset to each, run sequentially with progress reporting. |
@@ -590,10 +590,10 @@ convert them to Metallic/Roughness for modern PBR pipelines.
 - `git commit -m "feat(nodes): add Spec/Gloss to Metal/Rough converter"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
 ```
 
 ---

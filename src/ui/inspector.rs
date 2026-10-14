@@ -839,6 +839,34 @@ pub fn show_inspector(
                     }
                 }
 
+                "SpecGlossToMetalRough" => {
+                    let mut threshold = node.get_float("threshold", 0.5);
+                    let mut continuous = node.get_bool("continuous", false);
+                    let mut changed = false;
+
+                    ui.label("Metallic Threshold:");
+                    changed |= ui.add(Slider::new(&mut threshold, 0.0..=1.0)).changed();
+
+                    changed |= ui.checkbox(&mut continuous, "Continuous Ramp (Substance style)").changed();
+
+                    if changed {
+                        node.set_param("threshold", NodeParam::Float(threshold));
+                        node.set_param("continuous", NodeParam::Bool(continuous));
+                        action = Some(InspectorAction::ParamChanged {
+                            node_id,
+                            param_name: "threshold".to_string(),
+                            new_value: NodeParam::Float(threshold),
+                        });
+                    }
+
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new("Roughness = 1.0 - Glossiness\nBase Color = lerp(Diffuse, Specular, Metallic)")
+                            .color(TEXT_MUTED)
+                            .size(10.5),
+                    );
+                }
+
                 "NormalFlipGreen" | "FlipGreen" => {
                     let mut flip_green = node.get_bool("flip_green", true);
                     ui.label("DirectX <-> OpenGL Standard:");
@@ -1191,7 +1219,8 @@ fn infer_category(node_type: &str) -> NodeCategory {
     match node_type {
         "SaveImage" | "TextureInput" | "TextureOutput" | "Input" | "Output" => NodeCategory::Io,
         "ConstantScalar" | "ConstantColor" | "Scalar" | "Color" => NodeCategory::Constants,
-        "ChannelCombine" | "ChannelSplit" | "ChannelMixer" | "ChannelPack" | "ChannelUnpack" => {
+        "ChannelCombine" | "ChannelSplit" | "ChannelMixer" | "ChannelPack" | "ChannelUnpack"
+        | "SpecGlossToMetalRough" => {
             NodeCategory::ChannelOps
         }
         "Invert" | "Levels" | "BrightnessContrast" => NodeCategory::ColorAdjust,
@@ -1215,6 +1244,7 @@ mod tests {
         assert_eq!(infer_category("TextureInput"), NodeCategory::Io);
         assert_eq!(infer_category("ConstantScalar"), NodeCategory::Constants);
         assert_eq!(infer_category("ChannelCombine"), NodeCategory::ChannelOps);
+        assert_eq!(infer_category("SpecGlossToMetalRough"), NodeCategory::ChannelOps);
         assert_eq!(infer_category("Levels"), NodeCategory::ColorAdjust);
         assert_eq!(infer_category("NormalFlipGreen"), NodeCategory::NormalOps);
         assert_eq!(infer_category("LayerBlend"), NodeCategory::BlendOps);

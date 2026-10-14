@@ -2041,4 +2041,83 @@ fn test_builtin_templates_gallery_and_undo() {
     assert!(!app.load_template_by_name("Unknown Template"));
 }
 
+#[test]
+fn test_spec_gloss_to_metal_rough_dag_pipeline() {
+    use texturelab::graph::evaluator::GraphEvaluator;
+    use texturelab::graph::model::{Graph, Node, NodeId, NodeParam};
+
+    let mut graph = Graph::new();
+
+    // 1. Diffuse node (Albedo) [200, 100, 50, 255]
+    let mut diff = Node::new(NodeId(1), "ConstantColor", "Diffuse", [0.0, 0.0]);
+    diff.set_param("color", NodeParam::Color([200.0 / 255.0, 100.0 / 255.0, 50.0 / 255.0, 1.0]));
+    let diff_out = diff.add_output("output");
+    graph.add_node(diff);
+
+    // 2. Specular node (Dielectric spec = ~0.04 -> metallic = 0.0)
+    let mut spec = Node::new(NodeId(2), "ConstantColor", "Specular", [0.0, 150.0]);
+    spec.set_param("color", NodeParam::Color([0.04, 0.04, 0.04, 1.0]));
+    let spec_out = spec.add_output("output");
+    graph.add_node(spec);
+
+    // 3. Glossiness node (Gloss = 0.25 -> Roughness = 0.75)
+    let mut gloss = Node::new(NodeId(3), "ConstantScalar", "Glossiness", [0.0, 300.0]);
+    gloss.set_param("value", NodeParam::Float(0.25));
+    let gloss_out = gloss.add_output("output");
+    graph.add_node(gloss);
+
+    // 4. SpecGlossToMetalRough node
+    let mut conv = Node::new(NodeId(4), "SpecGlossToMetalRough", "Converter", [300.0, 150.0]);
+    let conv_diff = conv.add_input("diffuse");
+    let conv_spec = conv.add_input("specular");
+    let conv_gloss = conv.add_input("glossiness");
+    let conv_bc = conv.add_output("base_color");
+    let conv_metal = conv.add_output("metallic");
+    let conv_rough = conv.add_output("roughness");
+    graph.add_node(conv);
+
+    graph.connect(diff_out, conv_diff).unwrap();
+    graph.connect(spec_out, conv_spec).unwrap();
+    graph.connect(gloss_out, conv_gloss).unwrap();
+
+    let mut evaluator = GraphEvaluator::new((16, 16));
+    evaluator.evaluate(&graph).expect("DAG evaluation must succeed");
+
+    let bc_buf = evaluator.get_output(&conv_bc).expect("base_color output must exist");
+    let m_buf = evaluator.get_output(&conv_metal).expect("metallic output must exist");
+    let r_buf = evaluator.get_output(&conv_rough).expect("roughness output must exist");
+
+    // Dielectric specular (0.04 <= 0.5) => Metallic = 0.0 (0)
+    assert_eq!(m_buf.get_pixel(0, 0)[0], 0);
+
+    // Glossiness = 0.25 => Roughness = 0.75 (approx 191/255)
+    let r_val = r_buf.get_pixel(0, 0)[0];
+    assert!((r_val as i32 - 191).abs() <= 1);
+
+    // Base color matches diffuse because metallic is 0
+    let bc_px = bc_buf.get_pixel(0, 0);
+    assert_eq!(bc_px[0], 200);
+    assert_eq!(bc_px[1], 100);
+    assert_eq!(bc_px[2], 50);
+
+    // Now modify specular to white (Metal):
+    let spec_metal = graph.get_node_mut(NodeId(2)).unwrap();
+    spec_metal.set_param("color", NodeParam::Color([1.0, 1.0, 1.0, 1.0]));
+    evaluator.mark_dirty(&graph, NodeId(2));
+
+    evaluator.evaluate(&graph).expect("Re-evaluation must succeed");
+
+    let m_buf2 = evaluator.get_output(&conv_metal).expect("metallic output must exist");
+    let bc_buf2 = evaluator.get_output(&conv_bc).expect("base_color output must exist");
+
+    // Pure metal specular (1.0 > 0.5) => Metallic = 1.0 (255)
+    assert_eq!(m_buf2.get_pixel(0, 0)[0], 255);
+    // Base color now lerps to white specular
+    let bc_px2 = bc_buf2.get_pixel(0, 0);
+    assert_eq!(bc_px2[0], 255);
+    assert_eq!(bc_px2[1], 255);
+    assert_eq!(bc_px2[2], 255);
+}
+
+
 

@@ -114,8 +114,10 @@ pub fn pin_wire_color(pin_name: &str) -> Color32 {
         "r" | "red" => WIRE_RED,
         "g" | "green" => WIRE_GREEN,
         "b" | "blue" => WIRE_BLUE,
-        "a" | "alpha" | "mask" | "scalar" | "value" => WIRE_ALPHA,
-        "rgba" | "output" | "input" | "base" | "layer" | "detail" => WIRE_RGBA,
+        "a" | "alpha" | "mask" | "scalar" | "value" | "glossiness" | "roughness" | "metallic"
+        | "metalness" => WIRE_ALPHA,
+        "rgba" | "output" | "input" | "base" | "layer" | "detail" | "diffuse" | "specular"
+        | "base_color" | "basecolor" => WIRE_RGBA,
         _ => WIRE_DEFAULT,
     }
 }
