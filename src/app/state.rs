@@ -8,9 +8,11 @@ use crate::graph::evaluator::{AsyncEvaluator, GraphEvaluator};
 use crate::graph::history::HistoryStack;
 use crate::graph::model::{Graph, NodeId, PinId, ProjectMetadata};
 use crate::nodes::NodeDescriptor;
+use crate::settings::AppSettings;
 use crate::ui::canvas::CanvasState;
 use crate::ui::library::SearchPaletteState;
-use crate::ui::theme::apply_theme;
+use crate::ui::preferences::PreferencesDialog;
+use crate::ui::theme::{apply_theme_with_accent, rgb_to_color32};
 use crate::ui::viewport::ViewportState;
 use crate::ui::Tab;
 
@@ -32,6 +34,8 @@ pub struct TextureLabApp {
     pub eval_time_ms: f64,
     pub project_file_path: Option<PathBuf>,
     pub show_about_dialog: bool,
+    pub settings: AppSettings,
+    pub preferences_dialog: PreferencesDialog,
     pub export_preset_id: String,
     pub export_asset_name: String,
     pub export_target_dir: String,
@@ -41,33 +45,41 @@ pub struct TextureLabApp {
 impl TextureLabApp {
     /// Creates a new instance of TextureLabApp initialized with the starter PBR graph.
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        // 1. Initialize Obsidian "Graphite Blueprint" dark workstation theme
-        apply_theme(&cc.egui_ctx);
+        // 1. Load user settings from settings.json
+        let settings = AppSettings::load();
 
-        // 2. Build default starter PBR graph
+        // 2. Initialize Obsidian "Graphite Blueprint" dark workstation theme with configured accent color
+        apply_theme_with_accent(&cc.egui_ctx, rgb_to_color32(settings.accent_color));
+
+        // 3. Build default starter PBR graph
         let graph = build_starter_graph();
-        let mut evaluator = GraphEvaluator::new((1024, 1024));
+        let mut evaluator = GraphEvaluator::new(settings.default_resolution);
 
         let start = Instant::now();
         let _ = evaluator.evaluate(&graph);
         let eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
 
-        // 3. Initialize transactional history (clean starting state with 0 undo steps)
+        // 4. Initialize transactional history (clean starting state with 0 undo steps)
         let history = HistoryStack::new();
 
-        // 4. Default docking workspace
+        // 5. Default docking workspace
         let dock_state = crate::ui::default_dock_layout();
 
-        // 5. Canvas state (select node 1 by default for instant preview)
+        // 6. Canvas state (select node 1 by default for instant preview)
         let mut canvas_state = CanvasState::new();
         canvas_state.selected_node = Some(NodeId(1));
+
+        let export_target_dir = settings
+            .export_directory
+            .clone()
+            .unwrap_or_else(|| "exports".to_string());
 
         Self {
             title: "TextureLAB".to_string(),
             version: env!("CARGO_PKG_VERSION"),
             graph,
             evaluator,
-            async_evaluator: AsyncEvaluator::new((1024, 1024)),
+            async_evaluator: AsyncEvaluator::new(settings.default_resolution),
             history,
             project_metadata: ProjectMetadata::default(),
             dock_state: Some(dock_state),
@@ -79,9 +91,11 @@ impl TextureLabApp {
             eval_time_ms,
             project_file_path: None,
             show_about_dialog: false,
+            settings,
+            preferences_dialog: PreferencesDialog::new(),
             export_preset_id: "ue5".to_string(),
             export_asset_name: "Asset".to_string(),
-            export_target_dir: "exports".to_string(),
+            export_target_dir,
             export_report_summary: None,
         }
     }
@@ -311,6 +325,8 @@ impl Default for TextureLabApp {
             eval_time_ms: 0.0,
             project_file_path: None,
             show_about_dialog: false,
+            settings: AppSettings::default(),
+            preferences_dialog: PreferencesDialog::new(),
             export_preset_id: "ue5".to_string(),
             export_asset_name: "Asset".to_string(),
             export_target_dir: "exports".to_string(),

@@ -3,6 +3,7 @@
 pub mod canvas;
 pub mod inspector;
 pub mod library;
+pub mod preferences;
 pub mod theme;
 pub mod viewport;
 

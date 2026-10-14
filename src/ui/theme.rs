@@ -204,8 +204,26 @@ pub fn wcag_contrast_ratio(c1: Color32, c2: Color32) -> f64 {
     (lighter + 0.05) / (darker + 0.05)
 }
 
-/// Applies the Obsidian "Graphite Blueprint" theme to the egui context.
-pub fn apply_theme(ctx: &egui::Context) {
+/// Converts a normalized float RGB array `[r, g, b]` (0.0 to 1.0) into `egui::Color32`.
+pub fn rgb_to_color32(rgb: [f32; 3]) -> Color32 {
+    Color32::from_rgb(
+        (rgb[0] * 255.0).clamp(0.0, 255.0) as u8,
+        (rgb[1] * 255.0).clamp(0.0, 255.0) as u8,
+        (rgb[2] * 255.0).clamp(0.0, 255.0) as u8,
+    )
+}
+
+/// Converts `egui::Color32` into a normalized float RGB array `[r, g, b]` (0.0 to 1.0).
+pub fn color32_to_rgb(c: Color32) -> [f32; 3] {
+    [
+        c.r() as f32 / 255.0,
+        c.g() as f32 / 255.0,
+        c.b() as f32 / 255.0,
+    ]
+}
+
+/// Applies the Obsidian "Graphite Blueprint" theme with a custom accent color.
+pub fn apply_theme_with_accent(ctx: &egui::Context, accent: Color32) {
     let mut visuals = Visuals::dark();
 
     // Base background colors
@@ -230,21 +248,21 @@ pub fn apply_theme(ctx: &egui::Context) {
     visuals.widgets.inactive.corner_radius = 4.into();
 
     visuals.widgets.hovered.bg_fill = Color32::from_rgb(36, 36, 42);
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, ACCENT_AMBER);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, accent);
     visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
     visuals.widgets.hovered.corner_radius = 4.into();
 
     visuals.widgets.active.bg_fill = Color32::from_rgb(46, 46, 54);
-    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, ACCENT_AMBER);
+    visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, accent);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
     visuals.widgets.active.corner_radius = 4.into();
 
     visuals.widgets.open.bg_fill = BG_CARD;
-    visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, ACCENT_AMBER);
+    visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, accent);
     visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
 
-    visuals.selection.bg_fill = Color32::from_rgba_premultiplied(255, 176, 46, 40);
-    visuals.selection.stroke = Stroke::new(1.5_f32, ACCENT_AMBER);
+    visuals.selection.bg_fill = Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), 40);
+    visuals.selection.stroke = Stroke::new(1.5_f32, accent);
 
     let mut style = (*ctx.style()).clone();
     style.visuals = visuals;
@@ -253,6 +271,11 @@ pub fn apply_theme(ctx: &egui::Context) {
     ctx.set_style(style);
 
     configure_fonts(ctx);
+}
+
+/// Applies the Obsidian "Graphite Blueprint" theme with default Amber accent.
+pub fn apply_theme(ctx: &egui::Context) {
+    apply_theme_with_accent(ctx, ACCENT_AMBER);
 }
 
 /// Configures custom modern Geist typography.
@@ -281,11 +304,11 @@ pub fn configure_fonts(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
 }
 
-/// Configures an `egui_dock::Style` consistent with the Obsidian Workstation theme.
-pub fn create_dock_style(ctx: &egui::Context) -> egui_dock::Style {
+/// Configures an `egui_dock::Style` with custom accent color.
+pub fn create_dock_style_with_accent(ctx: &egui::Context, accent: Color32) -> egui_dock::Style {
     let mut dock_style = egui_dock::Style::from_egui(ctx.style().as_ref());
     dock_style.separator.color_idle = BORDER_DARK;
-    dock_style.separator.color_hovered = ACCENT_AMBER;
+    dock_style.separator.color_hovered = accent;
     dock_style.separator.width = 2.0;
 
     dock_style.tab_bar.bg_fill = BG_PANEL;
@@ -297,11 +320,16 @@ pub fn create_dock_style(ctx: &egui::Context) -> egui_dock::Style {
     dock_style.tab.inactive.bg_fill = BG_PANEL;                   // #16161C
     dock_style.tab.inactive.text_color = TEXT_MUTED;              // #8C887E
     dock_style.tab.focused.bg_fill = Color32::from_rgb(38, 38, 50);
-    dock_style.tab.focused.text_color = ACCENT_AMBER;
+    dock_style.tab.focused.text_color = accent;
     dock_style.tab.hovered.bg_fill = Color32::from_rgb(32, 32, 42);
     dock_style.tab.hovered.text_color = TEXT_PRIMARY;
 
     dock_style
+}
+
+/// Configures an `egui_dock::Style` consistent with the Obsidian Workstation theme.
+pub fn create_dock_style(ctx: &egui::Context) -> egui_dock::Style {
+    create_dock_style_with_accent(ctx, ACCENT_AMBER)
 }
 
 #[cfg(test)]

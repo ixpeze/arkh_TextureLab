@@ -7,7 +7,10 @@ pub mod graph;
 pub mod hotkeys;
 pub mod nodes;
 pub mod normalizer;
+pub mod settings;
 pub mod ui;
+
+pub use settings::AppSettings;
 
 /// Returns the compile-time crate version.
 pub fn version() -> &'static str {

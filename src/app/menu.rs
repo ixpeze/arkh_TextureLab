@@ -33,21 +33,54 @@ impl TextureLabApp {
                             self.evaluator.invalidate_all();
                             self.reevaluate();
                             self.history.clear();
+                            self.settings.add_recent_file(path.to_string_lossy().to_string());
+                            let _ = self.settings.save();
                             self.project_file_path = Some(path);
                         }
                     }
                     ui.close_menu();
                 }
+                if !self.settings.recent_files.is_empty() {
+                    ui.menu_button("Recent Projects", |ui| {
+                        let mut selected_recent = None;
+                        for path_str in &self.settings.recent_files {
+                            let display_label = std::path::Path::new(path_str)
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or(path_str.as_str());
+                            if ui.button(display_label).on_hover_text(path_str).clicked() {
+                                selected_recent = Some(std::path::PathBuf::from(path_str));
+                                ui.close_menu();
+                            }
+                        }
+                        if let Some(path) = selected_recent {
+                            if let Ok(project) = ProjectFile::load_from_file(&path) {
+                                self.graph = project.graph;
+                                self.project_metadata = project.metadata;
+                                self.evaluator.invalidate_all();
+                                self.reevaluate();
+                                self.history.clear();
+                                self.settings.add_recent_file(path.to_string_lossy().to_string());
+                                let _ = self.settings.save();
+                                self.project_file_path = Some(path);
+                            }
+                        }
+                    });
+                }
                 if ui.button("Save Project (Ctrl+S)").clicked() {
                     if let Some(path) = &self.project_file_path {
                         let project = ProjectFile::with_metadata(self.graph.clone(), self.project_metadata.clone());
                         let _ = project.save_to_file(path);
+                        self.settings.add_recent_file(path.to_string_lossy().to_string());
+                        let _ = self.settings.save();
                     } else if let Some(path) = rfd::FileDialog::new()
                         .add_filter("TextureLab Project", &["tlab"])
                         .save_file()
                     {
                         let project = ProjectFile::with_metadata(self.graph.clone(), self.project_metadata.clone());
                         if project.save_to_file(&path).is_ok() {
+                            self.settings.add_recent_file(path.to_string_lossy().to_string());
+                            let _ = self.settings.save();
                             self.project_file_path = Some(path);
                         }
                     }
@@ -60,6 +93,8 @@ impl TextureLabApp {
                     {
                         let project = ProjectFile::with_metadata(self.graph.clone(), self.project_metadata.clone());
                         if project.save_to_file(&path).is_ok() {
+                            self.settings.add_recent_file(path.to_string_lossy().to_string());
+                            let _ = self.settings.save();
                             self.project_file_path = Some(path);
                         }
                     }
@@ -138,6 +173,11 @@ impl TextureLabApp {
                         self.evaluator.invalidate_all();
                         self.reevaluate();
                     }
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui.button("Preferences...").clicked() {
+                    self.preferences_dialog.open(&self.settings);
                     ui.close_menu();
                 }
             });

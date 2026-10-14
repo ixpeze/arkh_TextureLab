@@ -18,7 +18,7 @@ use crate::export::{ExportItem, ExportPreset, ExportWriter, TokenContext};
 use crate::graph::evaluator::{AsyncEvaluator, GraphEvaluator};
 use crate::graph::history::HistoryStack;
 use crate::graph::model::{Graph, NodeId, PinId, ProjectFile};
-use crate::hotkeys::{dispatch_from_input, HotkeyAction};
+use crate::hotkeys::{dispatch_from_input_with_overrides, HotkeyAction};
 use crate::nodes::NODE_CATALOG;
 use crate::ui::canvas::{CanvasAction, CanvasState};
 use crate::ui::inspector::{show_inspector, InspectorAction};
@@ -38,9 +38,20 @@ impl eframe::App for TextureLabApp {
         // Sync 2D Viewport locked node to canvas state
         self.canvas_state.locked_viewport_node = self.viewport_state.locked_node;
 
-        // 1. Hotkey Dispatcher Guard
+        // 1. Hotkey Dispatcher Guard (suppress when typing or interacting with modal dialogs)
+        let is_modal_open = self.preferences_dialog.is_open || self.show_about_dialog;
         let is_text_focused = ctx.memory(|m| m.focused().is_some());
-        let hotkey = ctx.input(|i| dispatch_from_input(i, is_text_focused));
+        let hotkey = if is_modal_open {
+            None
+        } else {
+            ctx.input(|i| {
+                dispatch_from_input_with_overrides(
+                    i,
+                    is_text_focused,
+                    Some(&self.settings.hotkey_overrides),
+                )
+            })
+        };
 
         if let Some(action) = hotkey {
             match action {
@@ -304,6 +315,34 @@ impl eframe::App for TextureLabApp {
                         self.show_about_dialog = false;
                     }
                 });
+        }
+
+        // 7. Preferences Modal Dialog
+        if let Some(result) = self.preferences_dialog.show(ctx) {
+            match result {
+                crate::ui::preferences::PreferencesDialogResult::Save(new_settings) => {
+                    self.settings = new_settings;
+                    if let Err(err) = self.settings.save() {
+                        self.status_message = format!("Failed to save settings: {}", err);
+                    } else {
+                        self.status_message = "Preferences saved to settings.json".to_string();
+                    }
+
+                    // Apply updated theme accent color immediately
+                    crate::ui::theme::apply_theme_with_accent(
+                        ctx,
+                        crate::ui::theme::rgb_to_color32(self.settings.accent_color),
+                    );
+
+                    // Sync export directory if set
+                    if let Some(dir) = &self.settings.export_directory {
+                        self.export_target_dir = dir.clone();
+                    }
+                }
+                crate::ui::preferences::PreferencesDialogResult::Cancel => {
+                    self.status_message = "Preferences discarded".to_string();
+                }
+            }
         }
     }
 }

@@ -1845,6 +1845,142 @@ fn test_reroute_passthrough_evaluation() {
     assert_eq!(save_buf.image.as_raw(), in_buf.image.as_raw());
 }
 
+/// TC-510: Settings Round-trip & Corrupt File Fallback (P2-T5)
+#[test]
+fn test_settings_file_roundtrip_and_defaults() {
+    use texturelab::settings::{AppSettings, DEFAULT_ACCENT_COLOR, DEFAULT_RESOLUTION};
+
+    // 1. Default settings verification
+    let defaults = AppSettings::default();
+    assert_eq!(defaults.default_resolution, DEFAULT_RESOLUTION);
+    assert_eq!(defaults.default_resolution, (2048, 2048));
+    assert_eq!(defaults.accent_color, DEFAULT_ACCENT_COLOR);
+    assert_eq!(defaults.autosave_interval_secs, 300);
+    assert!(defaults.export_directory.is_none());
+    assert!(defaults.hotkey_overrides.is_empty());
+    assert!(defaults.recent_files.is_empty());
+
+    // 2. Custom settings round-trip via disk
+    let temp_dir = std::env::temp_dir().join("texturelab_integration_settings");
+    let temp_file = temp_dir.join("test_settings_roundtrip.json");
+
+    let mut custom = AppSettings::default();
+    custom.default_resolution = (4096, 4096);
+    custom.export_directory = Some("D:/PBR/Textures".to_string());
+    custom.accent_color = [0.1, 0.7, 0.9];
+    custom.autosave_interval_secs = 600;
+    custom.hotkey_overrides.insert("SpawnMath".to_string(), "X".to_string());
+    custom.hotkey_overrides.insert("Undo".to_string(), "Ctrl+U".to_string());
+    custom.add_recent_file("D:/project_alpha.tlab");
+
+    custom.save_to_path(&temp_file).expect("Save to temp path failed");
+    let loaded = AppSettings::load_from_path(&temp_file);
+    assert_eq!(custom, loaded);
+
+    // 3. Corrupt file silent fallback to defaults
+    std::fs::write(&temp_file, "INVALID JSON CONTENT { [ !").expect("Write corrupt file");
+    let fallback = AppSettings::load_from_path(&temp_file);
+    assert_eq!(fallback, AppSettings::default());
+
+    // Cleanup
+    let _ = std::fs::remove_file(&temp_file);
+    let _ = std::fs::remove_dir(&temp_dir);
+}
+
+/// TC-511: Hotkey Override Resolution (P2-T6)
+#[test]
+fn test_hotkey_override_resolution() {
+    use egui::Key;
+    use texturelab::hotkeys::{default_hotkey_table, resolve_hotkey_with_settings, HotkeyAction};
+    use texturelab::settings::AppSettings;
+
+    // 1. Verify default hotkey table is populated
+    let table = default_hotkey_table();
+    assert!(table.len() >= 20);
+    assert!(table.contains(&(HotkeyAction::Undo, "Ctrl+Z")));
+    assert!(table.contains(&(HotkeyAction::SpawnMath, "M")));
+    assert!(table.contains(&(HotkeyAction::SpawnBlend, "B")));
+
+    // 2. Configure hotkey overrides
+    let mut settings = AppSettings::default();
+    settings.hotkey_overrides.insert("SpawnMath".to_string(), "X".to_string());
+    settings.hotkey_overrides.insert("Undo".to_string(), "Ctrl+U".to_string());
+
+    // 3. Test override resolution: 'X' now triggers SpawnMath
+    assert_eq!(
+        resolve_hotkey_with_settings(Key::X, false, false, false, &settings),
+        Some(HotkeyAction::SpawnMath)
+    );
+
+    // 4. Test old default 'M' is suppressed for SpawnMath
+    assert_eq!(
+        resolve_hotkey_with_settings(Key::M, false, false, false, &settings),
+        None
+    );
+
+    // 5. Test override resolution: 'Ctrl+U' triggers Undo
+    assert_eq!(
+        resolve_hotkey_with_settings(Key::U, true, false, false, &settings),
+        Some(HotkeyAction::Undo)
+    );
+
+    // 6. Test old default 'Ctrl+Z' is suppressed for Undo
+    assert_eq!(
+        resolve_hotkey_with_settings(Key::Z, true, false, false, &settings),
+        None
+    );
+
+    // 7. Test unmodified actions continue to work via default table
+    assert_eq!(
+        resolve_hotkey_with_settings(Key::B, false, false, false, &settings),
+        Some(HotkeyAction::SpawnBlend)
+    );
+    assert_eq!(
+        resolve_hotkey_with_settings(Key::A, true, false, false, &settings),
+        Some(HotkeyAction::SelectAll)
+    );
+
+    // 8. Test text input guard suppresses overridden single-letter hotkeys
+    assert_eq!(
+        resolve_hotkey_with_settings(Key::X, false, false, true, &settings),
+        None
+    );
+}
+
+/// TC-512: Preferences Modal Dialog State (P2-T5 / P2-T6)
+#[test]
+fn test_preferences_dialog_state_and_draft() {
+    use texturelab::settings::AppSettings;
+    use texturelab::ui::preferences::{PreferencesDialog, PreferencesDialogResult};
+
+    let mut dialog = PreferencesDialog::new();
+    assert!(!dialog.is_open);
+
+    let active_settings = AppSettings::default();
+    dialog.open(&active_settings);
+    assert!(dialog.is_open);
+
+    // Modify draft in preferences
+    dialog.draft_settings.default_resolution = (4096, 4096);
+    dialog.draft_settings.accent_color = [0.36, 0.78, 0.91]; // Cyan
+    dialog.draft_settings.hotkey_overrides.insert("SpawnBlend".to_string(), "Y".to_string());
+
+    // Emulate Save action
+    let result = PreferencesDialogResult::Save(dialog.draft_settings.clone());
+    dialog.close();
+    assert!(!dialog.is_open);
+
+    match result {
+        PreferencesDialogResult::Save(saved) => {
+            assert_eq!(saved.default_resolution, (4096, 4096));
+            assert_eq!(saved.accent_color, [0.36, 0.78, 0.91]);
+            assert_eq!(saved.hotkey_overrides.get("SpawnBlend"), Some(&"Y".to_string()));
+        }
+        PreferencesDialogResult::Cancel => panic!("Expected Save result"),
+    }
+}
+
+
 
 
 
