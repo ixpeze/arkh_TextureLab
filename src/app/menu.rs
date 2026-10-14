@@ -258,6 +258,10 @@ impl TextureLabApp {
                     }
                     ui.close_menu();
                 }
+                if ui.button("Texture Set Validator").clicked() {
+                    self.open_validator_tab();
+                    ui.close_menu();
+                }
             });
 
             ui.menu_button("Nodes", |ui| {

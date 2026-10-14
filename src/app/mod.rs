@@ -207,6 +207,30 @@ impl eframe::App for TextureLabApp {
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let val_report = crate::ui::validator::validate_texture_set(&self.graph, &self.evaluator);
+                    if val_report.is_all_green() {
+                        if ui.button(egui::RichText::new("✔ Valid Set").color(crate::ui::validator::COLOR_PASS).size(11.0))
+                            .on_hover_text("All texture set completeness, POT, and resolution checks passed. Click to open Validator panel.")
+                            .clicked()
+                        {
+                            self.open_validator_tab();
+                        }
+                    } else if val_report.has_errors() {
+                        if ui.button(egui::RichText::new(format!("✖ {} Issues", val_report.total_issues())).color(crate::ui::validator::COLOR_FAIL).size(11.0))
+                            .on_hover_text("Validation issues detected. Click to open Validator panel to review and auto-fix.")
+                            .clicked()
+                        {
+                            self.open_validator_tab();
+                        }
+                    } else {
+                        if ui.button(egui::RichText::new(format!("⚠ {} Warnings", val_report.naming_warnings.len())).color(crate::ui::validator::COLOR_WARN).size(11.0))
+                            .on_hover_text("Naming convention warnings detected. Click to open Validator panel.")
+                            .clicked()
+                        {
+                            self.open_validator_tab();
+                        }
+                    }
+                    ui.separator();
                     ui.label(
                         egui::RichText::new(format!(
                             "Resolution: {}x{}",
@@ -747,6 +771,10 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                 .unwrap_or_else(|| ExportPreset::builtin_presets().remove(0))
                         };
 
+                        let val_report = crate::ui::validator::validate_texture_set(self.graph, self.evaluator);
+                        crate::ui::validator::show_compact_validator_summary(ui, &val_report);
+                        ui.add_space(6.0);
+
                         let mut ready_targets: Vec<(PinId, PathBuf)> = Vec::new();
 
                         egui::Grid::new("export_preflight_grid")
@@ -825,6 +853,17 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         });
                     }
                 });
+            }
+
+            Tab::Validator => {
+                crate::ui::validator::show_validator_panel(
+                    ui,
+                    self.graph,
+                    self.evaluator,
+                    Some(self.history),
+                    Some(self.async_evaluator),
+                    Some(self.status_message),
+                );
             }
         }
     }

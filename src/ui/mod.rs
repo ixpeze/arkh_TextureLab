@@ -5,7 +5,10 @@ pub mod inspector;
 pub mod library;
 pub mod preferences;
 pub mod theme;
+pub mod validator;
 pub mod viewport;
+
+pub use validator::{validate_texture_set, TextureSetReport};
 
 use egui_dock::{DockState, NodeIndex};
 use serde::{Deserialize, Serialize};
@@ -18,6 +21,7 @@ pub enum Tab {
     Inspector,
     Library,
     ExportDrawer,
+    Validator,
 }
 
 impl Tab {
@@ -28,6 +32,7 @@ impl Tab {
             Self::Inspector => "Properties",
             Self::Library => "Node Library",
             Self::ExportDrawer => "Export",
+            Self::Validator => "Validator",
         }
     }
 }
@@ -89,7 +94,8 @@ mod tests {
         assert!(tabs.contains(&Tab::Viewport2D));
         assert!(tabs.contains(&Tab::Inspector));
         assert!(tabs.contains(&Tab::Library));
-        // ExportDrawer is hidden by default
+        // ExportDrawer and Validator are hidden by default
         assert!(!tabs.contains(&Tab::ExportDrawer));
+        assert!(!tabs.contains(&Tab::Validator));
     }
 }

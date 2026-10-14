@@ -660,10 +660,10 @@ consistent. Missing maps, mismatched resolutions, and non-POT sizes cause downst
 - `git commit -m "feat(validator): texture set completeness and consistency checker"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
 ```
 
 ---

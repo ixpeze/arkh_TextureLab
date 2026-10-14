@@ -2209,5 +2209,139 @@ fn test_export_preset_designer_channel_routing_and_persistence() {
     assert_eq!(found_preset.unwrap().name, "Crytek DDNA Pack");
 }
 
+#[test]
+fn test_texture_set_validator_ue5_orm_all_green() {
+    use texturelab::templates::builtin_templates;
+    use texturelab::ui::validator::validate_texture_set;
+
+    let template = builtin_templates()
+        .into_iter()
+        .find(|t| t.name == "UE5 ORM Pack")
+        .expect("UE5 ORM Pack template not found");
+
+    let graph = template.load_graph().expect("Failed to load graph");
+    let mut evaluator = GraphEvaluator::new((2048, 2048));
+    evaluator.evaluate(&graph).expect("Evaluation failed");
+
+    let report = validate_texture_set(&graph, &evaluator);
+
+    assert!(report.is_all_green(), "Expected UE5 ORM set to be all green, got issues: {:?}", report);
+    assert_eq!(report.missing_maps.len(), 0);
+    assert_eq!(report.resolution_mismatches.len(), 0);
+    assert_eq!(report.non_pot_maps.len(), 0);
+    assert_eq!(report.naming_warnings.len(), 0);
+    assert!(!report.has_errors());
+    assert!(!report.has_warnings());
+    assert_eq!(report.total_issues(), 0);
+}
+
+#[test]
+fn test_texture_set_validator_mismatched_resolutions_and_auto_fix() {
+    use texturelab::ui::validator::{insert_resize_node_for, validate_texture_set};
+
+    let mut graph = Graph::new();
+
+    // Map 1: Albedo at 2048x2048
+    let n1 = graph.create_node("TextureInput", "Albedo", [0.0, 0.0]);
+    if let Some(node) = graph.get_node_mut(n1) {
+        node.set_param("resolution", NodeParam::Resolution { width: 2048, height: 2048 });
+        node.add_output("output");
+    }
+
+    // Map 2: Roughness at 1024x1024 (mismatched resolution)
+    let n2 = graph.create_node("TextureInput", "Roughness", [0.0, 150.0]);
+    if let Some(node) = graph.get_node_mut(n2) {
+        node.set_param("resolution", NodeParam::Resolution { width: 1024, height: 1024 });
+        node.add_output("output");
+    }
+
+    // Map 3: Normal at 2048x2048
+    let n3 = graph.create_node("TextureInput", "Normal", [0.0, 300.0]);
+    if let Some(node) = graph.get_node_mut(n3) {
+        node.set_param("resolution", NodeParam::Resolution { width: 2048, height: 2048 });
+        node.add_output("output");
+    }
+
+    let mut evaluator = GraphEvaluator::new((2048, 2048));
+    evaluator.evaluate(&graph).expect("Evaluation failed");
+
+    // Pre-fix validation: should detect resolution mismatch
+    let report = validate_texture_set(&graph, &evaluator);
+    assert!(!report.is_all_green());
+    assert!(report.has_errors());
+    assert!(!report.resolution_mismatches.is_empty(), "Mismatches should be detected");
+    assert!(
+        report.resolution_mismatches.iter().any(|(name, res)| name == "Roughness" && *res == (1024, 1024)),
+        "Roughness 1024x1024 mismatch should be reported"
+    );
+
+    // Apply auto-fix: insert Resize node for Roughness targeting 2048x2048
+    let resize_node_id = insert_resize_node_for(&mut graph, n2, (2048, 2048));
+    assert!(resize_node_id.is_some());
+
+    evaluator.invalidate_all();
+    evaluator.evaluate(&graph).expect("Re-evaluation failed");
+
+    // Post-fix validation: resolution mismatch should be resolved
+    let post_report = validate_texture_set(&graph, &evaluator);
+    assert!(
+        post_report.resolution_mismatches.is_empty(),
+        "All mismatches should be resolved after auto-fix: {:?}",
+        post_report.resolution_mismatches
+    );
+}
+
+#[test]
+fn test_texture_set_validator_non_pot_and_naming_warnings() {
+    use texturelab::ui::validator::validate_texture_set;
+
+    let mut graph = Graph::new();
+
+    // Input with non-POT dimensions (1920x1080) and non-PBR filename
+    let n1 = graph.create_node("TextureInput", "Texture Input", [0.0, 0.0]);
+    if let Some(node) = graph.get_node_mut(n1) {
+        node.set_param("file_path", NodeParam::String("holiday_photo_2025.jpg".to_string()));
+        node.set_param("resolution", NodeParam::Resolution { width: 1920, height: 1080 });
+        node.add_output("output");
+    }
+
+    let mut evaluator = GraphEvaluator::new((2048, 2048));
+    evaluator.evaluate(&graph).expect("Evaluation failed");
+
+    let report = validate_texture_set(&graph, &evaluator);
+
+    // Should detect non-POT dimension
+    assert!(!report.non_pot_maps.is_empty());
+    assert_eq!(report.non_pot_maps[0].1, (1920, 1080));
+
+    // Should detect naming warning
+    assert!(!report.naming_warnings.is_empty());
+    assert!(report.naming_warnings[0].contains("holiday_photo_2025.jpg"));
+    assert!(report.has_warnings());
+    assert!(report.has_errors());
+}
+
+#[test]
+fn test_texture_set_validator_missing_maps_unconnected() {
+    use texturelab::ui::validator::validate_texture_set;
+
+    let mut graph = Graph::new();
+
+    // SaveImage node for "Normal" with no incoming edge
+    let n1 = graph.create_node("SaveImage", "Export Normal", [400.0, 100.0]);
+    if let Some(node) = graph.get_node_mut(n1) {
+        node.add_input("input");
+        node.set_param("slot_name", NodeParam::String("Normal".to_string()));
+    }
+
+    let evaluator = GraphEvaluator::new((2048, 2048));
+    let report = validate_texture_set(&graph, &evaluator);
+
+    assert!(!report.missing_maps.is_empty());
+    assert!(report.missing_maps.contains(&"Normal".to_string()));
+    assert!(report.has_errors());
+}
+
+
 
 

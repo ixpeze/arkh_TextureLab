@@ -245,6 +245,20 @@ impl TextureLabApp {
         }
     }
 
+    /// Opens or focuses the Texture Set Validator dock tab.
+    pub fn open_validator_tab(&mut self) {
+        if let Some(mut dock) = self.dock_state.take() {
+            if dock.find_tab(&Tab::Validator).is_none() {
+                dock.main_surface_mut().push_to_focused_leaf(Tab::Validator);
+            }
+            if let Some(loc) = dock.find_tab(&Tab::Validator) {
+                dock.set_active_tab(loc);
+            }
+            self.dock_state = Some(dock);
+        }
+        self.status_message = "Opened Texture Set Validator panel".to_string();
+    }
+
     /// Automatically organizes nodes into a compact, non-overlapping hierarchical layout.
     ///
     /// If a node is selected, organizes only its upstream back-hierarchy (Right to Left)
