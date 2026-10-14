@@ -772,11 +772,11 @@ Use this after completing all tasks in a phase:
 6. `git add -A && git commit -m "release: Phase N complete — <summary>"`
 
 ## Progress
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy -- -D warnings` — zero warnings
-- [ ] `cargo build --release` — exit code 0
-- [ ] Binary copied to release/
-- [ ] Git commit
+- [x] `cargo test` — all pass
+- [x] `cargo clippy -- -D warnings` — zero warnings
+- [x] `cargo build --release` — exit code 0
+- [x] Binary copied to release/
+- [x] Git commit
 ```
 
 ---
