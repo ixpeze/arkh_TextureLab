@@ -63,13 +63,13 @@ Clean up code health issues found during analysis before adding features.
 
 | Task | Files | What |
 |---|---|---|
-| P0-T1 | `src/app.rs` | Remove `Edition` enum, all `is_node_allowed` / `is_format_allowed` / edition menu / edition tests. |
+| P0-T1 | `src/app.rs` | ✅ Done — Removed `Edition` enum, all `is_node_allowed` / `is_format_allowed` / edition menu / edition tests. |
 | P0-T2 | `.github/workflows/ci.yml` | ✅ Already done — rebuilt for Rust. |
 | P0-T3 | `src/*.rs` | Fix all 45 clippy warnings. |
 | P0-T4 | `src/app.rs` → extract `src/app/menu.rs`, `src/app/drop.rs`, `src/app/state.rs` | Split 1,600-line monolith. |
 | P0-T5 | `src/ui/canvas.rs` → extract `src/ui/canvas/wires.rs`, `src/ui/canvas/cards.rs`, `src/ui/canvas/search.rs` | Split 1,700-line monolith. |
 | P0-T6 | `docs/`, `README.md`, `ARCHITECTURE.md` | ✅ Already done — rewritten. |
-| P0-T7 | `tests/integration_tests.rs` | Remove edition-gated test assertions after P0-T1. |
+| P0-T7 | `tests/integration_tests.rs` | ✅ Done — Removed edition-gated test assertions. |
 | **Gate** | `cargo test` + `cargo clippy -- -D warnings` + `cargo build --release` | All green, zero warnings. |
 
 ### Phase 1 — 16-Bit Pipeline & Constant Broadcast (Engine)
@@ -178,10 +178,10 @@ so it provides no real protection. It adds ~200 lines of dead code and test weig
 - `git add -A && git commit -m "refactor: remove Edition system (Lite/Pro dead code)"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
 ```
 
 ---

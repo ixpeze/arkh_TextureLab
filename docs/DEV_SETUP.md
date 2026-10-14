@@ -5,11 +5,12 @@
 ## 1. Prerequisites
 
 | Tool | Minimum Version | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | **Rust & Cargo** | 1.80+ | Compiler and package manager |
 | **Git** | 2.40+ | Version control |
 
 Install Rust via [rustup](https://rustup.rs/):
+
 ```powershell
 winget install Rustlang.Rustup
 ```
@@ -90,6 +91,7 @@ cargo test -- --nocapture
 ## 6. CI
 
 GitHub Actions workflow at [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+
 1. Clippy lint (`-D warnings`)
 2. Full test suite
 3. Release build
