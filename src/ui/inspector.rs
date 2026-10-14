@@ -1066,6 +1066,72 @@ pub fn show_inspector(
                         });
                 }
 
+                "Comment" => {
+                    let mut text = node.get_string("text", "Comment");
+                    ui.label("Comment Text:");
+                    if ui.text_edit_multiline(&mut text).changed() {
+                        node.set_param("text", NodeParam::String(text.clone()));
+                        action = Some(InspectorAction::ParamChanged {
+                            node_id,
+                            param_name: "text".to_string(),
+                            new_value: NodeParam::String(text),
+                        });
+                    }
+
+                    let mut w = node.get_float("width", 300.0);
+                    ui.label("Width:");
+                    if ui.add(DragValue::new(&mut w).range(100.0..=2000.0).speed(5.0)).changed() {
+                        node.set_param("width", NodeParam::Float(w));
+                        action = Some(InspectorAction::ParamChanged {
+                            node_id,
+                            param_name: "width".to_string(),
+                            new_value: NodeParam::Float(w),
+                        });
+                    }
+
+                    let mut h = node.get_float("height", 200.0);
+                    ui.label("Height:");
+                    if ui.add(DragValue::new(&mut h).range(60.0..=2000.0).speed(5.0)).changed() {
+                        node.set_param("height", NodeParam::Float(h));
+                        action = Some(InspectorAction::ParamChanged {
+                            node_id,
+                            param_name: "height".to_string(),
+                            new_value: NodeParam::Float(h),
+                        });
+                    }
+
+                    let mut col = node.get_color("color", [0.18, 0.22, 0.28, 0.4]);
+                    ui.label("Color:");
+                    let mut egui_col = Color32::from_rgba_unmultiplied(
+                        (col[0] * 255.0) as u8,
+                        (col[1] * 255.0) as u8,
+                        (col[2] * 255.0) as u8,
+                        (col[3] * 255.0) as u8,
+                    );
+                    if ui.color_edit_button_srgba(&mut egui_col).changed() {
+                        col = [
+                            egui_col.r() as f32 / 255.0,
+                            egui_col.g() as f32 / 255.0,
+                            egui_col.b() as f32 / 255.0,
+                            egui_col.a() as f32 / 255.0,
+                        ];
+                        node.set_param("color", NodeParam::Color(col));
+                        action = Some(InspectorAction::ParamChanged {
+                            node_id,
+                            param_name: "color".to_string(),
+                            new_value: NodeParam::Color(col),
+                        });
+                    }
+                }
+
+                "Reroute" => {
+                    ui.label(
+                        egui::RichText::new("Passthrough wire routing dot.")
+                            .color(crate::ui::theme::TEXT_MUTED)
+                            .size(12.0),
+                    );
+                }
+
                 _ => {
                     ui.label(
                         egui::RichText::new("Generic Node Parameters:")
@@ -1135,6 +1201,7 @@ fn infer_category(node_type: &str) -> NodeCategory {
         "LayerBlend" | "NormalBlendRNM" | "Blend" => NodeCategory::BlendOps,
         "Math" => NodeCategory::Math,
         "Resize" => NodeCategory::Transform,
+        "Comment" | "Reroute" => NodeCategory::Utility,
         _ => NodeCategory::Math,
     }
 }

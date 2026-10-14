@@ -20,7 +20,7 @@ pub use wires::{
 use egui::{
     Color32, Key, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2,
 };
-use crate::graph::model::{Edge, Graph, Node, NodeId, PinId};
+use crate::graph::model::{Edge, Graph, Node, NodeId, NodeParam, PinId};
 use crate::ui::theme::{
     pin_wire_color, ACCENT_AMBER, BG_CANVAS, BORDER_DARK, GRID_AXIS, GRID_DOT,
     GRID_DOT_MAJOR, TEXT_PRIMARY, TEXT_SECONDARY,
@@ -64,6 +64,7 @@ pub struct CanvasState {
     pub wire_drag: Option<WireDragState>,
     dragging_node: Option<NodeId>,
     drag_started_pos: Option<[f32; 2]>,
+    pub resizing_comment: Option<NodeId>,
     box_select_start: Option<Pos2>,
     box_select_current: Option<Pos2>,
     pub last_canvas_rect: Rect,
@@ -81,6 +82,7 @@ impl Default for CanvasState {
             wire_drag: None,
             dragging_node: None,
             drag_started_pos: None,
+            resizing_comment: None,
             box_select_start: None,
             box_select_current: None,
             last_canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(1920.0, 1080.0)),
@@ -221,6 +223,39 @@ impl CanvasState {
         // Full-width horizontal drag and drop: each socket row acts as an interactive horizontal band.
         if let Some(hover) = response.hover_pos() {
             'pin_search: for node in graph.nodes.values() {
+                if node.node_type == "Comment" {
+                    continue;
+                }
+                if node.node_type == "Reroute" {
+                    let screen_pos = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
+                    let radius = (6.0 * self.zoom).max(4.0);
+                    let out_pos = Pos2::new(screen_pos.x + radius, screen_pos.y);
+                    let in_pos = Pos2::new(screen_pos.x - radius, screen_pos.y);
+                    let hit_radius = (8.0 * self.zoom).max(6.0);
+                    if hover.distance(out_pos) <= hit_radius {
+                        if let Some(pin) = node.outputs.first() {
+                            hovered_pin = Some(pin.clone());
+                            break 'pin_search;
+                        }
+                    } else if hover.distance(in_pos) <= hit_radius {
+                        if let Some(pin) = node.inputs.first() {
+                            hovered_pin = Some(pin.clone());
+                            break 'pin_search;
+                        }
+                    } else if hover.distance(screen_pos) <= hit_radius {
+                        if hover.x <= screen_pos.x {
+                            if let Some(pin) = node.inputs.first() {
+                                hovered_pin = Some(pin.clone());
+                                break 'pin_search;
+                            }
+                        } else if let Some(pin) = node.outputs.first() {
+                            hovered_pin = Some(pin.clone());
+                            break 'pin_search;
+                        }
+                    }
+                    continue;
+                }
+
                 let screen_pos = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
                 let width = calculate_node_width(node) * self.zoom;
                 let is_texture_input = node.node_type == "TextureInput";
@@ -290,7 +325,35 @@ impl CanvasState {
             }
         }
 
+        // 3. Render Nodes & Collect Pin Positions
+        // Pass 1: Render Comment nodes first (sit behind other nodes in paint order)
+        let mut comment_rects = Vec::new();
         for node in graph.nodes.values_mut() {
+            if node.node_type != "Comment" {
+                continue;
+            }
+            let is_selected = self.selected_node == Some(node.id);
+            let is_viewport_locked = self.locked_viewport_node == Some(node.id);
+            let screen_pos = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
+
+            let params = NodeCardRenderParams {
+                screen_pos,
+                zoom: self.zoom,
+                lod,
+                is_selected,
+                is_viewport_locked,
+                hovered_pin_id: hovered_pin.as_ref(),
+            };
+            let (node_rect, _) = render_node_card(&painter, node, &params);
+            comment_rects.push((node.id, node_rect));
+        }
+
+        // Pass 2: Render regular and reroute nodes on top
+        let mut foreground_rects = Vec::new();
+        for node in graph.nodes.values_mut() {
+            if node.node_type == "Comment" {
+                continue;
+            }
             let is_selected = self.selected_node == Some(node.id);
             let is_viewport_locked = self.locked_viewport_node == Some(node.id);
             let screen_pos = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
@@ -309,38 +372,109 @@ impl CanvasState {
             for (pin_id, coord) in pin_coords {
                 pin_positions.insert(pin_id, coord);
             }
+            foreground_rects.push((node.id, node_rect, screen_pos, node.node_type == "Reroute"));
+        }
 
-            // Hit test node body
-            if let Some(ptr) = response.interact_pointer_pos() {
-                if node_rect.contains(ptr) && response.clicked() {
-                    clicked_node = Some(node.id);
-                }
-            }
-
-            // Dragging node (header bar always drags node; body drags node when not over a socket row)
-            if response.drag_started() {
-                if let Some(ptr) = response.interact_pointer_pos() {
-                    let in_header = ptr.y <= screen_pos.y + 36.0 * self.zoom;
-                    if node_rect.contains(ptr) && (in_header || hovered_pin.is_none()) {
-                        self.dragging_node = Some(node.id);
-                        self.drag_started_pos = Some(node.position);
-                        clicked_node = Some(node.id);
+        // Hit testing and dragging interaction:
+        // Check foreground nodes first (front-to-back priority)
+        if let Some(ptr) = response.interact_pointer_pos() {
+            for &(id, node_rect, screen_pos, is_reroute) in &foreground_rects {
+                if node_rect.contains(ptr) {
+                    if response.clicked() {
+                        clicked_node = Some(id);
+                    }
+                    if response.drag_started() {
+                        let in_header = ptr.y <= screen_pos.y + 36.0 * self.zoom || is_reroute;
+                        if in_header || hovered_pin.is_none() {
+                            self.dragging_node = Some(id);
+                            if let Some(n) = graph.get_node(id) {
+                                self.drag_started_pos = Some(n.position);
+                            }
+                            clicked_node = Some(id);
+                        }
                     }
                 }
             }
+        }
 
-            if self.dragging_node == Some(node.id)
-                && response.dragged_by(egui::PointerButton::Primary)
-                && !ui.input(|i| i.key_down(Key::Space))
-            {
+        // If no foreground node was clicked or dragged, check comment nodes
+        if clicked_node.is_none() && self.dragging_node.is_none() {
+            if let Some(ptr) = response.interact_pointer_pos() {
+                for &(id, node_rect) in &comment_rects {
+                    let handle_size = (16.0 * self.zoom).clamp(12.0, 24.0);
+                    let resize_handle_rect = Rect::from_min_max(
+                        node_rect.max - Vec2::splat(handle_size),
+                        node_rect.max + Vec2::splat(4.0 * self.zoom),
+                    );
+
+                    if resize_handle_rect.contains(ptr) {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+                        if response.drag_started() {
+                            self.resizing_comment = Some(id);
+                            clicked_node = Some(id);
+                            break;
+                        }
+                    } else if node_rect.contains(ptr) {
+                        if response.clicked() {
+                            clicked_node = Some(id);
+                        }
+                        if response.drag_started() {
+                            self.dragging_node = Some(id);
+                            if let Some(n) = graph.get_node(id) {
+                                self.drag_started_pos = Some(n.position);
+                            }
+                            clicked_node = Some(id);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Hover cursor over comment resize handles
+        if let Some(hover) = response.hover_pos() {
+            if self.dragging_node.is_none() && self.resizing_comment.is_none() {
+                for &(_id, node_rect) in &comment_rects {
+                    let handle_size = (16.0 * self.zoom).clamp(12.0, 24.0);
+                    let resize_handle_rect = Rect::from_min_max(
+                        node_rect.max - Vec2::splat(handle_size),
+                        node_rect.max + Vec2::splat(4.0 * self.zoom),
+                    );
+                    if resize_handle_rect.contains(hover) {
+                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeNwSe);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Handle active node dragging
+        if let Some(dragged_id) = self.dragging_node {
+            if response.dragged_by(egui::PointerButton::Primary) && !ui.input(|i| i.key_down(Key::Space)) {
                 let delta = response.drag_delta() / self.zoom;
-                node.position[0] += delta.x;
-                node.position[1] += delta.y;
+                if let Some(node) = graph.get_node_mut(dragged_id) {
+                    node.position[0] += delta.x;
+                    node.position[1] += delta.y;
+                }
+            }
+        }
+
+        // Handle active comment resizing
+        if let Some(resizing_id) = self.resizing_comment {
+            if response.dragged_by(egui::PointerButton::Primary) && !ui.input(|i| i.key_down(Key::Space)) {
+                let delta = response.drag_delta() / self.zoom;
+                if let Some(node) = graph.get_node_mut(resizing_id) {
+                    let w = node.get_float("width", 300.0);
+                    let h = node.get_float("height", 200.0);
+                    node.set_param("width", NodeParam::Float((w + delta.x).max(100.0)));
+                    node.set_param("height", NodeParam::Float((h + delta.y).max(60.0)));
+                }
             }
         }
 
         // Drag release
         if response.drag_stopped() {
+            self.resizing_comment = None;
             if let Some(node_id) = self.dragging_node.take() {
                 let initial_pos = self.drag_started_pos.take();
                 if let Some(node) = graph.get_node(node_id) {
@@ -457,6 +591,8 @@ impl CanvasState {
                     Some("LayerBlend")
                 } else if ui.input(|i| i.key_down(Key::O)) {
                     Some("Invert")
+                } else if ui.input(|i| i.key_down(Key::Slash)) {
+                    Some("Comment")
                 } else {
                     None
                 };
@@ -474,6 +610,17 @@ impl CanvasState {
                     self.selected_node = None;
                     actions.push(CanvasAction::SelectNode(None));
                 }
+            }
+        }
+
+        // Double-click on empty canvas spawns Comment at cursor (Part C)
+        if response.double_clicked() && hovered_pin.is_none() && clicked_node.is_none() && hovered_wire.is_none() {
+            if let Some(mouse_screen) = response.interact_pointer_pos() {
+                let canvas_pos = self.screen_to_canvas(mouse_screen, rect);
+                actions.push(CanvasAction::SpawnNodeAt {
+                    type_name: "Comment".to_string(),
+                    pos: [canvas_pos.x, canvas_pos.y],
+                });
             }
         }
 

@@ -56,6 +56,7 @@ pub fn show_library_panel(
                 NodeCategory::BlendOps,
                 NodeCategory::Math,
                 NodeCategory::Transform,
+                NodeCategory::Utility,
             ];
 
             let query_lower = query.trim().to_lowercase();

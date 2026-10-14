@@ -115,6 +115,12 @@ impl TextureLabApp {
         self.spawn_node(desc, canvas_center)
     }
 
+    /// Spawns a node from its canonical type name or alias at the specified canvas position.
+    pub fn spawn_node_by_type_at(&mut self, type_name: &str, position: [f32; 2]) -> Option<NodeId> {
+        let desc = crate::nodes::find_descriptor(type_name)?;
+        self.spawn_node(desc, position)
+    }
+
     /// Polls the background async evaluation worker and applies any completed texture snapshots to the UI state.
     pub fn poll_evaluator(&mut self, ctx: &egui::Context) {
         if let Some(resp) = self.async_evaluator.try_recv() {

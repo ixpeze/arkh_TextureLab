@@ -50,6 +50,8 @@ pub enum HotkeyAction {
     Paste,
     /// Duplicate selected nodes (`Ctrl + D`).
     Duplicate,
+    /// Spawn Comment box (`/` or `Slash`).
+    SpawnComment,
 }
 
 /// Evaluates raw key and modifier states with an input-focus guard.
@@ -112,6 +114,7 @@ pub fn resolve_hotkey(
         Key::L => Some(HotkeyAction::SpawnLevels),
         Key::I => Some(HotkeyAction::SpawnInvert),
         Key::C | Key::P => Some(HotkeyAction::SpawnCombiner),
+        Key::Slash => Some(HotkeyAction::SpawnComment),
         Key::Delete | Key::Backspace => Some(HotkeyAction::DeleteSelected),
         _ => None,
     }
@@ -139,6 +142,7 @@ pub fn dispatch_from_input(input: &InputState, text_input_active: bool) -> Optio
         Key::I,
         Key::C,
         Key::P,
+        Key::Slash,
         Key::Delete,
         Key::Backspace,
         Key::Z,
@@ -150,7 +154,7 @@ pub fn dispatch_from_input(input: &InputState, text_input_active: bool) -> Optio
     ] {
         if input.key_pressed(key) {
             // When mouse is clicked/held, hold-key canvas quick spawn takes precedence
-            if is_clicking && matches!(key, Key::Num1 | Key::Num3 | Key::M | Key::B | Key::L | Key::I) {
+            if is_clicking && matches!(key, Key::Num1 | Key::Num3 | Key::M | Key::B | Key::L | Key::I | Key::Slash) {
                 continue;
             }
             if let Some(action) = resolve_hotkey(key, ctrl, shift, text_input_active) {
@@ -181,6 +185,7 @@ pub mod tests {
         assert_eq!(resolve_hotkey(Key::Tab, false, false, text_input_active), None);
         assert_eq!(resolve_hotkey(Key::Num1, false, false, text_input_active), None);
         assert_eq!(resolve_hotkey(Key::Num3, false, false, text_input_active), None);
+        assert_eq!(resolve_hotkey(Key::Slash, false, false, text_input_active), None);
     }
 
     #[test]
@@ -226,6 +231,10 @@ pub mod tests {
         assert_eq!(
             resolve_hotkey(Key::Num3, false, false, text_input_active),
             Some(HotkeyAction::SpawnConstantColor)
+        );
+        assert_eq!(
+            resolve_hotkey(Key::Slash, false, false, text_input_active),
+            Some(HotkeyAction::SpawnComment)
         );
     }
 

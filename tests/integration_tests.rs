@@ -1767,6 +1767,84 @@ fn test_end_to_end_node_copy_paste_and_duplicate() {
     assert_eq!(rel_node.position, [400.0, 500.0]); // 350+50, 450+50
 }
 
+/// P2-T3: Comment Boxes creation and empty output evaluation.
+#[test]
+fn test_comment_node_creation_and_empty_evaluation() {
+    let mut graph = Graph::new();
+    let desc = texturelab::nodes::find_descriptor("Comment").expect("Comment descriptor must exist");
+    let mut comment_node = desc.create_node(NodeId(1), [100.0, 100.0]);
+    assert_eq!(comment_node.inputs.len(), 0);
+    assert_eq!(comment_node.outputs.len(), 0);
+    assert_eq!(comment_node.get_string("text", ""), "Comment");
+    assert_eq!(comment_node.get_float("width", 0.0), 300.0);
+    assert_eq!(comment_node.get_float("height", 0.0), 200.0);
+    assert_eq!(comment_node.get_color("color", [0.0; 4]), [0.18, 0.22, 0.28, 0.4]);
+
+    // Modifying comment params
+    comment_node.set_param("text", NodeParam::String("PBR Texture Set Notes".to_string()));
+    comment_node.set_param("width", NodeParam::Float(450.0));
+    comment_node.set_param("height", NodeParam::Float(320.0));
+    assert_eq!(comment_node.get_string("text", ""), "PBR Texture Set Notes");
+    assert_eq!(comment_node.get_float("width", 0.0), 450.0);
+    assert_eq!(comment_node.get_float("height", 0.0), 320.0);
+
+    graph.add_node(comment_node);
+
+    // Evaluator should successfully evaluate with empty outputs
+    let mut evaluator = GraphEvaluator::new((64, 64));
+    let report = evaluator.evaluate(&graph).expect("Evaluation should succeed");
+    assert_eq!(report.evaluated_nodes, vec![NodeId(1)]);
+}
+
+/// P2-T4: Reroute passthrough evaluation (TextureInput -> Reroute -> SaveImage)
+#[test]
+fn test_reroute_passthrough_evaluation() {
+    let mut graph = Graph::new();
+
+    // 1. TextureInput node
+    let desc_input = texturelab::nodes::find_descriptor("TextureInput").unwrap();
+    let mut node_in = desc_input.create_node(NodeId(1), [0.0, 0.0]);
+    node_in.set_param("color", NodeParam::Color([0.75, 0.5, 0.25, 1.0]));
+    let p_in_out = PinId::output(NodeId(1), "output");
+    graph.add_node(node_in);
+
+    // 2. Reroute node
+    let desc_reroute = texturelab::nodes::find_descriptor("Reroute").unwrap();
+    let node_reroute = desc_reroute.create_node(NodeId(2), [150.0, 0.0]);
+    assert_eq!(node_reroute.inputs.len(), 1);
+    assert_eq!(node_reroute.outputs.len(), 1);
+    let p_reroute_in = PinId::input(NodeId(2), "input");
+    let p_reroute_out = PinId::output(NodeId(2), "output");
+    graph.add_node(node_reroute);
+
+    // 3. SaveImage node
+    let desc_out = texturelab::nodes::find_descriptor("SaveImage").unwrap();
+    let node_out = desc_out.create_node(NodeId(3), [300.0, 0.0]);
+    let p_save_in = PinId::input(NodeId(3), "input");
+    let p_save_out = PinId::output(NodeId(3), "output");
+    graph.add_node(node_out);
+
+    // Connect: TextureInput (output) -> Reroute (input) -> SaveImage (input)
+    graph.connect(p_in_out.clone(), p_reroute_in).expect("Edge 1 connect");
+    graph.connect(p_reroute_out.clone(), p_save_in).expect("Edge 2 connect");
+
+    let mut evaluator = GraphEvaluator::new((64, 64));
+    let report = evaluator.evaluate(&graph).expect("Graph evaluation should succeed");
+    assert_eq!(report.evaluated_nodes.len(), 3);
+
+    let in_buf = evaluator.get_output(&p_in_out).expect("Input buffer must exist");
+    let reroute_buf = evaluator.get_output(&p_reroute_out).expect("Reroute buffer must exist");
+    let save_buf = evaluator.get_output(&p_save_out).expect("SaveImage buffer must exist");
+
+    // Verify reroute passthrough equals input
+    assert_eq!(reroute_buf.width, in_buf.width);
+    assert_eq!(reroute_buf.height, in_buf.height);
+    assert_eq!(reroute_buf.image.as_raw(), in_buf.image.as_raw());
+
+    // Verify downstream SaveImage equals input
+    assert_eq!(save_buf.image.as_raw(), in_buf.image.as_raw());
+}
+
 
 
 

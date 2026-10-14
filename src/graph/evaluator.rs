@@ -198,6 +198,17 @@ impl NodeExecutor for DefaultNodeExecutor {
                     outputs.insert("A".to_string(), Arc::new(a));
                 }
             }
+            "Comment" => {
+                // Comment node is purely decorative; returns empty outputs
+            }
+            "Reroute" => {
+                if let Some(buf) = inputs.get("input").or_else(|| inputs.values().next()) {
+                    outputs.insert("output".to_string(), Arc::clone(buf));
+                } else {
+                    let buf = Arc::new(TextureBuffer::new(width, height));
+                    outputs.insert("output".to_string(), buf);
+                }
+            }
             _ => {
                 // Passthrough or generate blank fallback
                 if let Some(first) = inputs.values().next() {

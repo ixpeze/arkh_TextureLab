@@ -10,7 +10,7 @@ ARKH TextureLab is a native desktop workstation for technical artists and game d
 
 * **100 % Pure Rust**: Built with `eframe` 0.31, `egui` 0.31, `egui_dock` 0.16, and `rayon`. Sub-100 ms cold startup, ~6 MB portable binary, zero runtime dependencies.
 * **Topological DAG Evaluator**: Reactive node-graph execution via Kahn's topological sort with cycle detection, dirty-subgraph propagation, memoised cache, and 100-step undo/redo.
-* **19 Node Types Across 8 Categories**: I/O, Constants, Channel Ops, Colour Adjust, Normal Ops, Blend Ops, Math (13 operations), and Transform.
+* **21 Node Types Across 9 Categories**: I/O, Constants, Channel Ops, Colour Adjust, Normal Ops, Blend Ops, Math (13 operations), Transform, and Utility (Comment Boxes & Reroute).
 * **PBR Lexical Normaliser**: 60+ industry naming conventions (Megascans, Poly Haven, Substance, Quixel) with auto-role classification and one-click pack wizard.
 * **Industry Export Presets**: Unreal Engine ORM, Unity HDRP MaskMap, Blender Principled, CryEngine, and custom token pipelines.
 * **Codecs**: Lossless 8-bit and 16-bit PNG, TGA 2.0 with custom footer, WebP, JPEG, BMP.
@@ -52,6 +52,8 @@ Hotkeys are defined in [`src/hotkeys/mod.rs`](src/hotkeys/mod.rs).
 | `N + Click` | Quick-spawn Normal Flip Green |
 | `L + Click` | Quick-spawn Levels |
 | `I + Click` | Quick-spawn Invert |
+| `/` / Double-click empty canvas | Spawn Comment box at cursor |
+| `/ + Click` | Quick-spawn Comment box |
 | `Delete` / `Backspace` | Delete selected nodes |
 | `Ctrl + Z` | Undo (100-step buffer) |
 | `Ctrl + Y` | Redo |

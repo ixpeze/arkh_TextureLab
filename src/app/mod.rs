@@ -77,6 +77,20 @@ impl eframe::App for TextureLabApp {
                 HotkeyAction::SpawnCombiner => {
                     self.spawn_node_by_type("ChannelCombine");
                 }
+                HotkeyAction::SpawnComment => {
+                    let mouse_canvas = ctx.input(|i| i.pointer.latest_pos()).and_then(|ptr| {
+                        if self.canvas_state.last_canvas_rect.contains(ptr) {
+                            Some(self.canvas_state.screen_to_canvas(ptr, self.canvas_state.last_canvas_rect))
+                        } else {
+                            None
+                        }
+                    });
+                    if let Some(pos) = mouse_canvas {
+                        self.spawn_node_by_type_at("Comment", [pos.x, pos.y]);
+                    } else {
+                        self.spawn_node_by_type("Comment");
+                    }
+                }
                 HotkeyAction::Undo => {
                     let desc = self.history.undo_description().map(|s| s.to_string());
                     if let Some(prev) = self.history.undo(&self.graph) {
@@ -745,6 +759,14 @@ mod tests {
         let result_rnm = app.spawn_node_by_type("NormalBlendRNM");
         assert!(result_rnm.is_some());
         assert_eq!(app.graph.nodes.len(), initial_node_count + 2);
+
+        let result_comment = app.spawn_node_by_type("Comment");
+        assert!(result_comment.is_some());
+        assert_eq!(app.graph.nodes.len(), initial_node_count + 3);
+
+        let result_reroute = app.spawn_node_by_type("Reroute");
+        assert!(result_reroute.is_some());
+        assert_eq!(app.graph.nodes.len(), initial_node_count + 4);
     }
 
     #[test]

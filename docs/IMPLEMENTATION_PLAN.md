@@ -469,10 +469,10 @@ tiny passthrough dots that clean up wire routing.
 - `git commit -m "feat(nodes): add Comment boxes and Reroute passthrough nodes"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
 ```
 
 ---

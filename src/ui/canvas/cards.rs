@@ -254,12 +254,171 @@ pub struct NodeCardRenderParams<'a> {
     pub hovered_pin_id: Option<&'a PinId>,
 }
 
+/// Renders a semi-transparent Comment Box (Unreal Engine style annotation container).
+pub fn render_comment_box(
+    painter: &Painter,
+    node: &Node,
+    params: &NodeCardRenderParams<'_>,
+) -> (Rect, Vec<(PinId, Pos2)>) {
+    let NodeCardRenderParams {
+        screen_pos,
+        zoom,
+        is_selected,
+        ..
+    } = *params;
+
+    let w = (node.get_float("width", 300.0) * zoom).max(100.0 * zoom);
+    let h = (node.get_float("height", 200.0) * zoom).max(60.0 * zoom);
+    let rect = Rect::from_min_size(screen_pos, Vec2::new(w, h));
+    let corner_r = (8.0 * zoom).clamp(4.0, 10.0);
+
+    let raw_color = node.get_color("color", [0.18, 0.22, 0.28, 0.4]);
+    let fill_color = Color32::from_rgba_unmultiplied(
+        (raw_color[0] * 255.0).clamp(0.0, 255.0) as u8,
+        (raw_color[1] * 255.0).clamp(0.0, 255.0) as u8,
+        (raw_color[2] * 255.0).clamp(0.0, 255.0) as u8,
+        (raw_color[3] * 255.0).clamp(0.0, 255.0) as u8,
+    );
+
+    // 1. Semi-transparent body fill
+    painter.rect_filled(rect, corner_r, fill_color);
+
+    // 2. Header banner bar
+    let header_h = (28.0 * zoom).max(18.0);
+    let header_rect = Rect::from_min_size(screen_pos, Vec2::new(w, header_h));
+    let header_fill = Color32::from_rgba_unmultiplied(
+        (raw_color[0] * 255.0 * 0.7).clamp(0.0, 255.0) as u8,
+        (raw_color[1] * 255.0 * 0.7).clamp(0.0, 255.0) as u8,
+        (raw_color[2] * 255.0 * 0.7).clamp(0.0, 255.0) as u8,
+        ((raw_color[3] * 255.0 * 1.8).min(235.0)) as u8,
+    );
+    let r_top = egui::CornerRadius {
+        nw: corner_r as u8,
+        ne: corner_r as u8,
+        sw: 0,
+        se: 0,
+    };
+    painter.rect_filled(header_rect, r_top, header_fill);
+
+    // 3. Perimeter border
+    let border_stroke = if is_selected {
+        Stroke::new((1.8 * zoom).max(1.2), ACCENT_AMBER)
+    } else {
+        let border_col = Color32::from_rgba_unmultiplied(
+            (raw_color[0] * 255.0 * 1.5).min(255.0) as u8,
+            (raw_color[1] * 255.0 * 1.5).min(255.0) as u8,
+            (raw_color[2] * 255.0 * 1.5).min(255.0) as u8,
+            ((raw_color[3] * 255.0 + 50.0).min(255.0)) as u8,
+        );
+        Stroke::new(1.0_f32, border_col)
+    };
+    painter.rect_stroke(rect, corner_r, border_stroke, StrokeKind::Inside);
+    painter.line_segment(
+        [header_rect.left_bottom(), header_rect.right_bottom()],
+        border_stroke,
+    );
+
+    // 4. Comment Text Label
+    let text = node.get_string("text", if node.label.is_empty() || node.label == "Comment" { "Comment" } else { &node.label });
+    let font_id = egui::FontId::proportional((13.0 * zoom).max(9.5));
+    let title_pos = Pos2::new(screen_pos.x + 10.0 * zoom, header_rect.center().y);
+    painter.text(
+        title_pos,
+        egui::Align2::LEFT_CENTER,
+        text,
+        font_id,
+        TEXT_PRIMARY,
+    );
+
+    // 5. Tactile corner resize handle on bottom-right corner
+    let handle_col = if is_selected { ACCENT_AMBER } else { TEXT_MUTED };
+    for offset in [4.0, 8.0, 12.0] {
+        let p1 = Pos2::new(rect.max.x - offset * zoom, rect.max.y);
+        let p2 = Pos2::new(rect.max.x, rect.max.y - offset * zoom);
+        painter.line_segment([p1, p2], Stroke::new((1.2 * zoom).max(1.0), handle_col));
+    }
+
+    (rect, Vec::new())
+}
+
+/// Renders a small 12px circular reroute dot (Unreal Engine style passthrough node).
+pub fn render_reroute_dot(
+    painter: &Painter,
+    node: &Node,
+    params: &NodeCardRenderParams<'_>,
+) -> (Rect, Vec<(PinId, Pos2)>) {
+    let NodeCardRenderParams {
+        screen_pos,
+        zoom,
+        is_selected,
+        hovered_pin_id,
+        ..
+    } = *params;
+
+    let radius = (6.0 * zoom).max(4.0); // 12px diameter base
+    let center = screen_pos;
+    let rect = Rect::from_center_size(center, Vec2::splat(radius * 2.4));
+
+    // Connection points: input on left, output on right
+    let in_pos = Pos2::new(center.x - radius, center.y);
+    let out_pos = Pos2::new(center.x + radius, center.y);
+
+    let mut pin_positions = Vec::new();
+    if let Some(in_pin) = node.inputs.first() {
+        pin_positions.push((in_pin.clone(), in_pos));
+    }
+    if let Some(out_pin) = node.outputs.first() {
+        pin_positions.push((out_pin.clone(), out_pos));
+    }
+
+    let wire_col = pin_wire_color("output");
+    let is_pin_hovered = hovered_pin_id.is_some_and(|p| p.node_id == node.id);
+
+    // 1. Selection or Hover Outer Glow Ring
+    if is_selected {
+        painter.circle_stroke(
+            center,
+            radius + 3.0 * zoom,
+            Stroke::new((1.5 * zoom).max(1.2), ACCENT_AMBER),
+        );
+    } else if is_pin_hovered {
+        painter.circle_stroke(
+            center,
+            radius + 2.5 * zoom,
+            Stroke::new((1.2 * zoom).max(1.0), Color32::from_rgba_premultiplied(255, 255, 255, 160)),
+        );
+    }
+
+    // 2. Dark perimeter backing ring (depth & separation from wires)
+    painter.circle_filled(center, radius + 1.2 * zoom, Color32::from_rgb(18, 18, 24));
+
+    // 3. Dot body filled with wire color
+    painter.circle_filled(center, radius, wire_col);
+
+    // 4. Subtle inner highlight
+    let inner_col = if is_selected || is_pin_hovered {
+        Color32::WHITE
+    } else {
+        Color32::from_rgba_premultiplied(255, 255, 255, 180)
+    };
+    painter.circle_stroke(center, radius, Stroke::new(1.0_f32, inner_col));
+
+    (rect, pin_positions)
+}
+
 /// Renders a single node card according to active LOD level (React/xyflow NodeCard architecture).
 pub fn render_node_card(
     painter: &Painter,
     node: &Node,
     params: &NodeCardRenderParams<'_>,
 ) -> (Rect, Vec<(PinId, Pos2)>) {
+    if node.node_type == "Comment" {
+        return render_comment_box(painter, node, params);
+    }
+    if node.node_type == "Reroute" {
+        return render_reroute_dot(painter, node, params);
+    }
+
     let NodeCardRenderParams {
         screen_pos,
         zoom,
@@ -714,6 +873,7 @@ pub fn infer_category(node_type: &str) -> NodeCategory {
         "LayerBlend" | "NormalBlendRNM" | "Blend" => NodeCategory::BlendOps,
         "Math" => NodeCategory::Math,
         "Resize" => NodeCategory::Transform,
+        "Comment" | "Reroute" => NodeCategory::Utility,
         _ => NodeCategory::Math,
     }
 }

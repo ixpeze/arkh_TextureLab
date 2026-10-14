@@ -39,7 +39,7 @@ pub use transform::{
 
 use crate::core::buffer::SharedTextureBuffer;
 use crate::graph::evaluator::{EvaluationError, NodeExecutor};
-use crate::graph::model::{Node, NodeId};
+use crate::graph::model::{Node, NodeId, NodeParam};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -125,6 +125,19 @@ impl NodeExecutor for PbrNodeExecutor {
             // Transform & Resizing
             "Resize" | "Transform" => transform::execute_resize(node, inputs, resolution),
 
+            // Utility Nodes
+            "Comment" => Ok(HashMap::new()),
+            "Reroute" => {
+                let mut outputs = HashMap::new();
+                if let Some(buf) = inputs.get("input").or_else(|| inputs.values().next()) {
+                    outputs.insert("output".to_string(), Arc::clone(buf));
+                } else {
+                    let blank = Arc::new(crate::core::buffer::TextureBuffer::new(resolution.0, resolution.1));
+                    outputs.insert("output".to_string(), blank);
+                }
+                Ok(outputs)
+            }
+
             // Fallback: Passthrough first input or empty buffer
             _ => {
                 let mut outputs = HashMap::new();
@@ -151,6 +164,7 @@ pub enum NodeCategory {
     BlendOps,
     Math,
     Transform,
+    Utility,
 }
 
 impl std::fmt::Display for NodeCategory {
@@ -164,6 +178,7 @@ impl std::fmt::Display for NodeCategory {
             Self::BlendOps => write!(f, "Blend Operations"),
             Self::Math => write!(f, "Math"),
             Self::Transform => write!(f, "Transform"),
+            Self::Utility => write!(f, "Utility"),
         }
     }
 }
@@ -188,6 +203,12 @@ impl NodeDescriptor {
         }
         for &output in self.default_outputs {
             node.add_output(output);
+        }
+        if self.type_name == "Comment" {
+            node.set_param("text", NodeParam::String("Comment".to_string()));
+            node.set_param("width", NodeParam::Float(300.0));
+            node.set_param("height", NodeParam::Float(200.0));
+            node.set_param("color", NodeParam::Color([0.18, 0.22, 0.28, 0.4]));
         }
         node
     }
@@ -355,6 +376,23 @@ pub static NODE_CATALOG: &[NodeDescriptor] = &[
         default_inputs: &["input"],
         default_outputs: &["output"],
     },
+    // 9. Utility
+    NodeDescriptor {
+        type_name: "Comment",
+        display_name: "Comment",
+        category: NodeCategory::Utility,
+        hotkey: Some("/"),
+        default_inputs: &[],
+        default_outputs: &[],
+    },
+    NodeDescriptor {
+        type_name: "Reroute",
+        display_name: "Reroute",
+        category: NodeCategory::Utility,
+        hotkey: None,
+        default_inputs: &["input"],
+        default_outputs: &["output"],
+    },
 ];
 
 /// Finds a node descriptor by type name with full alias support.
@@ -390,6 +428,8 @@ pub fn find_descriptor(type_name: &str) -> Option<&'static NodeDescriptor> {
         "SAVEIMAGE" | "TEXTUREOUTPUT" | "SAVETEXTURE" | "SAVE" | "EXPORT" => {
             NODE_CATALOG.iter().find(|d| d.type_name == "SaveImage")
         }
+        "COMMENT" | "COMMENTBOX" | "NOTE" => NODE_CATALOG.iter().find(|d| d.type_name == "Comment"),
+        "REROUTE" | "DOT" | "PASSTHROUGH" => NODE_CATALOG.iter().find(|d| d.type_name == "Reroute"),
         _ => None,
     }
 }
@@ -400,7 +440,7 @@ pub mod tests {
 
     #[test]
     pub fn test_catalog_census() {
-        assert!(NODE_CATALOG.len() >= 12);
+        assert!(NODE_CATALOG.len() >= 14);
         assert!(find_descriptor("ChannelMixer").is_some());
         assert!(find_descriptor("NormalBlendRNM").is_some());
         assert!(find_descriptor("Levels").is_some());
@@ -409,6 +449,8 @@ pub mod tests {
         assert!(find_descriptor("Add").is_some());
         assert!(find_descriptor("OneMinus").is_some());
         assert!(find_descriptor("ChannelPack").is_some());
+        assert!(find_descriptor("Comment").is_some());
+        assert!(find_descriptor("Reroute").is_some());
     }
 
     #[test]
@@ -418,5 +460,33 @@ pub mod tests {
         assert_eq!(node.id, NodeId(42));
         assert_eq!(node.inputs.len(), 4);
         assert_eq!(node.outputs.len(), 2);
+    }
+
+    #[test]
+    pub fn test_comment_node_catalog_and_params() {
+        let desc = find_descriptor("Comment").expect("Comment node should exist in catalog");
+        assert_eq!(desc.category, NodeCategory::Utility);
+        assert_eq!(desc.default_inputs.len(), 0);
+        assert_eq!(desc.default_outputs.len(), 0);
+
+        let node = desc.create_node(NodeId(99), [150.0, 250.0]);
+        assert_eq!(node.id, NodeId(99));
+        assert_eq!(node.position, [150.0, 250.0]);
+        assert_eq!(node.get_string("text", ""), "Comment");
+        assert_eq!(node.get_float("width", 0.0), 300.0);
+        assert_eq!(node.get_float("height", 0.0), 200.0);
+        assert_eq!(node.get_color("color", [0.0; 4]), [0.18, 0.22, 0.28, 0.4]);
+    }
+
+    #[test]
+    pub fn test_reroute_node_catalog() {
+        let desc = find_descriptor("Reroute").expect("Reroute node should exist in catalog");
+        assert_eq!(desc.category, NodeCategory::Utility);
+        assert_eq!(desc.default_inputs, &["input"]);
+        assert_eq!(desc.default_outputs, &["output"]);
+
+        let node = desc.create_node(NodeId(100), [50.0, 60.0]);
+        assert_eq!(node.inputs.len(), 1);
+        assert_eq!(node.outputs.len(), 1);
     }
 }

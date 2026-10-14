@@ -57,6 +57,8 @@ pub const CAT_MATH: Color32 = Color32::from_rgb(111, 208, 140);      // #6FD08C 
 pub const CAT_MATH_BG: Color32 = Color32::from_rgb(29, 51, 39);      // #1D3327
 pub const CAT_TRANSFORM: Color32 = Color32::from_rgb(245, 158, 11);   // #F59E0B (Orange)
 pub const CAT_TRANSFORM_BG: Color32 = Color32::from_rgb(53, 39, 27); // #35271B
+pub const CAT_UTILITY: Color32 = Color32::from_rgb(148, 163, 184);     // #94A3B8 (Slate Gray)
+pub const CAT_UTILITY_BG: Color32 = Color32::from_rgb(30, 36, 44);    // #1E242C
 
 // --- Map Detection Badges (TextureInput Node Layout Section 6) ---
 pub const BADGE_AO_BG: Color32 = Color32::from_rgba_premultiplied(18, 26, 31, 50);     // #5B839E (~20%)
@@ -129,6 +131,7 @@ pub fn category_color(cat: NodeCategory) -> Color32 {
         NodeCategory::BlendOps => CAT_BLEND,
         NodeCategory::Math => CAT_MATH,
         NodeCategory::Transform => CAT_TRANSFORM,
+        NodeCategory::Utility => CAT_UTILITY,
     }
 }
 
@@ -143,6 +146,7 @@ pub fn category_tinted_bg(cat: NodeCategory) -> Color32 {
         NodeCategory::BlendOps => CAT_BLEND_BG,
         NodeCategory::Math => CAT_MATH_BG,
         NodeCategory::Transform => CAT_TRANSFORM_BG,
+        NodeCategory::Utility => CAT_UTILITY_BG,
     }
 }
 
@@ -355,6 +359,7 @@ mod tests {
             NodeCategory::BlendOps,
             NodeCategory::Math,
             NodeCategory::Transform,
+            NodeCategory::Utility,
         ];
         // All categories have valid non-transparent colors
         for c in cats {
