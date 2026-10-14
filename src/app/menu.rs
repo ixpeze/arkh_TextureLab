@@ -123,6 +123,10 @@ impl TextureLabApp {
                     }
                     ui.close_menu();
                 }
+                if ui.button("Export Preset Designer...").clicked() {
+                    self.preset_designer_dialog.open(&self.user_presets);
+                    ui.close_menu();
+                }
                 ui.separator();
                 if ui.button("Exit").clicked() {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);

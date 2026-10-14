@@ -39,7 +39,9 @@ impl eframe::App for TextureLabApp {
         self.canvas_state.locked_viewport_node = self.viewport_state.locked_node;
 
         // 1. Hotkey Dispatcher Guard (suppress when typing or interacting with modal dialogs)
-        let is_modal_open = self.preferences_dialog.is_open || self.show_about_dialog;
+        let is_modal_open = self.preferences_dialog.is_open
+            || self.show_about_dialog
+            || self.preset_designer_dialog.is_open;
         let is_text_focused = ctx.memory(|m| m.focused().is_some());
         let hotkey = if is_modal_open {
             None
@@ -257,6 +259,8 @@ impl eframe::App for TextureLabApp {
                 export_asset_name: &mut self.export_asset_name,
                 export_target_dir: &mut self.export_target_dir,
                 export_report_summary: &mut self.export_report_summary,
+                user_presets: &mut self.user_presets,
+                preset_designer_dialog: &mut self.preset_designer_dialog,
             };
 
             DockArea::new(&mut dock_state)
@@ -344,6 +348,19 @@ impl eframe::App for TextureLabApp {
                 }
             }
         }
+
+        // 8. Export Preset Designer Modal Dialog
+        if let Some(result) = self.preset_designer_dialog.show(ctx) {
+            match result {
+                crate::export::PresetDesignerResult::Saved(new_presets) => {
+                    self.user_presets = new_presets;
+                    self.status_message = format!("Export presets saved ({} presets)", self.user_presets.len());
+                }
+                crate::export::PresetDesignerResult::Cancel => {
+                    self.status_message = "Preset designer changes discarded".to_string();
+                }
+            }
+        }
     }
 }
 
@@ -362,6 +379,8 @@ struct AppTabViewer<'a> {
     export_asset_name: &'a mut String,
     export_target_dir: &'a mut String,
     export_report_summary: &'a mut Option<String>,
+    user_presets: &'a mut Vec<crate::export::UserPreset>,
+    preset_designer_dialog: &'a mut crate::export::PresetDesignerDialog,
 }
 
 impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
@@ -643,7 +662,7 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                     ui.separator();
 
                     // Preset selection & export target settings
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("Preset:");
                         let presets = ExportPreset::builtin_presets();
                         for p in &presets {
@@ -651,6 +670,23 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                             if ui.selectable_label(is_selected, &p.name).clicked() {
                                 *self.export_preset_id = p.id.clone();
                             }
+                        }
+
+                        if !self.user_presets.is_empty() {
+                            ui.separator();
+                            ui.label("Custom:");
+                            for up in self.user_presets.iter() {
+                                let up_id = format!("user:{}", up.name);
+                                let is_selected = *self.export_preset_id == up_id || *self.export_preset_id == up.name;
+                                if ui.selectable_label(is_selected, &up.name).clicked() {
+                                    *self.export_preset_id = up_id;
+                                }
+                            }
+                        }
+
+                        ui.add_space(8.0);
+                        if ui.button("Edit Presets...").on_hover_text("Open User Export Preset Designer").clicked() {
+                            self.preset_designer_dialog.open(self.user_presets);
                         }
                     });
 
@@ -702,8 +738,14 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         ui.label(format!("Found {} texture output targets:", output_nodes.len()));
                         ui.add_space(4.0);
 
-                        let current_preset = ExportPreset::find_by_id(self.export_preset_id)
-                            .unwrap_or_else(|| ExportPreset::builtin_presets().remove(0));
+                        let current_preset = if let Some(up) = self.user_presets.iter().find(|up| {
+                            format!("user:{}", up.name) == *self.export_preset_id || up.name == *self.export_preset_id
+                        }) {
+                            up.to_export_preset()
+                        } else {
+                            ExportPreset::find_by_id(self.export_preset_id)
+                                .unwrap_or_else(|| ExportPreset::builtin_presets().remove(0))
+                        };
 
                         let mut ready_targets: Vec<(PinId, PathBuf)> = Vec::new();
 

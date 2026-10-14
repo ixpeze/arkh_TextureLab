@@ -7,6 +7,7 @@ use egui_dock::DockState;
 use crate::graph::evaluator::{AsyncEvaluator, GraphEvaluator};
 use crate::graph::history::HistoryStack;
 use crate::graph::model::{Graph, NodeId, PinId, ProjectMetadata};
+use crate::export::{load_presets, PresetDesignerDialog, UserPreset};
 use crate::nodes::NodeDescriptor;
 use crate::settings::AppSettings;
 use crate::ui::canvas::CanvasState;
@@ -40,7 +41,10 @@ pub struct TextureLabApp {
     pub export_asset_name: String,
     pub export_target_dir: String,
     pub export_report_summary: Option<String>,
+    pub user_presets: Vec<UserPreset>,
+    pub preset_designer_dialog: PresetDesignerDialog,
 }
+
 
 impl TextureLabApp {
     /// Creates a new instance of TextureLabApp initialized with the starter PBR graph.
@@ -97,6 +101,8 @@ impl TextureLabApp {
             export_asset_name: "Asset".to_string(),
             export_target_dir,
             export_report_summary: None,
+            user_presets: load_presets(),
+            preset_designer_dialog: PresetDesignerDialog::new(),
         }
     }
 
@@ -367,6 +373,8 @@ impl Default for TextureLabApp {
             export_asset_name: "Asset".to_string(),
             export_target_dir: "exports".to_string(),
             export_report_summary: None,
+            user_presets: UserPreset::default_presets(),
+            preset_designer_dialog: PresetDesignerDialog::new(),
         }
     }
 }

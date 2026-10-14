@@ -2119,5 +2119,95 @@ fn test_spec_gloss_to_metal_rough_dag_pipeline() {
     assert_eq!(bc_px2[2], 255);
 }
 
+#[test]
+fn test_export_preset_designer_channel_routing_and_persistence() {
+    use texturelab::export::{
+        load_presets_from_path, save_presets_to_path, ChannelSource, PresetDesignerDialog,
+        PresetDesignerResult, PresetOutputFormat, UserPreset,
+    };
+    use texturelab::export::TokenContext;
+
+    // 1. Construct custom preset with non-trivial channel routing
+    let custom_preset = UserPreset::new(
+        "Crytek DDNA Pack",
+        "CryEngine normal and glossiness packing",
+        [
+            ChannelSource::new("Normal", 'R'),
+            ChannelSource::new("Normal", 'G'),
+            ChannelSource::new("Glossiness", 'R'),
+            ChannelSource::new("AmbientOcclusion", 'R'),
+        ],
+        PresetOutputFormat::TGA,
+        8,
+        "T_{asset}_ddna",
+    );
+
+    assert_eq!(custom_preset.name, "Crytek DDNA Pack");
+    assert_eq!(custom_preset.channels[0].node_output, "Normal");
+    assert_eq!(custom_preset.channels[0].channel, 'R');
+    assert_eq!(custom_preset.channels[1].node_output, "Normal");
+    assert_eq!(custom_preset.channels[1].channel, 'G');
+    assert_eq!(custom_preset.channels[2].node_output, "Glossiness");
+    assert_eq!(custom_preset.channels[2].channel, 'R');
+    assert_eq!(custom_preset.channels[3].node_output, "AmbientOcclusion");
+    assert_eq!(custom_preset.channels[3].channel, 'R');
+
+    // 2. Test disk persistence roundtrip
+    let temp_dir = std::env::temp_dir();
+    let unique_path = temp_dir.join(format!(
+        "test_preset_designer_{}.json",
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+    ));
+
+    let presets = vec![custom_preset.clone()];
+    save_presets_to_path(&presets, &unique_path).expect("Saving presets must succeed");
+
+    let loaded = load_presets_from_path(&unique_path);
+    assert_eq!(loaded.len(), 1);
+    assert_eq!(loaded[0].name, "Crytek DDNA Pack");
+    assert_eq!(loaded[0].output_format, PresetOutputFormat::TGA);
+    assert_eq!(loaded[0].channels, custom_preset.channels);
+    assert_eq!(loaded[0].token_pattern, "T_{asset}_ddna");
+
+    // Clean up
+    let _ = std::fs::remove_file(unique_path);
+
+    // 3. Test token resolution and interop with ExportPreset
+    let ep = loaded[0].to_export_preset();
+    assert_eq!(ep.id, "user:crytek_ddna_pack");
+    assert_eq!(ep.default_format, "tga");
+
+    let ctx = TokenContext::new("NanoSuit", "ddna").with_format(&ep.default_format);
+    assert_eq!(ep.resolve_filename(&ctx), "T_NanoSuit_ddna.tga");
+    assert_eq!(loaded[0].preview_filename("NanoSuit", "2048"), "T_NanoSuit_ddna.tga");
+
+    // 4. Test PresetDesignerDialog state machine
+    let mut dialog = PresetDesignerDialog::new();
+    assert!(!dialog.is_open);
+
+    dialog.open(&presets);
+    assert!(dialog.is_open);
+    assert_eq!(dialog.draft_presets.len(), 1);
+
+    // Add a new preset
+    let new_p = UserPreset::default();
+    dialog.draft_presets.push(new_p);
+    assert_eq!(dialog.draft_presets.len(), 2);
+
+    // 5. Test TextureLabApp integration
+    let mut app = TextureLabApp::default();
+    assert!(!app.user_presets.is_empty());
+
+    // Switch export preset to custom user preset
+    app.user_presets.push(custom_preset);
+    app.export_preset_id = "user:Crytek DDNA Pack".to_string();
+
+    let found_preset = app.user_presets.iter().find(|up| {
+        format!("user:{}", up.name) == app.export_preset_id || up.name == app.export_preset_id
+    });
+    assert!(found_preset.is_some());
+    assert_eq!(found_preset.unwrap().name, "Crytek DDNA Pack");
+}
+
 
 
