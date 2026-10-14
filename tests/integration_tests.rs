@@ -1702,6 +1702,71 @@ fn test_end_to_end_screen_to_canvas_drag_drop_alignment() {
     assert!((roundtrip_screen.y - screen_cursor.y).abs() < 1e-4);
 }
 
+#[test]
+fn test_end_to_end_node_copy_paste_and_duplicate() {
+    let mut app = TextureLabApp::default();
+    let initial_count = app.graph.nodes.len();
+    assert!(initial_count >= 1);
+
+    // 1. Select first node and copy
+    let first_id = *app.graph.nodes.keys().next().unwrap();
+    let first_pos = app.graph.get_node(first_id).unwrap().position;
+    app.canvas_state.selected_node = Some(first_id);
+
+    assert!(app.copy_selected_nodes());
+    assert!(app.canvas_state.clipboard.is_some());
+    let (clip_nodes, _) = app.canvas_state.clipboard.as_ref().unwrap();
+    assert_eq!(clip_nodes.len(), 1);
+    assert_eq!(clip_nodes[0].id, first_id);
+    assert_eq!(clip_nodes[0].position, first_pos);
+
+    // 2. Paste with mouse canvas position [300.0, 400.0]
+    let pasted_ids = app.paste_clipboard(Some([300.0, 400.0]));
+    assert_eq!(pasted_ids.len(), 1);
+    let pasted_id = pasted_ids[0];
+    assert_ne!(pasted_id, first_id);
+    assert_eq!(app.graph.nodes.len(), initial_count + 1);
+
+    // Verify pasted node position is placed at mouse position + [50, 50]
+    let pasted_node = app.graph.get_node(pasted_id).unwrap();
+    assert_eq!(pasted_node.position, [350.0, 450.0]);
+    assert_eq!(app.canvas_state.selected_node, Some(pasted_id));
+
+    // 3. Test Undo of paste
+    assert!(app.history.can_undo());
+    let undone_graph = app.history.undo(&app.graph).expect("Undo paste should succeed");
+    app.graph = undone_graph;
+    assert_eq!(app.graph.nodes.len(), initial_count);
+    assert!(!app.graph.contains_node(pasted_id));
+
+    // 4. Test Redo of paste
+    assert!(app.history.can_redo());
+    let redone_graph = app.history.redo(&app.graph).expect("Redo paste should succeed");
+    app.graph = redone_graph;
+    assert_eq!(app.graph.nodes.len(), initial_count + 1);
+    assert!(app.graph.contains_node(pasted_id));
+
+    // 5. Test Duplicate of newly selected pasted node (+30, +30 offset)
+    app.canvas_state.selected_node = Some(pasted_id);
+    let dup_ids = app.duplicate_selected_nodes();
+    assert_eq!(dup_ids.len(), 1);
+    let dup_id = dup_ids[0];
+    assert_ne!(dup_id, pasted_id);
+    assert_ne!(dup_id, first_id);
+    assert_eq!(app.graph.nodes.len(), initial_count + 2);
+
+    let dup_node = app.graph.get_node(dup_id).unwrap();
+    assert_eq!(dup_node.position, [380.0, 480.0]); // 350+30, 450+30
+    assert_eq!(app.canvas_state.selected_node, Some(dup_id));
+
+    // 6. Test Paste without mouse position (relative +50, +50 from original)
+    // Clipboard currently contains pasted_node at [350.0, 450.0]
+    let rel_pasted_ids = app.paste_clipboard(None);
+    assert_eq!(rel_pasted_ids.len(), 1);
+    let rel_node = app.graph.get_node(rel_pasted_ids[0]).unwrap();
+    assert_eq!(rel_node.position, [400.0, 500.0]); // 350+50, 450+50
+}
+
 
 
 

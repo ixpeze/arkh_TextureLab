@@ -132,6 +132,23 @@ impl eframe::App for TextureLabApp {
                 HotkeyAction::AutoLayout => {
                     self.execute_auto_layout();
                 }
+                HotkeyAction::Copy => {
+                    self.copy_selected_nodes();
+                }
+                HotkeyAction::Paste => {
+                    let mouse_canvas = ctx.input(|i| i.pointer.latest_pos()).and_then(|ptr| {
+                        if self.canvas_state.last_canvas_rect.contains(ptr) {
+                            let p = self.canvas_state.screen_to_canvas(ptr, self.canvas_state.last_canvas_rect);
+                            Some([p.x, p.y])
+                        } else {
+                            None
+                        }
+                    });
+                    self.paste_clipboard(mouse_canvas);
+                }
+                HotkeyAction::Duplicate => {
+                    self.duplicate_selected_nodes();
+                }
             }
         }
 

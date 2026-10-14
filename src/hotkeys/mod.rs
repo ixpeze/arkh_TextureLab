@@ -44,6 +44,12 @@ pub enum HotkeyAction {
     OpenExportDialog,
     /// Auto-layout graph nodes into compact non-overlapping arrangement (`Ctrl + F`).
     AutoLayout,
+    /// Copy selected nodes to clipboard (`Ctrl + C`).
+    Copy,
+    /// Paste clipboard contents into graph (`Ctrl + V`).
+    Paste,
+    /// Duplicate selected nodes (`Ctrl + D`).
+    Duplicate,
 }
 
 /// Evaluates raw key and modifier states with an input-focus guard.
@@ -80,6 +86,15 @@ pub fn resolve_hotkey(
         }
         if key == Key::F {
             return Some(HotkeyAction::AutoLayout);
+        }
+        if key == Key::C {
+            return Some(HotkeyAction::Copy);
+        }
+        if key == Key::V {
+            return Some(HotkeyAction::Paste);
+        }
+        if key == Key::D {
+            return Some(HotkeyAction::Duplicate);
         }
         return None;
     }
@@ -130,6 +145,8 @@ pub fn dispatch_from_input(input: &InputState, text_input_active: bool) -> Optio
         Key::Y,
         Key::A,
         Key::E,
+        Key::V,
+        Key::D,
     ] {
         if input.key_pressed(key) {
             // When mouse is clicked/held, hold-key canvas quick spawn takes precedence
@@ -243,6 +260,18 @@ pub mod tests {
         assert_eq!(
             resolve_hotkey(Key::F, true, false, text_input_active),
             Some(HotkeyAction::AutoLayout)
+        );
+        assert_eq!(
+            resolve_hotkey(Key::C, true, false, text_input_active),
+            Some(HotkeyAction::Copy)
+        );
+        assert_eq!(
+            resolve_hotkey(Key::V, true, false, text_input_active),
+            Some(HotkeyAction::Paste)
+        );
+        assert_eq!(
+            resolve_hotkey(Key::D, true, false, text_input_active),
+            Some(HotkeyAction::Duplicate)
         );
     }
 }

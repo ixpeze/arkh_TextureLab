@@ -423,10 +423,10 @@ This is basic graph editor functionality.
 - `git commit -m "feat(graph): copy/paste/duplicate nodes (Ctrl+C/V/D)"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
 ```
 
 ---

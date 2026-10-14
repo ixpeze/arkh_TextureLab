@@ -20,7 +20,7 @@ pub use wires::{
 use egui::{
     Color32, Key, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2,
 };
-use crate::graph::model::{Edge, Graph, NodeId, PinId};
+use crate::graph::model::{Edge, Graph, Node, NodeId, PinId};
 use crate::ui::theme::{
     pin_wire_color, ACCENT_AMBER, BG_CANVAS, BORDER_DARK, GRID_AXIS, GRID_DOT,
     GRID_DOT_MAJOR, TEXT_PRIMARY, TEXT_SECONDARY,
@@ -67,6 +67,7 @@ pub struct CanvasState {
     box_select_start: Option<Pos2>,
     box_select_current: Option<Pos2>,
     pub last_canvas_rect: Rect,
+    pub clipboard: Option<(Vec<Node>, Vec<Edge>)>,
 }
 
 impl Default for CanvasState {
@@ -83,6 +84,7 @@ impl Default for CanvasState {
             box_select_start: None,
             box_select_current: None,
             last_canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(1920.0, 1080.0)),
+            clipboard: None,
         }
     }
 }
@@ -90,6 +92,44 @@ impl Default for CanvasState {
 impl CanvasState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Clones specified nodes and internal connections into the canvas clipboard.
+    pub fn copy_nodes(&mut self, graph: &Graph, node_ids: &[NodeId]) -> bool {
+        let (nodes, edges) = graph.clone_subgraph(node_ids);
+        if nodes.is_empty() {
+            return false;
+        }
+        self.clipboard = Some((nodes, edges));
+        true
+    }
+
+    /// Clones currently selected node(s) into the canvas clipboard.
+    pub fn copy_selected(&mut self, graph: &Graph) -> bool {
+        let ids: Vec<NodeId> = self.selected_node.into_iter().collect();
+        self.copy_nodes(graph, &ids)
+    }
+
+    /// Pastes clipboard contents into the graph at the specified offset and selects newly created nodes.
+    pub fn paste_clipboard(&mut self, graph: &mut Graph, offset: [f32; 2]) -> Vec<NodeId> {
+        if let Some((nodes, edges)) = &self.clipboard {
+            let new_ids = graph.paste_subgraph(nodes.clone(), edges.clone(), offset);
+            if let Some(&first) = new_ids.first() {
+                self.selected_node = Some(first);
+            }
+            new_ids
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Copies selected nodes and immediately pastes them at the specified offset (Ctrl+D duplicate).
+    pub fn duplicate_selected(&mut self, graph: &mut Graph, offset: [f32; 2]) -> Vec<NodeId> {
+        if self.copy_selected(graph) {
+            self.paste_clipboard(graph, offset)
+        } else {
+            Vec::new()
+        }
     }
 
     /// Converts canvas world coordinates into screen pixel coordinates.

@@ -55,6 +55,11 @@ Hotkeys are defined in [`src/hotkeys/mod.rs`](src/hotkeys/mod.rs).
 | `Delete` / `Backspace` | Delete selected nodes |
 | `Ctrl + Z` | Undo (100-step buffer) |
 | `Ctrl + Y` | Redo |
+| `Ctrl + C` | Copy selected nodes to clipboard |
+| `Ctrl + V` | Paste clipboard nodes at cursor |
+| `Ctrl + D` | Duplicate selected nodes (+30, +30) |
+| `Ctrl + A` | Select all nodes in graph |
+| `Ctrl + F` | Auto-layout graph nodes |
 | `Ctrl + S` | Save project (`.tlab`) |
 | `Ctrl + E` | Export preflight drawer |
 

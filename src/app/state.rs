@@ -213,6 +213,68 @@ impl TextureLabApp {
             );
         }
     }
+
+    /// Clones currently selected node(s) and their internal connections to clipboard (`Ctrl + C`).
+    pub fn copy_selected_nodes(&mut self) -> bool {
+        let copied = self.canvas_state.copy_selected(&self.graph);
+        if copied {
+            let count = self.canvas_state.clipboard.as_ref().map(|(n, _)| n.len()).unwrap_or(0);
+            self.status_message = format!("Copied {} node(s) to clipboard (Ctrl+C)", count);
+        }
+        copied
+    }
+
+    /// Pastes clipboard subgraph into the graph with undo history and re-evaluation (`Ctrl + V`).
+    ///
+    /// If `mouse_pos` in canvas coordinates is supplied, positions the pasted subgraph at
+    /// the mouse position with a [50, 50] offset; otherwise applies a [50, 50] relative offset.
+    pub fn paste_clipboard(&mut self, mouse_pos: Option<[f32; 2]>) -> Vec<NodeId> {
+        let offset = if let Some(target_pos) = mouse_pos {
+            if let Some((nodes, _)) = &self.canvas_state.clipboard {
+                if let Some(first) = nodes.first() {
+                    [
+                        target_pos[0] - first.position[0] + 50.0,
+                        target_pos[1] - first.position[1] + 50.0,
+                    ]
+                } else {
+                    [50.0, 50.0]
+                }
+            } else {
+                [50.0, 50.0]
+            }
+        } else {
+            [50.0, 50.0]
+        };
+
+        if self.canvas_state.clipboard.is_some() {
+            self.history.record(&self.graph, "Paste node(s)");
+            let new_ids = self.canvas_state.paste_clipboard(&mut self.graph, offset);
+            if !new_ids.is_empty() {
+                self.evaluator.invalidate_all();
+                self.reevaluate();
+                self.status_message = format!("Pasted {} node(s) (Ctrl+V)", new_ids.len());
+            }
+            new_ids
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Copies selected nodes and immediately pastes them offset by [30, 30] (`Ctrl + D`).
+    pub fn duplicate_selected_nodes(&mut self) -> Vec<NodeId> {
+        if self.canvas_state.selected_node.is_some() {
+            self.history.record(&self.graph, "Duplicate node(s)");
+            let new_ids = self.canvas_state.duplicate_selected(&mut self.graph, [30.0, 30.0]);
+            if !new_ids.is_empty() {
+                self.evaluator.invalidate_all();
+                self.reevaluate();
+                self.status_message = format!("Duplicated {} node(s) (Ctrl+D)", new_ids.len());
+            }
+            new_ids
+        } else {
+            Vec::new()
+        }
+    }
 }
 
 impl Default for TextureLabApp {

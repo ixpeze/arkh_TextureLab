@@ -431,6 +431,78 @@ impl Graph {
         self.edges.iter().filter(|e| e.from == *pin).collect()
     }
 
+    /// Deep-clones the specified nodes and collects all edges where both endpoints are in the set.
+    pub fn clone_subgraph(&self, node_ids: &[NodeId]) -> (Vec<Node>, Vec<Edge>) {
+        let mut id_set = std::collections::HashSet::new();
+        let mut cloned_nodes = Vec::new();
+
+        for &id in node_ids {
+            if id_set.insert(id) {
+                if let Some(node) = self.get_node(id) {
+                    cloned_nodes.push(node.clone());
+                }
+            }
+        }
+
+        let cloned_edges = self
+            .edges
+            .iter()
+            .filter(|e| id_set.contains(&e.from.node_id) && id_set.contains(&e.to.node_id))
+            .cloned()
+            .collect();
+
+        (cloned_nodes, cloned_edges)
+    }
+
+    /// Inserts a cloned subgraph with fresh Node IDs, remapped pins, and an applied position offset.
+    pub fn paste_subgraph(
+        &mut self,
+        nodes: Vec<Node>,
+        edges: Vec<Edge>,
+        offset: [f32; 2],
+    ) -> Vec<NodeId> {
+        let mut id_map = HashMap::new();
+        let mut new_node_ids = Vec::with_capacity(nodes.len());
+
+        for node in &nodes {
+            if !id_map.contains_key(&node.id) {
+                let old_id = node.id;
+                let new_id = NodeId(self.next_node_id);
+                self.next_node_id += 1;
+                id_map.insert(old_id, new_id);
+                new_node_ids.push(new_id);
+            }
+        }
+
+        for mut node in nodes {
+            if let Some(&new_id) = id_map.get(&node.id) {
+                node.id = new_id;
+                node.position[0] += offset[0];
+                node.position[1] += offset[1];
+                for pin in &mut node.inputs {
+                    pin.node_id = new_id;
+                }
+                for pin in &mut node.outputs {
+                    pin.node_id = new_id;
+                }
+                self.nodes.insert(new_id, node);
+            }
+        }
+
+        for mut edge in edges {
+            if let (Some(&new_from), Some(&new_to)) = (
+                id_map.get(&edge.from.node_id),
+                id_map.get(&edge.to.node_id),
+            ) {
+                edge.from.node_id = new_from;
+                edge.to.node_id = new_to;
+                self.edges.push(edge);
+            }
+        }
+
+        new_node_ids
+    }
+
     /// Serializes the graph to a JSON string.
     pub fn to_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
@@ -679,5 +751,78 @@ pub mod tests {
         // Previous incoming edge N1 -> N2 must be preserved untouched!
         assert_eq!(graph.edges.len(), 2);
         assert_eq!(graph.incoming_edge(&p2_in).unwrap().from.node_id, n1);
+    }
+
+    #[test]
+    pub fn test_graph_clone_and_paste_subgraph_3_connected_nodes() {
+        let mut graph = Graph::new();
+        let n1 = graph.create_node("ConstantColor", "N1", [10.0, 20.0]);
+        let n2 = graph.create_node("Invert", "N2", [110.0, 120.0]);
+        let n3 = graph.create_node("TextureOutput", "N3", [210.0, 220.0]);
+
+        let p1_out = PinId::output(n1, "RGBA");
+        let p2_in = PinId::input(n2, "RGBA");
+        let p2_out = PinId::output(n2, "RGBA");
+        let p3_in = PinId::input(n3, "RGBA");
+
+        if let Some(node) = graph.get_node_mut(n1) {
+            node.add_output("RGBA");
+        }
+        if let Some(node) = graph.get_node_mut(n2) {
+            node.add_input("RGBA");
+            node.add_output("RGBA");
+        }
+        if let Some(node) = graph.get_node_mut(n3) {
+            node.add_input("RGBA");
+        }
+
+        graph.connect(p1_out, p2_in).expect("Connect 1->2 failed");
+        graph.connect(p2_out, p3_in).expect("Connect 2->3 failed");
+        assert_eq!(graph.nodes.len(), 3);
+        assert_eq!(graph.edges.len(), 2);
+
+        // Clone subgraph with 3 connected nodes
+        let (cloned_nodes, cloned_edges) = graph.clone_subgraph(&[n1, n2, n3]);
+        assert_eq!(cloned_nodes.len(), 3);
+        assert_eq!(cloned_edges.len(), 2);
+
+        // Paste subgraph with [50.0, 50.0] offset
+        let new_ids = graph.paste_subgraph(cloned_nodes, cloned_edges, [50.0, 50.0]);
+        assert_eq!(new_ids.len(), 3);
+
+        // 1. Verify fresh, unique IDs distinct from original IDs
+        for &id in &new_ids {
+            assert!(id != n1 && id != n2 && id != n3);
+            assert!(graph.contains_node(id));
+        }
+
+        // 2. Verify total graph size doubled
+        assert_eq!(graph.nodes.len(), 6);
+        assert_eq!(graph.edges.len(), 4);
+
+        // 3. Verify positions offset by [50.0, 50.0]
+        let pn1 = graph.get_node(new_ids[0]).unwrap();
+        let pn2 = graph.get_node(new_ids[1]).unwrap();
+        let pn3 = graph.get_node(new_ids[2]).unwrap();
+        assert_eq!(pn1.position, [60.0, 70.0]);
+        assert_eq!(pn2.position, [160.0, 170.0]);
+        assert_eq!(pn3.position, [260.0, 270.0]);
+
+        // 4. Verify pin IDs inside pasted nodes remapped to new NodeIds
+        assert_eq!(pn1.outputs[0].node_id, new_ids[0]);
+        assert_eq!(pn2.inputs[0].node_id, new_ids[1]);
+        assert_eq!(pn2.outputs[0].node_id, new_ids[1]);
+        assert_eq!(pn3.inputs[0].node_id, new_ids[2]);
+
+        // 5. Verify edges between newly pasted nodes remapped
+        let pasted_edges = graph.edges_from(new_ids[0]);
+        assert_eq!(pasted_edges.len(), 1);
+        assert_eq!(pasted_edges[0].from.node_id, new_ids[0]);
+        assert_eq!(pasted_edges[0].to.node_id, new_ids[1]);
+
+        let pasted_edges_2 = graph.edges_from(new_ids[1]);
+        assert_eq!(pasted_edges_2.len(), 1);
+        assert_eq!(pasted_edges_2[0].from.node_id, new_ids[1]);
+        assert_eq!(pasted_edges_2[0].to.node_id, new_ids[2]);
     }
 }

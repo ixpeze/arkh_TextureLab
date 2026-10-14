@@ -107,6 +107,19 @@ impl TextureLabApp {
                     ui.close_menu();
                 }
                 ui.separator();
+                if ui.button("Copy (Ctrl+C)").clicked() {
+                    self.copy_selected_nodes();
+                    ui.close_menu();
+                }
+                if ui.button("Paste (Ctrl+V)").clicked() {
+                    self.paste_clipboard(None);
+                    ui.close_menu();
+                }
+                if ui.button("Duplicate (Ctrl+D)").clicked() {
+                    self.duplicate_selected_nodes();
+                    ui.close_menu();
+                }
+                ui.separator();
                 if ui.button("Auto Layout Nodes (Ctrl+F)").clicked() {
                     self.execute_auto_layout();
                     ui.close_menu();
