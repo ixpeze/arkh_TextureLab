@@ -66,7 +66,7 @@ Clean up code health issues found during analysis before adding features.
 | P0-T1 | `src/app.rs` | ✅ Done — Removed `Edition` enum, all `is_node_allowed` / `is_format_allowed` / edition menu / edition tests. |
 | P0-T2 | `.github/workflows/ci.yml` | ✅ Already done — rebuilt for Rust. |
 | P0-T3 | `src/*.rs` | Fix all 45 clippy warnings. |
-| P0-T4 | `src/app.rs` → extract `src/app/menu.rs`, `src/app/drop.rs`, `src/app/state.rs` | Split 1,600-line monolith. |
+| P0-T4 | `src/app.rs` → extract `src/app/menu.rs`, `src/app/drop.rs`, `src/app/state.rs` | ✅ Done — Split 1,600-line monolith into focused sub-modules. |
 | P0-T5 | `src/ui/canvas.rs` → extract `src/ui/canvas/wires.rs`, `src/ui/canvas/cards.rs`, `src/ui/canvas/search.rs` | Split 1,700-line monolith. |
 | P0-T6 | `docs/`, `README.md`, `ARCHITECTURE.md` | ✅ Already done — rewritten. |
 | P0-T7 | `tests/integration_tests.rs` | ✅ Done — Removed edition-gated test assertions. |
@@ -250,10 +250,10 @@ into focused modules.
 - `git add -A && git commit -m "refactor: split app.rs into app/ sub-modules"`
 
 ## Progress
-- [ ] Task complete
-- [ ] `cargo test` — all pass
-- [ ] `cargo clippy` — checked
-- [ ] Git commit
+- [x] Task complete
+- [x] `cargo test` — all pass
+- [x] `cargo clippy` — checked
+- [x] Git commit
 ```
 
 ---
