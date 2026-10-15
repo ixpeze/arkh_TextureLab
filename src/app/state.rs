@@ -56,13 +56,10 @@ impl TextureLabApp {
         // 2. Initialize Obsidian "Graphite Blueprint" dark workstation theme with configured accent color
         apply_theme_with_accent(&cc.egui_ctx, rgb_to_color32(settings.accent_color));
 
-        // 3. Build default starter PBR graph
-        let graph = build_starter_graph();
-        let mut evaluator = GraphEvaluator::new(settings.default_resolution);
-
-        let start = Instant::now();
-        let _ = evaluator.evaluate(&graph);
-        let eval_time_ms = start.elapsed().as_secs_f64() * 1000.0;
+        // 3. Start with clean blank canvas
+        let graph = Graph::new();
+        let evaluator = GraphEvaluator::new(settings.default_resolution);
+        let eval_time_ms = 0.0;
 
         // 4. Initialize transactional history (clean starting state with 0 undo steps)
         let history = HistoryStack::new();
@@ -70,9 +67,10 @@ impl TextureLabApp {
         // 5. Default docking workspace
         let dock_state = crate::ui::default_dock_layout();
 
-        // 6. Canvas state (select node 1 by default for instant preview)
+        // 6. Canvas state (clean slate displaying start splash quick actions)
         let mut canvas_state = CanvasState::new();
-        canvas_state.selected_node = Some(NodeId(1));
+        canvas_state.selected_node = None;
+        canvas_state.dismiss_splash = false;
 
         let export_target_dir = settings
             .export_directory
@@ -141,6 +139,35 @@ impl TextureLabApp {
     pub fn spawn_node_by_type_at(&mut self, type_name: &str, position: [f32; 2]) -> Option<NodeId> {
         let desc = crate::nodes::find_descriptor(type_name)?;
         self.spawn_node(desc, position)
+    }
+
+    /// Automatically connects a newly spawned node to a source pin (from wire drop).
+    pub fn auto_connect_wire(&mut self, source_pin: PinId, target_node_id: NodeId) {
+        let Some(target_node) = self.graph.get_node(target_node_id) else {
+            return;
+        };
+
+        if !source_pin.is_input {
+            // Drag was started from an OUTPUT pin -> find compatible INPUT pin on target_node
+            let matching_input = find_compatible_input(target_node, &source_pin.name);
+            if let Some(target_input) = matching_input {
+                self.history.record(&self.graph, format!("Auto-wire {} to {}", source_pin.name, target_input.name));
+                let _ = self.graph.connect(source_pin.clone(), target_input.clone());
+                self.evaluator.mark_dirty(&self.graph, target_node_id);
+                self.reevaluate();
+                self.status_message = format!("Auto-wired {} → {}", source_pin.name, target_input.name);
+            }
+        } else {
+            // Drag was started from an INPUT pin -> find compatible OUTPUT pin on target_node
+            let matching_output = find_compatible_output(target_node, &source_pin.name);
+            if let Some(target_output) = matching_output {
+                self.history.record(&self.graph, format!("Auto-wire {} to {}", target_output.name, source_pin.name));
+                let _ = self.graph.connect(target_output.clone(), source_pin.clone());
+                self.evaluator.mark_dirty(&self.graph, source_pin.node_id);
+                self.reevaluate();
+                self.status_message = format!("Auto-wired {} → {}", target_output.name, source_pin.name);
+            }
+        }
     }
 
     /// Polls the background async evaluation worker and applies any completed texture snapshots to the UI state.
@@ -371,14 +398,14 @@ impl TextureLabApp {
 
 impl Default for TextureLabApp {
     fn default() -> Self {
-        let graph = build_starter_graph();
-        let mut evaluator = GraphEvaluator::new((1024, 1024));
-        let _ = evaluator.evaluate(&graph);
+        let graph = Graph::new();
+        let evaluator = GraphEvaluator::new((1024, 1024));
 
         let history = HistoryStack::new();
 
         let mut canvas_state = CanvasState::new();
-        canvas_state.selected_node = Some(NodeId(1));
+        canvas_state.selected_node = None;
+        canvas_state.dismiss_splash = false;
 
         Self {
             title: "TextureLAB".to_string(),
@@ -466,4 +493,50 @@ pub fn build_starter_graph() -> Graph {
     let _ = graph.connect(PinId::output(n1, "output"), PinId::input(n5, "input"));
 
     graph
+}
+
+/// Finds the most compatible input socket on a node for auto-wiring.
+pub fn find_compatible_input(node: &crate::graph::model::Node, source_name: &str) -> Option<PinId> {
+    if node.inputs.is_empty() {
+        return None;
+    }
+    let src_lower = source_name.to_lowercase();
+    // 1. Exact case-insensitive name match
+    if let Some(pin) = node.inputs.iter().find(|p| p.name.to_lowercase() == src_lower) {
+        return Some(pin.clone());
+    }
+    // 2. Semantic color/channel matching
+    if src_lower == "output" || src_lower == "rgba" || src_lower == "color" || src_lower == "rgb" {
+        if let Some(pin) = node.inputs.iter().find(|p| {
+            let n = p.name.to_lowercase();
+            n == "input" || n == "color" || n == "rgba" || n == "rgb" || n == "base" || n == "a"
+        }) {
+            return Some(pin.clone());
+        }
+    }
+    // 3. Fallback to first available input socket
+    node.inputs.first().cloned()
+}
+
+/// Finds the most compatible output socket on a node for auto-wiring.
+pub fn find_compatible_output(node: &crate::graph::model::Node, source_name: &str) -> Option<PinId> {
+    if node.outputs.is_empty() {
+        return None;
+    }
+    let src_lower = source_name.to_lowercase();
+    // 1. Exact case-insensitive name match
+    if let Some(pin) = node.outputs.iter().find(|p| p.name.to_lowercase() == src_lower) {
+        return Some(pin.clone());
+    }
+    // 2. Semantic color/channel matching
+    if src_lower == "input" || src_lower == "color" || src_lower == "rgba" || src_lower == "rgb" || src_lower == "a" || src_lower == "b" {
+        if let Some(pin) = node.outputs.iter().find(|p| {
+            let n = p.name.to_lowercase();
+            n == "output" || n == "rgba" || n == "color" || n == "rgb" || n == "result"
+        }) {
+            return Some(pin.clone());
+        }
+    }
+    // 3. Fallback to first available output socket
+    node.outputs.first().cloned()
 }

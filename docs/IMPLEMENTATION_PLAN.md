@@ -15,7 +15,7 @@ TextureLab is a **pipeline workstation**: best-in-class packing, conversion, bat
 ## Decision Log
 
 | # | Decision | Alternatives Evaluated | Rationale |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | D1 | Remove Lite/Pro edition split permanently | Keep with license key; keep as-is | The toggle is cosmetic — anyone can switch to Pro. Adds dead code and test weight. |
 | D2 | Upgrade evaluator to 16-bit (u16) storage, f32 math | Stay 8-bit; go full f32 | Height/normal maps band at 8-bit. Full f32 costs 256 MB per 4K RGBA node. u16 is 2× 8-bit, sufficient for pipeline work. |
 | D3 | Constants become 1-pixel values with broadcast semantics | Keep full-res buffers | A ConstantScalar at 4K wastes 64 MB. Broadcasting eliminates this. |
@@ -32,7 +32,7 @@ TextureLab is a **pipeline workstation**: best-in-class packing, conversion, bat
 ## Feature Catalog (20 Features)
 
 | ID | Feature | Category | Wave |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | F1 | Batch Processor (multi-set queue) | Pipeline | 1 |
 | F2 | Headless CLI (`texturelab-cli`) | Pipeline | 1 |
 | F3 | Folder Watcher (hot-reload auto-pack) | Pipeline | 2 |
@@ -59,10 +59,11 @@ TextureLab is a **pipeline workstation**: best-in-class packing, conversion, bat
 ## Phase Map
 
 ### Phase 0 — Foundation Fixes (Pre-Wave)
+
 Clean up code health issues found during analysis before adding features.
 
 | Task | Files | What |
-|---|---|---|
+| --- | --- | --- |
 | P0-T1 | `src/app.rs` | ✅ Done — Removed `Edition` enum, all `is_node_allowed` / `is_format_allowed` / edition menu / edition tests. |
 | P0-T2 | `.github/workflows/ci.yml` | ✅ Already done — rebuilt for Rust. |
 | P0-T3 | `src/*.rs` | Fix all 45 clippy warnings. |
@@ -73,8 +74,9 @@ Clean up code health issues found during analysis before adding features.
 | **Gate** | `cargo test` + `cargo clippy -- -D warnings` + `cargo build --release` | All green, zero warnings. |
 
 ### Phase 1 — 16-Bit Pipeline & Constant Broadcast (Engine)
+
 | Task | Files | What |
-|---|---|---|
+| --- | --- | --- |
 | P1-T1 | `src/core/buffer.rs` | Add `TextureBufferUnified` enum wrapping U8/U16/F32 variants. Implement `as_u16()` / `from_u16()` / `broadcast_pixel()` on `TextureBuffer`. |
 | P1-T2 | `src/graph/evaluator.rs` | Change cache type to `SharedTextureBuffer` with 16-bit storage. Nodes that produce constant outputs emit 1×1 buffers. Downstream nodes broadcast-read single-pixel inputs. |
 | P1-T3 | `src/nodes/constants.rs` | `ConstantScalar` and `ConstantColor` emit 1×1 `TextureBuffer`. |
@@ -86,8 +88,9 @@ Clean up code health issues found during analysis before adding features.
 | **Gate** | `cargo test` + `cargo clippy -- -D warnings` + `cargo build --release` | |
 
 ### Phase 2 — UX Essentials (F16, F20, F15)
+
 | Task | Files | What |
-|---|---|---|
+| --- | --- | --- |
 | P2-T1 | `src/graph/model.rs` | Add `Graph::clone_subgraph(node_ids)`, `Graph::paste_subgraph(nodes, edges, offset)`. |
 | P2-T2 | `src/ui/canvas.rs`, `src/hotkeys/mod.rs` | Ctrl+C / Ctrl+V / Ctrl+D: copy/paste/duplicate selected nodes with offset. |
 | P2-T3 | `src/graph/model.rs`, `src/nodes/mod.rs` | Add `Comment` node type (no inputs/outputs, just a text box and a rect that encloses children). |
@@ -99,8 +102,9 @@ Clean up code health issues found during analysis before adding features.
 | **Gate** | `cargo test` + `cargo clippy -- -D warnings` + `cargo build --release` | |
 
 ### Phase 3 — Pipeline Features (F1, F2, F4, F5, F8)
+
 | Task | Files | What |
-|---|---|---|
+| --- | --- | --- |
 | P3-T1 | `src/nodes/mod.rs`, new `src/nodes/convert.rs` | ✅ Done — `SpecGlossToMetalRough` node: converts Specular+Glossiness textures to Metallic+Roughness using energy-conservation approximation. |
 | P3-T2 | new `src/export/preset_designer.rs` | User-definable export presets: name, per-channel source routing (node output + channel selector), output format, bit depth, token pattern. Serialised to `presets.json`. |
 | P3-T3 | `src/ui/inspector.rs` or new `src/ui/validator.rs` | Texture Set Validator panel: checks completeness (missing maps), resolution consistency, POT compliance, naming convention adherence. Displays pass/warn/fail badges. |
@@ -110,10 +114,11 @@ Clean up code health issues found during analysis before adding features.
 | **Gate** | `cargo test` + `cargo clippy -- -D warnings` + `cargo build --release` | Both binaries. |
 
 ### Phase 4 — Wave 2 Features (picked by priority)
+
 Ordered sub-phases, each one prompt card:
 
 | Sub | Feature | Key Files |
-|---|---|---|
+| --- | --- | --- |
 | P4-A | F19 Recent files + autosave | `src/settings.rs`, `src/app.rs` |
 | P4-B | F17 Bypass / Solo | `src/graph/evaluator.rs`, `src/ui/canvas.rs` |
 | P4-C | F18 Histogram + stats | new `src/ui/histogram.rs` |
@@ -722,9 +727,11 @@ TextureLab into build scripts and CI/CD pipelines.
    name = "texturelab-cli"
    path = "src/bin/cli.rs"
    ```
+
 2. The default `[[bin]]` for the GUI remains `src/main.rs`.
 
 ### Part B: CLI Entry Point (`src/bin/cli.rs`)
+
 1. Parse args (use `std::env::args` or add `clap` as optional dependency):
    - `--graph path.tlab` — graph file to execute.
    - `--input dir/` — directory of input textures.
@@ -736,21 +743,25 @@ TextureLab into build scripts and CI/CD pipelines.
 3. Print progress to stdout. Exit code 0 on success, 1 on error.
 
 ### Part C: Shared Engine
+
 1. The CLI imports `texturelab` as a library crate (already set up via `src/lib.rs`).
    No UI code is pulled in.
 
 **Verification**:
+
 - `cargo build --release` produces both `texturelab.exe` and `texturelab-cli.exe`.
 - Smoke test: `texturelab-cli --graph assets/templates/ue5_orm_pack.tlab --input samples/1k/ --output target/cli-test/`
 - `cargo test` + `cargo clippy -- -D warnings`
 - `git commit -m "feat(cli): add texturelab-cli headless binary"`
 
 ## Progress
+
 - [x] Task complete
 - [x] `cargo test` — all pass
 - [x] `cargo clippy` — checked
 - [x] Git commit
 - [x] `cargo build --release` — two binaries
+
 ```
 
 ---
@@ -760,9 +771,11 @@ TextureLab into build scripts and CI/CD pipelines.
 Use this after completing all tasks in a phase:
 
 ```
+
 ## Task: Phase Gate — Verify and Build Release
 
 **What to do**:
+
 1. Run `cargo test` — all must pass.
 2. Run `cargo clippy -- -D warnings` — zero warnings.
 3. Run `cargo build --release` — exit code 0.
@@ -773,11 +786,13 @@ Use this after completing all tasks in a phase:
 6. `git add -A && git commit -m "release: Phase N complete — <summary>"`
 
 ## Progress
+
 - [x] `cargo test` — all pass
 - [x] `cargo clippy -- -D warnings` — zero warnings
 - [x] `cargo build --release` — exit code 0
 - [x] Verified binary in target/release/ (and silent network sync attempted)
 - [x] Git commit
+
 ```
 
 ---
@@ -785,6 +800,7 @@ Use this after completing all tasks in a phase:
 ## Execution Order Summary
 
 ```
+
 P0-T1  Remove Edition          ─┐
 P0-T3  Fix Clippy               │  Phase 0: Foundation
 P0-T4  Split app.rs             │  (no features, just cleanup)
@@ -822,4 +838,5 @@ P3-T6  Tests                   ─┘
 
 P4-A..K  Wave 2 features        Phase 4: (one prompt per sub-phase)
        ── Phase Gate after each ──
+
 ```

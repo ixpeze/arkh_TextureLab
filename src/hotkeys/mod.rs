@@ -38,7 +38,7 @@ pub enum HotkeyAction {
     Redo,
     /// Select all nodes in graph (`Ctrl + A`).
     SelectAll,
-    /// Delete selected nodes or edges (`Delete` / `Backspace`).
+    /// Delete selected nodes or edges (`Delete`).
     DeleteSelected,
     /// Save project file (`Ctrl + S`).
     SaveProject,
@@ -105,7 +105,7 @@ impl HotkeyAction {
             Self::SelectAll => "Select All",
             Self::DeleteSelected => "Delete Selected",
             Self::SaveProject => "Save Project",
-            Self::OpenExportDialog => "Export Textures Preflight",
+            Self::OpenExportDialog => "Export Textures",
             Self::AutoLayout => "Auto Layout Graph",
             Self::Copy => "Copy Nodes",
             Self::Paste => "Paste Nodes",
@@ -425,7 +425,7 @@ pub fn resolve_hotkey_with_overrides(
         Key::I => Some(HotkeyAction::SpawnInvert),
         Key::C | Key::P => Some(HotkeyAction::SpawnCombiner),
         Key::Slash => Some(HotkeyAction::SpawnComment),
-        Key::Delete | Key::Backspace => Some(HotkeyAction::DeleteSelected),
+        Key::Delete => Some(HotkeyAction::DeleteSelected),
         _ => None,
     };
 
@@ -599,6 +599,14 @@ pub mod tests {
         assert_eq!(
             resolve_hotkey(Key::Slash, false, false, text_input_active),
             Some(HotkeyAction::SpawnComment)
+        );
+        assert_eq!(
+            resolve_hotkey(Key::Delete, false, false, text_input_active),
+            Some(HotkeyAction::DeleteSelected)
+        );
+        assert_eq!(
+            resolve_hotkey(Key::Backspace, false, false, text_input_active),
+            None
         );
     }
 

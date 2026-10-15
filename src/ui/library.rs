@@ -86,7 +86,7 @@ pub fn show_library_panel(
                 let accordion_id = ui.make_persistent_id(format!("cat_accordion_{:?}", cat));
                 let mut is_open = ui.data_mut(|d| d.get_temp::<bool>(accordion_id)).unwrap_or(true);
 
-                let header_h = 31.0;
+                let header_h = 25.0;
                 let (header_rect, header_resp) = ui.allocate_exact_size(
                     Vec2::new(ui.available_width(), header_h),
                     Sense::click(),
@@ -105,45 +105,45 @@ pub fn show_library_panel(
 
                 ui.painter().rect_filled(header_rect, 0.0, header_bg);
 
-                // Category name + item count (Aligned left, no indicator dots)
+                // Category name + item count (Aligned left, compact 8px padding)
                 ui.painter().text(
-                    Pos2::new(header_rect.min.x + 12.0, header_rect.center().y),
+                    Pos2::new(header_rect.min.x + 8.0, header_rect.center().y),
                     egui::Align2::LEFT_CENTER,
                     format!("{} ({})", cat, cat_nodes.len()),
-                    egui::FontId::proportional(12.5),
+                    egui::FontId::proportional(11.5),
                     cat_color,
                 );
 
                 // Chevron (Aligned right with smooth rotation)
-                let ch_x = header_rect.max.x - 14.0;
+                let ch_x = header_rect.max.x - 12.0;
                 let ch_y = header_rect.center().y;
-                let chevron_stroke = Stroke::new(1.3_f32, CHEVRON_COLOR);
+                let chevron_stroke = Stroke::new(1.2_f32, CHEVRON_COLOR);
                 if is_open {
                     // Down chevron
                     ui.painter().line_segment(
-                        [Pos2::new(ch_x - 3.5, ch_y - 2.0), Pos2::new(ch_x, ch_y + 2.0)],
+                        [Pos2::new(ch_x - 3.0, ch_y - 1.5), Pos2::new(ch_x, ch_y + 1.5)],
                         chevron_stroke,
                     );
                     ui.painter().line_segment(
-                        [Pos2::new(ch_x, ch_y + 2.0), Pos2::new(ch_x + 3.5, ch_y - 2.0)],
+                        [Pos2::new(ch_x, ch_y + 1.5), Pos2::new(ch_x + 3.0, ch_y - 1.5)],
                         chevron_stroke,
                     );
                 } else {
                     // Right chevron
                     ui.painter().line_segment(
-                        [Pos2::new(ch_x - 2.0, ch_y - 3.5), Pos2::new(ch_x + 2.0, ch_y)],
+                        [Pos2::new(ch_x - 1.5, ch_y - 3.0), Pos2::new(ch_x + 1.5, ch_y)],
                         chevron_stroke,
                     );
                     ui.painter().line_segment(
-                        [Pos2::new(ch_x + 2.0, ch_y), Pos2::new(ch_x - 2.0, ch_y + 3.5)],
+                        [Pos2::new(ch_x + 1.5, ch_y), Pos2::new(ch_x - 1.5, ch_y + 3.0)],
                         chevron_stroke,
                     );
                 }
 
                 if is_open {
-                    ui.add_space(4.0);
-                    for &desc in &cat_nodes {
-                        let desired_size = Vec2::new(ui.available_width(), 29.0);
+                    ui.add_space(2.0);
+                    for (item_idx, &desc) in cat_nodes.iter().enumerate() {
+                        let desired_size = Vec2::new(ui.available_width(), 23.0);
                         let (rect, resp) = ui.allocate_at_least(desired_size, Sense::click_and_drag());
 
                         let is_hovered = resp.hovered();
@@ -156,11 +156,14 @@ pub fn show_library_panel(
                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                         }
 
-                        // Background: #20202A (idle), #282836 (hover), #303040 (selected/dragged)
+                        // Background with subtle horizontal banding:
+                        // Even rows: BG_CARD (#20202A), Odd rows: #242432, Hover: #2A2A3A
                         let bg_fill = if is_dragged {
-                            Color32::from_rgb(48, 48, 64)
+                            Color32::from_rgb(46, 46, 62)
                         } else if is_hovered {
-                            Color32::from_rgb(40, 40, 54)
+                            Color32::from_rgb(38, 38, 52)
+                        } else if item_idx % 2 == 1 {
+                            Color32::from_rgb(34, 34, 46)
                         } else {
                             BG_CARD
                         };
@@ -173,49 +176,49 @@ pub fn show_library_panel(
                             Stroke::new(1.0_f32, BORDER_DARK)
                         };
 
-                        ui.painter().rect_filled(rect, 5.0, bg_fill);
-                        ui.painter().rect_stroke(rect, 5.0, stroke, egui::StrokeKind::Inside);
+                        ui.painter().rect_filled(rect, 3.0, bg_fill);
+                        ui.painter().rect_stroke(rect, 3.0, stroke, egui::StrokeKind::Inside);
 
-                        // 3px Category Left Accent Bar
-                        let accent_rect = Rect::from_min_size(rect.min, Vec2::new(3.0, rect.height()));
+                        // 2.5px Category Left Accent Bar
+                        let accent_rect = Rect::from_min_size(rect.min, Vec2::new(2.5, rect.height()));
                         ui.painter().rect_filled(
                             accent_rect,
-                            egui::CornerRadius { nw: 5, ne: 0, sw: 5, se: 0 },
+                            egui::CornerRadius { nw: 3, ne: 0, sw: 3, se: 0 },
                             cat_color,
                         );
 
-                        // Node Name Label (Design Guide: No circular dots inside list items)
+                        // Node Name Label
                         let text_color = if is_hovered || is_dragged {
                             Color32::WHITE
                         } else {
                             TEXT_PRIMARY
                         };
                         ui.painter().text(
-                            Pos2::new(rect.min.x + 12.0, rect.center().y),
+                            Pos2::new(rect.min.x + 8.0, rect.center().y),
                             egui::Align2::LEFT_CENTER,
                             desc.display_name,
-                            egui::FontId::proportional(12.0),
+                            egui::FontId::proportional(11.0),
                             text_color,
                         );
 
-                        // Keyboard Shortcut Badge on right edge (#30303E bg, #CBD5E1 text, #444455 border)
+                        // Keyboard Shortcut Badge on right edge
                         if let Some(key) = desc.hotkey {
                             let pill_rect = Rect::from_center_size(
-                                Pos2::new(rect.max.x - 18.0, rect.center().y),
-                                Vec2::new(22.0, 16.0),
+                                Pos2::new(rect.max.x - 14.0, rect.center().y),
+                                Vec2::new(18.0, 14.0),
                             );
-                            ui.painter().rect_filled(pill_rect, 4.0, Color32::from_rgb(48, 48, 62));
+                            ui.painter().rect_filled(pill_rect, 3.0, Color32::from_rgb(44, 44, 58));
                             ui.painter().rect_stroke(
                                 pill_rect,
-                                4.0,
-                                Stroke::new(1.0_f32, Color32::from_rgb(68, 68, 85)),
+                                3.0,
+                                Stroke::new(1.0_f32, Color32::from_rgb(64, 64, 80)),
                                 egui::StrokeKind::Inside,
                             );
                             ui.painter().text(
                                 pill_rect.center(),
                                 egui::Align2::CENTER_CENTER,
                                 format!("[{}]", key),
-                                egui::FontId::proportional(10.0),
+                                egui::FontId::proportional(9.0),
                                 if is_hovered { ACCENT_AMBER } else { CHEVRON_COLOR },
                             );
                         }
@@ -230,9 +233,9 @@ pub fn show_library_panel(
                             egui::DragAndDrop::set_payload(ui.ctx(), desc.type_name.to_string());
                         }
 
-                        ui.add_space(4.0);
+                        ui.add_space(1.5);
                     }
-                    ui.add_space(6.0);
+                    ui.add_space(3.0);
                 }
             }
         });

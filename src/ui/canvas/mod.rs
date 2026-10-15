@@ -50,6 +50,11 @@ pub enum CanvasAction {
         new_pos: [f32; 2],
     },
     OpenSearchPalette([f32; 2]),
+    OpenSearchPaletteAt {
+        screen_pos: Pos2,
+        canvas_pos: [f32; 2],
+        source_pin: Option<PinId>,
+    },
     SpawnNodeAt { type_name: String, pos: [f32; 2] },
     FrameFocus,
     AutoLayout,
@@ -664,17 +669,15 @@ impl CanvasState {
             }
         }
 
-        // 6. Wire Dragging & Connection Creation (Dashed amber preview curve)
+        // 6. Wire Dragging & Connection Creation (Two-way Out <> In, Dashed amber preview curve)
         if let Some(ptr) = response.hover_pos() {
-            // Start wire drag if clicking an output pin
+            // Start wire drag if clicking ANY pin (both input and output support two-way drag)
             if response.drag_started() && !is_alt_down {
                 if let Some(pin_id) = hovered_pin.clone() {
-                    if !pin_id.is_input {
-                        self.wire_drag = Some(WireDragState {
-                            from_pin: pin_id,
-                            current_screen_pos: ptr,
-                        });
-                    }
+                    self.wire_drag = Some(WireDragState {
+                        from_pin: pin_id,
+                        current_screen_pos: ptr,
+                    });
                 }
             }
 
@@ -682,10 +685,10 @@ impl CanvasState {
             if let Some(drag) = &mut self.wire_drag {
                 drag.current_screen_pos = ptr;
 
-                if let Some(&p0) = pin_positions.get(&drag.from_pin) {
-                    // Draw stylish connection curve to cursor or snapped pin
+                if let Some(&start_pin_pos) = pin_positions.get(&drag.from_pin) {
+                    // Check if hovering a valid candidate pin of opposite polarity from a different node
                     let target_pos = if let Some(target) = &hovered_pin {
-                        if target.is_input && target.node_id != drag.from_pin.node_id {
+                        if target.is_input != drag.from_pin.is_input && target.node_id != drag.from_pin.node_id {
                             pin_positions.get(target).copied().unwrap_or(ptr)
                         } else {
                             ptr
@@ -694,17 +697,24 @@ impl CanvasState {
                         ptr
                     };
 
+                    // Flow direction: Bezier always curves from output (p0) to input (p3)
+                    let (p0, p3) = if !drag.from_pin.is_input {
+                        (start_pin_pos, target_pos)
+                    } else {
+                        (target_pos, start_pin_pos)
+                    };
+
                     draw_cubic_bezier_wire_animated(
                         &painter,
                         p0,
-                        target_pos,
+                        p3,
                         ACCENT_AMBER,
                         self.zoom,
                         true,
                         anim_phase,
                     );
 
-                    // Glowing endpoint ring at cursor
+                    // Glowing endpoint ring at cursor / target pin
                     painter.circle_filled(target_pos, 5.0 * self.zoom, ACCENT_AMBER);
                     painter.circle_stroke(target_pos, 8.0 * self.zoom, Stroke::new(1.5_f32, Color32::WHITE));
                 }
@@ -713,13 +723,32 @@ impl CanvasState {
             // Finish wire drag on release
             if response.drag_stopped() {
                 if let Some(drag) = self.wire_drag.take() {
+                    let mut connected = false;
                     if let Some(target_pin) = hovered_pin.clone() {
-                        if target_pin.is_input && target_pin.node_id != drag.from_pin.node_id {
-                            actions.push(CanvasAction::ConnectPins {
-                                from: drag.from_pin,
-                                to: target_pin,
-                            });
+                        if target_pin.is_input != drag.from_pin.is_input && target_pin.node_id != drag.from_pin.node_id {
+                            if !drag.from_pin.is_input {
+                                actions.push(CanvasAction::ConnectPins {
+                                    from: drag.from_pin.clone(),
+                                    to: target_pin,
+                                });
+                            } else {
+                                actions.push(CanvasAction::ConnectPins {
+                                    from: target_pin,
+                                    to: drag.from_pin.clone(),
+                                });
+                            }
+                            connected = true;
                         }
+                    }
+
+                    // Wire drop into empty canvas: open search palette to auto-wire!
+                    if !connected && hovered_pin.is_none() && clicked_node.is_none() && !is_over_splash {
+                        let canvas_pos = self.screen_to_canvas(ptr, rect);
+                        actions.push(CanvasAction::OpenSearchPaletteAt {
+                            screen_pos: ptr,
+                            canvas_pos: [canvas_pos.x, canvas_pos.y],
+                            source_pin: Some(drag.from_pin),
+                        });
                     }
                 }
             }
@@ -755,11 +784,15 @@ impl CanvasState {
             }
         }
 
-        // Right click tap on empty canvas opens quick search palette
+        // Right click tap on empty canvas opens quick search palette at cursor
         if response.secondary_clicked() && hovered_pin.is_none() && clicked_node.is_none() && !is_over_splash {
             if let Some(mouse_screen) = response.interact_pointer_pos() {
                 let canvas_pos = self.screen_to_canvas(mouse_screen, rect);
-                actions.push(CanvasAction::OpenSearchPalette([canvas_pos.x, canvas_pos.y]));
+                actions.push(CanvasAction::OpenSearchPaletteAt {
+                    screen_pos: mouse_screen,
+                    canvas_pos: [canvas_pos.x, canvas_pos.y],
+                    source_pin: None,
+                });
             }
         }
 
@@ -771,8 +804,11 @@ impl CanvasState {
             }
         }
 
-        // Delete key removes selected node
-        if ui.input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace)) {
+        // Delete key removes selected node (suppressed when typing or text field focused)
+        if ui.input(|i| i.key_pressed(Key::Delete))
+            && !ui.ctx().wants_keyboard_input()
+            && !ui.memory(|m| m.focused().is_some())
+        {
             if let Some(sel) = self.selected_node {
                 actions.push(CanvasAction::DeleteNode(sel));
             }

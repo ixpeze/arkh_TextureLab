@@ -33,7 +33,7 @@ impl Tab {
             Self::Viewport2D => "2D Viewport",
             Self::Inspector => "Properties",
             Self::Library => "Node Library",
-            Self::ExportDrawer => "Export",
+            Self::ExportDrawer => "Export Textures",
             Self::Validator => "Validator",
             Self::Batch => "Batch Processor",
         }

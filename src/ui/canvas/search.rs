@@ -1,19 +1,23 @@
 //! Quick-search spawn palette UI for the node canvas (floating popup window).
 
 use egui::{Color32, Key, Pos2, Rect, ScrollArea, Sense, Stroke, Vec2};
+use crate::graph::model::PinId;
 use crate::nodes::{NodeDescriptor, NODE_CATALOG};
 use crate::ui::theme::{
     category_color, ACCENT_AMBER, BG_CARD, BORDER_DARK, TEXT_MUTED, TEXT_PRIMARY,
     TEXT_SECONDARY,
 };
 
-/// State for the floating quick-search palette (`Tab` key or Right-Click tap).
+/// State for the floating quick-search palette (`Tab` key, Right-Click tap, or Wire-Drop).
 pub struct SearchPaletteState {
     pub is_open: bool,
     pub query: String,
     pub selected_index: usize,
     pub canvas_spawn_pos: [f32; 2],
+    pub screen_pos: Option<Pos2>,
+    pub source_pin: Option<PinId>,
     pub just_opened: bool,
+    pub last_window_rect: Option<Rect>,
 }
 
 impl Default for SearchPaletteState {
@@ -23,7 +27,10 @@ impl Default for SearchPaletteState {
             query: String::new(),
             selected_index: 0,
             canvas_spawn_pos: [0.0, 0.0],
+            screen_pos: None,
+            source_pin: None,
             just_opened: false,
+            last_window_rect: None,
         }
     }
 }
@@ -34,25 +41,40 @@ impl SearchPaletteState {
     }
 
     pub fn open_at(&mut self, canvas_pos: [f32; 2]) {
+        self.open_at_screen(None, canvas_pos, None);
+    }
+
+    pub fn open_at_screen(
+        &mut self,
+        screen_pos: Option<Pos2>,
+        canvas_pos: [f32; 2],
+        source_pin: Option<PinId>,
+    ) {
         self.is_open = true;
         self.query.clear();
         self.selected_index = 0;
         self.canvas_spawn_pos = canvas_pos;
+        self.screen_pos = screen_pos;
+        self.source_pin = source_pin;
         self.just_opened = true;
+        self.last_window_rect = None;
     }
 
     pub fn close(&mut self) {
         self.is_open = false;
         self.query.clear();
         self.selected_index = 0;
+        self.screen_pos = None;
+        self.source_pin = None;
+        self.last_window_rect = None;
     }
 
     /// Renders the floating search palette popup (frameless glassmorphic card).
-    /// Returns `Some((descriptor, canvas_pos))` if a node was selected for spawning.
+    /// Returns `Some((descriptor, canvas_pos, source_pin))` if a node was selected for spawning.
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-    ) -> Option<(&'static NodeDescriptor, [f32; 2])> {
+    ) -> Option<(&'static NodeDescriptor, [f32; 2], Option<PinId>)> {
         if !self.is_open {
             return None;
         }
@@ -61,12 +83,23 @@ impl SearchPaletteState {
         let mut close_requested = false;
 
         let screen_rect = ctx.screen_rect();
-        let modal_size = Vec2::new(360.0, 400.0);
-        let center = screen_rect.center();
+        let modal_size = Vec2::new(360.0, 380.0);
 
-        egui::Window::new("spawn_palette_window")
+        // Position at cursor if provided, otherwise screen center. Clamp within window bounds.
+        let win_pos = if let Some(target) = self.screen_pos {
+            let max_x = (screen_rect.max.x - modal_size.x - 16.0).max(screen_rect.min.x);
+            let max_y = (screen_rect.max.y - modal_size.y - 16.0).max(screen_rect.min.y);
+            Pos2::new(
+                target.x.clamp(screen_rect.min.x + 8.0, max_x),
+                target.y.clamp(screen_rect.min.y + 8.0, max_y),
+            )
+        } else {
+            screen_rect.center() - modal_size * 0.5
+        };
+
+        let win_resp = egui::Window::new("spawn_palette_window")
             .fixed_size(modal_size)
-            .fixed_pos(center - modal_size * 0.5)
+            .fixed_pos(win_pos)
             .collapsible(false)
             .resizable(false)
             .title_bar(false)
@@ -80,15 +113,20 @@ impl SearchPaletteState {
             .show(ctx, |ui| {
                 // Top Search Bar
                 ui.horizontal(|ui| {
+                    let title = if self.source_pin.is_some() {
+                        "Auto-Wire"
+                    } else {
+                        "Search"
+                    };
                     ui.label(
-                        egui::RichText::new("Search")
+                        egui::RichText::new(title)
                             .color(ACCENT_AMBER)
                             .size(13.0)
                             .strong(),
                     );
                     let text_edit = egui::TextEdit::singleline(&mut self.query)
                         .hint_text("Find nodes...")
-                        .desired_width(260.0);
+                        .desired_width(245.0);
                     let resp = ui.add(text_edit);
                     if self.just_opened {
                         resp.request_focus();
@@ -130,7 +168,7 @@ impl SearchPaletteState {
                     }
                     if ui.input(|i| i.key_pressed(Key::Enter)) {
                         if let Some(&desc) = filtered.get(self.selected_index) {
-                            spawned = Some((desc, self.canvas_spawn_pos));
+                            spawned = Some((desc, self.canvas_spawn_pos, self.source_pin.clone()));
                             close_requested = true;
                         }
                     }
@@ -213,7 +251,7 @@ impl SearchPaletteState {
                             }
 
                             if resp.clicked() {
-                                spawned = Some((desc, self.canvas_spawn_pos));
+                                spawned = Some((desc, self.canvas_spawn_pos, self.source_pin.clone()));
                                 close_requested = true;
                             }
 
@@ -223,7 +261,27 @@ impl SearchPaletteState {
                 }
             });
 
-        // Close on escape or tab
+        if let Some(inner) = &win_resp {
+            self.last_window_rect = Some(inner.response.rect);
+        }
+
+        // Dismissal: Outside click (primary or secondary) or Escape key
+        let pointer_down = ctx.input(|i| {
+            i.pointer.button_pressed(egui::PointerButton::Primary)
+                || i.pointer.button_pressed(egui::PointerButton::Secondary)
+        });
+
+        if pointer_down && !self.just_opened {
+            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                if let Some(rect) = self.last_window_rect {
+                    if !rect.contains(pos) {
+                        close_requested = true;
+                    }
+                }
+            }
+        }
+
+        // Close on escape or when requested
         if ctx.input(|i| i.key_pressed(Key::Escape)) || close_requested {
             self.close();
         }
@@ -278,8 +336,21 @@ mod tests {
         assert!(palette.is_open);
         assert_eq!(palette.canvas_spawn_pos, [150.0, 250.0]);
         assert!(palette.just_opened);
+        assert!(palette.source_pin.is_none());
+        assert!(palette.screen_pos.is_none());
 
         palette.close();
         assert!(!palette.is_open);
+    }
+
+    #[test]
+    fn test_search_palette_open_at_screen() {
+        let mut palette = SearchPaletteState::new();
+        let pin = PinId::output(crate::graph::model::NodeId(1), "output");
+        palette.open_at_screen(Some(Pos2::new(300.0, 400.0)), [150.0, 250.0], Some(pin.clone()));
+        assert!(palette.is_open);
+        assert_eq!(palette.canvas_spawn_pos, [150.0, 250.0]);
+        assert_eq!(palette.screen_pos, Some(Pos2::new(300.0, 400.0)));
+        assert_eq!(palette.source_pin, Some(pin));
     }
 }

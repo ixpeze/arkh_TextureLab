@@ -3,8 +3,8 @@
 use egui::Ui;
 use egui_dock::DockState;
 
-use super::state::{build_starter_graph, TextureLabApp};
-use crate::graph::model::{ProjectFile, ProjectMetadata};
+use super::state::TextureLabApp;
+use crate::graph::model::{Graph, ProjectFile, ProjectMetadata};
 use crate::nodes::NODE_CATALOG;
 use crate::ui::Tab;
 
@@ -14,13 +14,15 @@ impl TextureLabApp {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("File", |ui| {
                 if ui.button("New Project").clicked() {
-                    self.graph = build_starter_graph();
+                    self.graph = Graph::new();
                     self.evaluator.invalidate_all();
                     self.reevaluate();
                     self.history.clear();
                     self.project_metadata = ProjectMetadata::default();
                     self.project_file_path = None;
+                    self.canvas_state.selected_node = None;
                     self.canvas_state.dismiss_splash = false;
+                    self.status_message = "Created new blank project".to_string();
                     ui.close_menu();
                 }
                 ui.menu_button("New from Template", |ui| {
@@ -111,7 +113,7 @@ impl TextureLabApp {
                 }
                 ui.separator();
                 if ui.button("Export Textures (Ctrl+E)...").clicked() {
-                    self.status_message = "Opened Export Preflight Drawer (Ctrl+E)".to_string();
+                    self.status_message = "Opened Export Textures Drawer (Ctrl+E)".to_string();
                     if let Some(mut dock) = self.dock_state.take() {
                         if dock.find_tab(&Tab::ExportDrawer).is_none() {
                             dock.main_surface_mut().push_to_focused_leaf(Tab::ExportDrawer);
@@ -246,7 +248,7 @@ impl TextureLabApp {
                     ui.close_menu();
                 }
                 ui.separator();
-                if ui.button("Export Preflight (Ctrl+E)").clicked() {
+                if ui.button("Export Textures (Ctrl+E)").clicked() {
                     if let Some(mut dock) = self.dock_state.take() {
                         if dock.find_tab(&Tab::ExportDrawer).is_none() {
                             dock.main_surface_mut().push_to_focused_leaf(Tab::ExportDrawer);

@@ -11,7 +11,7 @@ pub mod state;
 pub use state::{build_starter_graph, TextureLabApp};
 
 use std::path::PathBuf;
-use egui::{TopBottomPanel, Ui};
+use egui::{Color32, Stroke, TopBottomPanel, Ui};
 use egui_dock::DockArea;
 
 use crate::export::{ExportItem, ExportPreset, ExportWriter, TokenContext};
@@ -23,7 +23,10 @@ use crate::nodes::NODE_CATALOG;
 use crate::ui::canvas::{CanvasAction, CanvasState};
 use crate::ui::inspector::{show_inspector, InspectorAction};
 use crate::ui::library::{show_library_panel, SearchPaletteState};
-use crate::ui::theme::{create_dock_style, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY};
+use crate::ui::theme::{
+    create_dock_style, ACCENT_AMBER, BG_CARD, BORDER_DARK, TEXT_MUTED, TEXT_PRIMARY,
+    TEXT_SECONDARY,
+};
 use crate::ui::viewport::ViewportState;
 use crate::ui::Tab;
 
@@ -165,7 +168,7 @@ impl eframe::App for TextureLabApp {
                     }
                 }
                 HotkeyAction::OpenExportDialog => {
-                    self.status_message = "Opened Export Preflight Drawer (Ctrl+E)".to_string();
+                    self.status_message = "Opened Export Textures Drawer (Ctrl+E)".to_string();
                     if let Some(mut dock) = self.dock_state.take() {
                         if dock.find_tab(&Tab::ExportDrawer).is_none() {
                             dock.main_surface_mut().push_to_focused_leaf(Tab::ExportDrawer);
@@ -345,9 +348,12 @@ impl eframe::App for TextureLabApp {
             );
         }
 
-        // 5. Floating Quick-Search Palette (`Tab`)
-        if let Some((desc, pos)) = self.search_palette.show(ctx) {
-            self.spawn_node(desc, pos);
+        // 5. Floating Quick-Search Palette (`Tab` / Right-Click / Wire-Drop)
+        if let Some((desc, pos, source_pin)) = self.search_palette.show(ctx) {
+            let spawned_id = self.spawn_node(desc, pos);
+            if let (Some(source), Some(target_id)) = (source_pin, spawned_id) {
+                self.auto_connect_wire(source, target_id);
+            }
         }
 
         // 6. About Dialog Modal
@@ -511,6 +517,9 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         }
                         CanvasAction::OpenSearchPalette(pos) => {
                             self.search_palette.open_at(pos);
+                        }
+                        CanvasAction::OpenSearchPaletteAt { screen_pos, canvas_pos, source_pin } => {
+                            self.search_palette.open_at_screen(Some(screen_pos), canvas_pos, source_pin);
                         }
                         CanvasAction::DisconnectPin(pin) => {
                             let edges_to_remove: Vec<_> = self.graph.edges.iter()
@@ -694,63 +703,101 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
 
             Tab::ExportDrawer => {
                 ui.vertical(|ui| {
+                    ui.add_space(4.0);
+                    // 1. Header Bar
                     ui.horizontal(|ui| {
                         ui.heading(
-                            egui::RichText::new("Export Preflight Pipeline")
+                            egui::RichText::new("Export Textures")
                                 .color(TEXT_PRIMARY)
-                                .size(16.0),
+                                .size(16.0)
+                                .strong(),
                         );
                         ui.label(
-                            egui::RichText::new("Direct disk exporter preflight validation & output census.")
-                                .color(TEXT_SECONDARY),
+                            egui::RichText::new("Direct high-performance disk exporter & texture packaging.")
+                                .color(TEXT_SECONDARY)
+                                .size(11.5),
                         );
                     });
-                    ui.separator();
-
-                    // Preset selection & export target settings
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label("Preset:");
-                        let presets = ExportPreset::builtin_presets();
-                        for p in &presets {
-                            let is_selected = *self.export_preset_id == p.id;
-                            if ui.selectable_label(is_selected, &p.name).clicked() {
-                                *self.export_preset_id = p.id.clone();
-                            }
-                        }
-
-                        if !self.user_presets.is_empty() {
-                            ui.separator();
-                            ui.label("Custom:");
-                            for up in self.user_presets.iter() {
-                                let up_id = format!("user:{}", up.name);
-                                let is_selected = *self.export_preset_id == up_id || *self.export_preset_id == up.name;
-                                if ui.selectable_label(is_selected, &up.name).clicked() {
-                                    *self.export_preset_id = up_id;
-                                }
-                            }
-                        }
-
-                        ui.add_space(8.0);
-                        if ui.button("Edit Presets...").on_hover_text("Open User Export Preset Designer").clicked() {
-                            self.preset_designer_dialog.open(self.user_presets);
-                        }
-                    });
-
-                    ui.horizontal(|ui| {
-                        ui.label("Asset Name:");
-                        ui.add(egui::TextEdit::singleline(self.export_asset_name).desired_width(130.0));
-
-                        ui.add_space(8.0);
-                        ui.label("Target Directory:");
-                        ui.add(egui::TextEdit::singleline(self.export_target_dir).desired_width(200.0));
-                        if ui.button("Browse...").clicked() {
-                            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
-                                *self.export_target_dir = dir.to_string_lossy().to_string();
-                            }
-                        }
-                    });
                     ui.add_space(4.0);
+                    ui.separator();
+                    ui.add_space(6.0);
 
+                    // 2. Top Settings Card Grid
+                    ui.horizontal(|ui| {
+                        // Card 1: Preset & Output Destination Configuration
+                        egui::Frame::NONE
+                            .fill(BG_CARD)
+                            .stroke(Stroke::new(1.0_f32, BORDER_DARK))
+                            .corner_radius(6.0)
+                            .inner_margin(10.0)
+                            .show(ui, |ui| {
+                                ui.set_min_width(380.0);
+                                ui.vertical(|ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("Preset:").strong().color(TEXT_PRIMARY));
+                                        let presets = ExportPreset::builtin_presets();
+                                        for p in &presets {
+                                            let is_selected = *self.export_preset_id == p.id;
+                                            if ui.selectable_label(is_selected, &p.name).clicked() {
+                                                *self.export_preset_id = p.id.clone();
+                                            }
+                                        }
+
+                                        if !self.user_presets.is_empty() {
+                                            ui.separator();
+                                            for up in self.user_presets.iter() {
+                                                let up_id = format!("user:{}", up.name);
+                                                let is_selected = *self.export_preset_id == up_id || *self.export_preset_id == up.name;
+                                                if ui.selectable_label(is_selected, &up.name).clicked() {
+                                                    *self.export_preset_id = up_id;
+                                                }
+                                            }
+                                        }
+
+                                        if ui.small_button("Edit...").on_hover_text("Open User Export Preset Designer").clicked() {
+                                            self.preset_designer_dialog.open(self.user_presets);
+                                        }
+                                    });
+
+                                    ui.add_space(4.0);
+
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("Asset Name:").color(TEXT_SECONDARY));
+                                        ui.add(egui::TextEdit::singleline(self.export_asset_name).desired_width(120.0));
+
+                                        ui.add_space(8.0);
+                                        ui.label(egui::RichText::new("Target Dir:").color(TEXT_SECONDARY));
+                                        ui.add(egui::TextEdit::singleline(self.export_target_dir).desired_width(180.0));
+                                        if ui.button("Browse...").clicked() {
+                                            if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+                                                *self.export_target_dir = dir.to_string_lossy().to_string();
+                                            }
+                                        }
+                                    });
+                                });
+                            });
+
+                        ui.add_space(8.0);
+
+                        // Card 2: Set Health & Preflight Summary Card
+                        egui::Frame::NONE
+                            .fill(BG_CARD)
+                            .stroke(Stroke::new(1.0_f32, BORDER_DARK))
+                            .corner_radius(6.0)
+                            .inner_margin(10.0)
+                            .show(ui, |ui| {
+                                ui.vertical(|ui| {
+                                    ui.label(egui::RichText::new("Texture Set Health").strong().color(TEXT_PRIMARY));
+                                    ui.add_space(2.0);
+                                    let val_report = crate::ui::validator::validate_texture_set(self.graph, self.evaluator);
+                                    crate::ui::validator::show_compact_validator_summary(ui, &val_report);
+                                });
+                            });
+                    });
+
+                    ui.add_space(8.0);
+
+                    // 3. Output Targets Table
                     let output_nodes: Vec<_> = self
                         .graph
                         .nodes
@@ -759,31 +806,39 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                         .collect();
 
                     if output_nodes.is_empty() {
-                        ui.label(
-                            egui::RichText::new("No SaveImage nodes present in the current graph.")
-                                .color(TEXT_MUTED),
-                        );
-                        if ui.button("+ Add SaveImage Node").clicked() {
-                            let desc = NODE_CATALOG.iter().find(|d| d.type_name == "SaveImage" || d.type_name == "TextureOutput");
-                            if let Some(desc) = desc {
-                                let id = NodeId(self.graph.next_node_id);
-                                let node = desc.create_node(id, [600.0, 200.0]);
-                                self.history.record(self.graph, "Add SaveImage");
-                                self.graph.add_node(node);
-                                self.canvas_state.selected_node = Some(id);
-                                self.evaluator.invalidate_all();
-                                self.async_evaluator.request_evaluation(
-                                    self.graph,
-                                    vec![],
-                                    true,
-                                    self.evaluator.default_resolution(),
-                                );
-                            }
-                        }
+                        egui::Frame::NONE
+                            .fill(BG_CARD)
+                            .stroke(Stroke::new(1.0_f32, BORDER_DARK))
+                            .corner_radius(6.0)
+                            .inner_margin(16.0)
+                            .show(ui, |ui| {
+                                ui.vertical_centered(|ui| {
+                                    ui.label(
+                                        egui::RichText::new("No SaveImage or TextureOutput nodes in the current graph.")
+                                            .color(TEXT_MUTED)
+                                            .size(12.5),
+                                    );
+                                    ui.add_space(6.0);
+                                    if ui.button("+ Add SaveImage Node").clicked() {
+                                        let desc = NODE_CATALOG.iter().find(|d| d.type_name == "SaveImage" || d.type_name == "TextureOutput");
+                                        if let Some(desc) = desc {
+                                            let id = NodeId(self.graph.next_node_id);
+                                            let node = desc.create_node(id, [600.0, 200.0]);
+                                            self.history.record(self.graph, "Add SaveImage");
+                                            self.graph.add_node(node);
+                                            self.canvas_state.selected_node = Some(id);
+                                            self.evaluator.invalidate_all();
+                                            self.async_evaluator.request_evaluation(
+                                                self.graph,
+                                                vec![],
+                                                true,
+                                                self.evaluator.default_resolution(),
+                                            );
+                                        }
+                                    }
+                                });
+                            });
                     } else {
-                        ui.label(format!("Found {} texture output targets:", output_nodes.len()));
-                        ui.add_space(4.0);
-
                         let current_preset = if let Some(up) = self.user_presets.iter().find(|up| {
                             format!("user:{}", up.name) == *self.export_preset_id || up.name == *self.export_preset_id
                         }) {
@@ -793,58 +848,68 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                 .unwrap_or_else(|| ExportPreset::builtin_presets().remove(0))
                         };
 
-                        let val_report = crate::ui::validator::validate_texture_set(self.graph, self.evaluator);
-                        crate::ui::validator::show_compact_validator_summary(ui, &val_report);
-                        ui.add_space(6.0);
-
                         let mut ready_targets: Vec<(PinId, PathBuf)> = Vec::new();
 
-                        egui::Grid::new("export_preflight_grid")
-                            .striped(true)
-                            .min_col_width(90.0)
+                        egui::Frame::NONE
+                            .fill(BG_CARD)
+                            .stroke(Stroke::new(1.0_f32, BORDER_DARK))
+                            .corner_radius(6.0)
+                            .inner_margin(8.0)
                             .show(ui, |ui| {
-                                ui.strong("Node");
-                                ui.strong("Slot");
-                                ui.strong("Format");
-                                ui.strong("Dimensions");
-                                ui.strong("Resolved Filename");
-                                ui.strong("Preflight");
-                                ui.end_row();
+                                egui::Grid::new("export_targets_grid")
+                                    .striped(true)
+                                    .min_col_width(90.0)
+                                    .spacing([14.0, 6.0])
+                                    .show(ui, |ui| {
+                                        ui.label(egui::RichText::new("NODE").strong().color(TEXT_SECONDARY).size(10.5));
+                                        ui.label(egui::RichText::new("SLOT").strong().color(TEXT_SECONDARY).size(10.5));
+                                        ui.label(egui::RichText::new("FORMAT").strong().color(TEXT_SECONDARY).size(10.5));
+                                        ui.label(egui::RichText::new("RESOLUTION").strong().color(TEXT_SECONDARY).size(10.5));
+                                        ui.label(egui::RichText::new("RESOLVED FILENAME").strong().color(TEXT_SECONDARY).size(10.5));
+                                        ui.label(egui::RichText::new("STATUS").strong().color(TEXT_SECONDARY).size(10.5));
+                                        ui.end_row();
 
-                                for node in &output_nodes {
-                                    let slot = node.get_string("slot_name", "BaseColor");
-                                    let fmt = node.get_string("format", "PNG");
-                                    let (w, h) = self.evaluator.resolve_node_dimensions(self.graph, node);
-                                    let has_input = node.inputs.iter().any(|pin| self.graph.incoming_edge(pin).is_some());
+                                        for node in &output_nodes {
+                                            let slot = node.get_string("slot_name", "BaseColor");
+                                            let fmt = node.get_string("format", "PNG");
+                                            let (w, h) = self.evaluator.resolve_node_dimensions(self.graph, node);
+                                            let has_input = node.inputs.iter().any(|pin| self.graph.incoming_edge(pin).is_some());
 
-                                    let ctx = TokenContext::new(&*self.export_asset_name, &slot)
-                                        .with_format(&fmt)
-                                        .with_resolution(format!("{}x{}", w, h));
-                                    let resolved_file = current_preset.resolve_filename(&ctx);
+                                            let ctx = TokenContext::new(&*self.export_asset_name, &slot)
+                                                .with_format(&fmt)
+                                                .with_resolution(format!("{}x{}", w, h));
+                                            let resolved_file = current_preset.resolve_filename(&ctx);
 
-                                    ui.label(format!("{} (#{})", node.label, node.id.0));
-                                    ui.label(&slot);
-                                    ui.label(&fmt);
-                                    ui.label(format!("{}x{}", w, h));
-                                    ui.label(&resolved_file);
-                                    if has_input {
-                                        ui.colored_label(crate::ui::theme::CAT_MATH, "[Ready]");
-                                        let out_pin = PinId::output(node.id, "output");
-                                        if self.evaluator.get_output(&out_pin).is_some() {
-                                            let target_path = PathBuf::from(&*self.export_target_dir).join(&resolved_file);
-                                            ready_targets.push((out_pin, target_path));
+                                            ui.label(egui::RichText::new(format!("{} (#{})", node.label, node.id.0)).color(TEXT_PRIMARY));
+                                            ui.label(egui::RichText::new(&slot).color(ACCENT_AMBER).strong());
+                                            ui.label(egui::RichText::new(&fmt).color(TEXT_PRIMARY));
+                                            ui.label(egui::RichText::new(format!("{}x{}", w, h)).color(TEXT_SECONDARY));
+                                            ui.monospace(&resolved_file);
+                                            if has_input {
+                                                ui.colored_label(Color32::from_rgb(16, 185, 129), "[Ready]");
+                                                let out_pin = PinId::output(node.id, "output");
+                                                if self.evaluator.get_output(&out_pin).is_some() {
+                                                    let target_path = PathBuf::from(&*self.export_target_dir).join(&resolved_file);
+                                                    ready_targets.push((out_pin, target_path));
+                                                }
+                                            } else {
+                                                ui.colored_label(Color32::from_rgb(148, 163, 184), "[Unlinked]");
+                                            }
+                                            ui.end_row();
                                         }
-                                    } else {
-                                        ui.colored_label(crate::ui::theme::CAT_CONSTANTS, "[Unlinked]");
-                                    }
-                                    ui.end_row();
-                                }
+                                    });
                             });
 
+                        // 4. Action Footer Bar
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
                             let can_export = !ready_targets.is_empty();
-                            if ui.add_enabled(can_export, egui::Button::new("Export All Ready Maps (Direct Disk Write)")).clicked() {
+                            let export_btn = egui::Button::new(
+                                egui::RichText::new(format!("Export Textures ({} Ready)", ready_targets.len()))
+                                    .size(13.0)
+                                    .strong()
+                            );
+                            if ui.add_enabled(can_export, export_btn).clicked() {
                                 let _ = self.evaluator.evaluate(self.graph);
                                 let items_to_export: Vec<ExportItem> = ready_targets
                                     .into_iter()
@@ -870,7 +935,8 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                             }
 
                             if let Some(summary) = self.export_report_summary.as_ref() {
-                                ui.label(egui::RichText::new(summary).color(TEXT_PRIMARY));
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new(summary).color(Color32::from_rgb(16, 185, 129)).strong());
                             }
                         });
                     }
@@ -914,7 +980,8 @@ mod tests {
     #[test]
     fn test_app_initialization() {
         let app = TextureLabApp::default();
-        assert_eq!(app.graph.nodes.len(), 5);
+        assert_eq!(app.graph.nodes.len(), 0);
+        assert!(!app.canvas_state.dismiss_splash);
         assert!(app.eval_time_ms >= 0.0);
         assert!(app.title().contains("TextureLAB"));
     }
@@ -944,6 +1011,7 @@ mod tests {
     #[test]
     fn test_auto_layout_execution_and_undo() {
         let mut app = TextureLabApp::default();
+        app.graph = build_starter_graph();
         let initial_pan = app.canvas_state.pan;
 
         // Deselect node to test full-graph layout
@@ -1019,6 +1087,7 @@ mod tests {
     #[test]
     fn test_delete_node_undo_roundtrip() {
         let mut app = TextureLabApp::default();
+        app.graph = build_starter_graph();
         let initial_count = app.graph.nodes.len();
 
         let target_node = NodeId(1);
@@ -1035,5 +1104,32 @@ mod tests {
         app.graph = restored;
         assert_eq!(app.graph.nodes.len(), initial_count);
         assert!(app.graph.nodes.contains_key(&target_node));
+    }
+
+    #[test]
+    fn test_auto_connect_wire_output_and_input() {
+        let mut app = TextureLabApp::default();
+        // Spawn Math node (has inputs "A", "B", output "output")
+        let math_id = app.spawn_node_by_type("Math").expect("Math");
+        let math_out = PinId::output(math_id, "output");
+
+        // Spawn Invert node and auto-wire from Math output
+        let inv_id = app.spawn_node_by_type("Invert").expect("Invert");
+        app.auto_connect_wire(math_out.clone(), inv_id);
+
+        let inv_in = PinId::input(inv_id, "input");
+        assert!(app.graph.incoming_edge(&inv_in).is_some());
+        assert_eq!(app.graph.incoming_edge(&inv_in).unwrap().from, math_out);
+
+        // Reverse direction: drag from input of a new node to an output
+        let levels_id = app.spawn_node_by_type("Levels").expect("Levels");
+        let levels_in = PinId::input(levels_id, "input");
+
+        let normal_id = app.spawn_node_by_type("NormalFlipGreen").expect("NormalFlipGreen");
+        app.auto_connect_wire(levels_in.clone(), normal_id);
+
+        let normal_out = PinId::output(normal_id, "output");
+        assert!(app.graph.incoming_edge(&levels_in).is_some());
+        assert_eq!(app.graph.incoming_edge(&levels_in).unwrap().from, normal_out);
     }
 }

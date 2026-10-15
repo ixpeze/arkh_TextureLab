@@ -981,9 +981,10 @@ fn test_workstation_launch_latency_and_dock_layout() {
         elapsed
     );
 
-    // Verify starter graph has 5 nodes and 4 edges
-    assert_eq!(app.graph.nodes.len(), 5);
-    assert_eq!(app.graph.edges.len(), 4);
+    // Verify blank canvas default has 0 nodes and 0 edges with splash card active
+    assert_eq!(app.graph.nodes.len(), 0);
+    assert_eq!(app.graph.edges.len(), 0);
+    assert!(!app.canvas_state.dismiss_splash);
 
     // Verify dock layout is properly initialized (Canvas, Viewport, Inspector, Library; Export hidden by default)
     let dock = app.dock_state.expect("Missing dock state");
@@ -1096,6 +1097,7 @@ fn test_2d_viewport_channel_isolation_and_pixel_probe() {
 #[test]
 fn test_inspector_param_mutation_and_evaluator_reactivity() {
     let mut app = TextureLabApp::default();
+    app.graph = texturelab::app::build_starter_graph();
 
     // Select the ConstantColor node (id = 1)
     let node_id = NodeId(1);
@@ -1237,6 +1239,7 @@ fn test_batch_export_speed() {
 #[test]
 fn test_unreal_engine_navigation_and_pin_severing() {
     let mut app = TextureLabApp::default();
+    app.graph = texturelab::app::build_starter_graph();
     let initial_edges = app.graph.edges.len();
     assert!(initial_edges > 0);
 
@@ -1705,6 +1708,7 @@ fn test_end_to_end_screen_to_canvas_drag_drop_alignment() {
 #[test]
 fn test_end_to_end_node_copy_paste_and_duplicate() {
     let mut app = TextureLabApp::default();
+    app.graph = texturelab::app::build_starter_graph();
     let initial_count = app.graph.nodes.len();
     assert!(initial_count >= 1);
 
@@ -1986,8 +1990,8 @@ fn test_builtin_templates_gallery_and_undo() {
     use texturelab::templates::builtin_templates;
 
     let mut app = TextureLabApp::default();
-    let initial_node_count = app.graph.nodes.len();
-    assert!(initial_node_count > 0, "Default app starts with starter graph");
+    assert_eq!(app.graph.nodes.len(), 0, "Default app starts with blank canvas");
+    assert!(!app.canvas_state.dismiss_splash, "Splash card remains available on initial blank canvas");
 
     // 1. Verify 5 built-in templates exist in gallery catalog
     let templates = builtin_templates();
@@ -2000,10 +2004,10 @@ fn test_builtin_templates_gallery_and_undo() {
     assert_eq!(app.graph.edges.len(), 0);
     assert!(!app.canvas_state.dismiss_splash, "Splash card remains available on empty graph");
 
-    // 3. Undo restores the starter graph
+    // 3. Undo restores the blank canvas
     let prev_graph = app.history.undo(&app.graph).expect("Undo snapshot must exist for template load");
     app.graph = prev_graph;
-    assert_eq!(app.graph.nodes.len(), initial_node_count);
+    assert_eq!(app.graph.nodes.len(), 0);
 
     // 4. Load UE5 ORM Pack
     let ue5_loaded = app.load_template_by_name("UE5 ORM Pack");
