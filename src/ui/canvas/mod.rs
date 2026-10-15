@@ -113,8 +113,9 @@ impl CanvasState {
 
     /// Returns the NodeId of the topmost node whose rendered card screen rect contains `screen_pos`.
     pub fn find_node_at_screen_pos(&self, screen_pos: Pos2) -> Option<NodeId> {
+        let margin = (6.0 * self.zoom).clamp(4.0, 16.0);
         for &(id, rect) in self.rendered_node_rects.iter().rev() {
-            if rect.contains(screen_pos) {
+            if rect.expand(margin).contains(screen_pos) {
                 return Some(id);
             }
         }
@@ -132,7 +133,7 @@ impl CanvasState {
                 Pos2::new(node.position[0], node.position[1]),
                 Vec2::new(w, h),
             );
-            if rect.contains(canvas_pos) {
+            if rect.expand(12.0).contains(canvas_pos) {
                 return Some(node.id);
             }
         }
@@ -146,6 +147,52 @@ impl CanvasState {
         }
         let canvas_pt = self.screen_to_canvas(screen_pos, self.last_canvas_rect);
         self.find_node_at_canvas_pos(canvas_pt, graph)
+    }
+
+    /// Finds a TextureInput node under `screen_pos` or `canvas_pos` with generous hit margins (Corona Bitmap loader drop standard).
+    pub fn find_texture_input_at(
+        &self,
+        screen_pos: Option<Pos2>,
+        canvas_pos: Option<Pos2>,
+        graph: &Graph,
+    ) -> Option<NodeId> {
+        // 1. First priority: Check rendered screen rects if screen_pos is provided
+        if let Some(s_pos) = screen_pos {
+            let hit_margin = (20.0 * self.zoom).clamp(14.0, 36.0);
+            for &(id, rect) in self.rendered_node_rects.iter().rev() {
+                if graph.get_node(id).is_some_and(|n| n.node_type == "TextureInput")
+                    && rect.expand(hit_margin).contains(s_pos)
+                {
+                    return Some(id);
+                }
+            }
+        }
+
+        // 2. Second priority: Check world canvas coordinates
+        let c_pos = canvas_pos.or_else(|| {
+            screen_pos.map(|sp| self.screen_to_canvas(sp, self.last_canvas_rect))
+        })?;
+
+        let mut closest_hit: Option<(NodeId, f32)> = None;
+        for node in graph.nodes.values() {
+            if node.node_type != "TextureInput" {
+                continue;
+            }
+            let (w, h) = crate::graph::layout::calculate_node_size(node);
+            let card_rect = Rect::from_min_size(
+                Pos2::new(node.position[0], node.position[1]),
+                Vec2::new(w, h),
+            );
+            let hit_rect = card_rect.expand(28.0);
+            if hit_rect.contains(c_pos) {
+                let dist_sq = card_rect.center().distance_sq(c_pos);
+                if closest_hit.is_none_or(|(_, best_dist)| dist_sq < best_dist) {
+                    closest_hit = Some((node.id, dist_sq));
+                }
+            }
+        }
+
+        closest_hit.map(|(id, _)| id)
     }
 
     /// Clones specified nodes and internal connections into the canvas clipboard.
@@ -416,9 +463,22 @@ impl CanvasState {
 
         // Active file drag-and-drop detection for interactive node hover (Corona Bitmap loader drop highlight)
         let hovered_files = ui.ctx().input(|i| i.raw.hovered_files.clone());
-        let drop_hover_screen_pos = ui.ctx().pointer_hover_pos().or_else(|| ui.ctx().input(|i| i.pointer.latest_pos()));
+        let drop_hover_screen_pos = ui.ctx().pointer_hover_pos()
+            .or_else(|| ui.ctx().pointer_interact_pos())
+            .or_else(|| ui.ctx().input(|i| i.pointer.latest_pos()))
+            .or_else(|| ui.ctx().input(|i| i.pointer.hover_pos()))
+            .or_else(|| ui.ctx().input(|i| i.pointer.interact_pos()))
+            .or_else(|| {
+                ui.ctx().input(|i| {
+                    i.raw.events.iter().rev().find_map(|e| match e {
+                        egui::Event::PointerMoved(pos) => Some(*pos),
+                        egui::Event::PointerButton { pos, .. } => Some(*pos),
+                        _ => None,
+                    })
+                })
+            });
         let drop_hovered_node = if !hovered_files.is_empty() {
-            drop_hover_screen_pos.and_then(|ptr| self.find_node_at_screen_pos(ptr))
+            self.find_texture_input_at(drop_hover_screen_pos, None, graph)
         } else {
             None
         };

@@ -1365,6 +1365,140 @@ fn test_handle_dropped_files_direct_hit_on_texture_input() {
 }
 
 #[test]
+fn test_handle_dropped_files_world_canvas_fallback_hit_on_texture_input() {
+    let mut app = TextureLabApp::default();
+    let desc = texturelab::nodes::NODE_CATALOG.iter().find(|d| d.type_name == "TextureInput").unwrap();
+    let target_id = NodeId(app.graph.next_node_id);
+    // Node placed at canvas world coordinates [200.0, 200.0]
+    let target_node = desc.create_node(target_id, [200.0, 200.0]);
+    app.graph.add_node(target_node);
+    let initial_count = app.graph.nodes.len();
+
+    // Leave rendered_node_rects EMPTY to test pure world canvas coordinate resolution
+    app.canvas_state.rendered_node_rects.clear();
+    app.canvas_state.pan = egui::Vec2::new(100.0, 100.0);
+    app.canvas_state.zoom = 1.0;
+    app.canvas_state.last_canvas_rect = egui::Rect::from_min_size(egui::Pos2::new(50.0, 50.0), egui::Vec2::new(1600.0, 900.0));
+
+    // Calculate screen pos corresponding to canvas point [250.0, 250.0] inside the card:
+    // screen = min(50, 50) + pan(100, 100) + [250, 250] = (400, 400)
+    let drop_screen = app.canvas_state.canvas_to_screen(egui::pos2(250.0, 250.0), app.canvas_state.last_canvas_rect);
+
+    let ctx = egui::Context::default();
+    let mut raw = egui::RawInput {
+        dropped_files: vec![egui::DroppedFile {
+            name: "T_Rock_BaseColor.png".to_string(),
+            path: Some(std::path::PathBuf::from("T_Rock_BaseColor.png")),
+            last_modified: None,
+            bytes: None,
+            mime: "image/png".to_string(),
+        }],
+        ..Default::default()
+    };
+    raw.events.push(egui::Event::PointerMoved(drop_screen));
+    let _ = ctx.run(raw, |_| {});
+
+    app.handle_dropped_files(&ctx);
+
+    assert_eq!(app.graph.nodes.len(), initial_count, "No new nodes should be spawned when dropped on existing TextureInput");
+    let loaded = app.graph.get_node(target_id).unwrap();
+    assert_eq!(loaded.label, "T_Rock_BaseColor.png");
+    assert_eq!(loaded.get_string("file_path", ""), "T_Rock_BaseColor.png");
+    assert_eq!(loaded.get_string("colorspace", ""), "sRGB");
+}
+
+#[test]
+fn test_handle_dropped_files_empty_canvas_spawns_new_node() {
+    let mut app = TextureLabApp::default();
+    let desc = texturelab::nodes::NODE_CATALOG.iter().find(|d| d.type_name == "TextureInput").unwrap();
+    let existing_id = NodeId(app.graph.next_node_id);
+    let existing_node = desc.create_node(existing_id, [100.0, 100.0]);
+    app.graph.add_node(existing_node);
+    let initial_count = app.graph.nodes.len();
+
+    app.canvas_state.pan = egui::Vec2::new(0.0, 0.0);
+    app.canvas_state.zoom = 1.0;
+    app.canvas_state.last_canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(1920.0, 1080.0));
+
+    // Drop at canvas position [800.0, 600.0] (far away from existing node at [100, 100])
+    let ctx = egui::Context::default();
+    let mut raw = egui::RawInput {
+        dropped_files: vec![egui::DroppedFile {
+            name: "T_Metal_Metallic.png".to_string(),
+            path: Some(std::path::PathBuf::from("T_Metal_Metallic.png")),
+            last_modified: None,
+            bytes: None,
+            mime: "image/png".to_string(),
+        }],
+        ..Default::default()
+    };
+    raw.events.push(egui::Event::PointerMoved(egui::pos2(800.0, 600.0)));
+    let _ = ctx.run(raw, |_| {});
+
+    app.handle_dropped_files(&ctx);
+
+    assert_eq!(app.graph.nodes.len(), initial_count + 1, "New node should be created when dropped in empty canvas area");
+    let spawned_id = app.canvas_state.selected_node.expect("Spawned node should be selected");
+    assert_ne!(spawned_id, existing_id);
+
+    let spawned = app.graph.get_node(spawned_id).unwrap();
+    assert_eq!(spawned.label, "T_Metal_Metallic.png");
+    assert_eq!(spawned.position, [800.0, 600.0]);
+    assert_eq!(spawned.get_string("colorspace", ""), "Linear");
+}
+
+#[test]
+fn test_handle_dropped_files_multiple_textures_on_existing_node() {
+    let mut app = TextureLabApp::default();
+    let desc = texturelab::nodes::NODE_CATALOG.iter().find(|d| d.type_name == "TextureInput").unwrap();
+    let target_id = NodeId(app.graph.next_node_id);
+    let target_node = desc.create_node(target_id, [200.0, 200.0]);
+    app.graph.add_node(target_node);
+    let initial_count = app.graph.nodes.len();
+
+    app.canvas_state.pan = egui::Vec2::new(0.0, 0.0);
+    app.canvas_state.zoom = 1.0;
+    app.canvas_state.last_canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(1920.0, 1080.0));
+
+    let ctx = egui::Context::default();
+    let mut raw = egui::RawInput {
+        dropped_files: vec![
+            egui::DroppedFile {
+                name: "T_Brick_BaseColor.png".to_string(),
+                path: Some(std::path::PathBuf::from("T_Brick_BaseColor.png")),
+                last_modified: None,
+                bytes: None,
+                mime: "image/png".to_string(),
+            },
+            egui::DroppedFile {
+                name: "T_Brick_Normal.png".to_string(),
+                path: Some(std::path::PathBuf::from("T_Brick_Normal.png")),
+                last_modified: None,
+                bytes: None,
+                mime: "image/png".to_string(),
+            },
+            egui::DroppedFile {
+                name: "T_Brick_Roughness.png".to_string(),
+                path: Some(std::path::PathBuf::from("T_Brick_Roughness.png")),
+                last_modified: None,
+                bytes: None,
+                mime: "image/png".to_string(),
+            },
+        ],
+        ..Default::default()
+    };
+    raw.events.push(egui::Event::PointerMoved(egui::pos2(240.0, 240.0)));
+    let _ = ctx.run(raw, |_| {});
+
+    app.handle_dropped_files(&ctx);
+
+    // 1 loaded into target + 2 additional spawned = 3 nodes in total
+    assert_eq!(app.graph.nodes.len(), initial_count + 2);
+    let loaded = app.graph.get_node(target_id).unwrap();
+    assert_eq!(loaded.label, "T_Brick_BaseColor.png");
+}
+
+#[test]
 fn test_node_library_drag_and_drop_payload() {
     let ctx = egui::Context::default();
     egui::DragAndDrop::set_payload(&ctx, "NormalFlipGreen".to_string());
@@ -1943,11 +2077,13 @@ fn test_settings_file_roundtrip_and_defaults() {
     let temp_dir = std::env::temp_dir().join("texturelab_integration_settings");
     let temp_file = temp_dir.join("test_settings_roundtrip.json");
 
-    let mut custom = AppSettings::default();
-    custom.default_resolution = (4096, 4096);
-    custom.export_directory = Some("D:/PBR/Textures".to_string());
-    custom.accent_color = [0.1, 0.7, 0.9];
-    custom.autosave_interval_secs = 600;
+    let mut custom = AppSettings {
+        default_resolution: (4096, 4096),
+        export_directory: Some("D:/PBR/Textures".to_string()),
+        accent_color: [0.1, 0.7, 0.9],
+        autosave_interval_secs: 600,
+        ..Default::default()
+    };
     custom.hotkey_overrides.insert("SpawnMath".to_string(), "X".to_string());
     custom.hotkey_overrides.insert("Undo".to_string(), "Ctrl+U".to_string());
     custom.add_recent_file("D:/project_alpha.tlab");

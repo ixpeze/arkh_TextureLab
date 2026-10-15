@@ -1065,8 +1065,10 @@ mod tests {
 
     #[test]
     fn test_auto_layout_execution_and_undo() {
-        let mut app = TextureLabApp::default();
-        app.graph = build_starter_graph();
+        let mut app = TextureLabApp {
+            graph: build_starter_graph(),
+            ..Default::default()
+        };
         let initial_pan = app.canvas_state.pan;
 
         // Deselect node to test full-graph layout
@@ -1141,8 +1143,10 @@ mod tests {
 
     #[test]
     fn test_delete_node_undo_roundtrip() {
-        let mut app = TextureLabApp::default();
-        app.graph = build_starter_graph();
+        let mut app = TextureLabApp {
+            graph: build_starter_graph(),
+            ..Default::default()
+        };
         let initial_count = app.graph.nodes.len();
 
         let target_node = NodeId(1);

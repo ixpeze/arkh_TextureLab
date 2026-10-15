@@ -166,15 +166,17 @@ mod tests {
 
     #[test]
     fn test_settings_roundtrip_json() {
-        let mut settings = AppSettings::default();
-        settings.default_resolution = (4096, 4096);
-        settings.export_directory = Some("C:/Textures/Exports".to_string());
-        settings.accent_color = [0.2, 0.8, 0.4];
+        let mut settings = AppSettings {
+            default_resolution: (4096, 4096),
+            export_directory: Some("C:/Textures/Exports".to_string()),
+            accent_color: [0.2, 0.8, 0.4],
+            autosave_interval_secs: 600,
+            ..Default::default()
+        };
         settings
             .hotkey_overrides
             .insert("SpawnMath".to_string(), "X".to_string());
         settings.add_recent_file("C:/project1.tlab");
-        settings.autosave_interval_secs = 600;
 
         let json = serde_json::to_string_pretty(&settings).expect("Serialization failed");
         let loaded: AppSettings = serde_json::from_str(&json).expect("Deserialization failed");
@@ -187,8 +189,10 @@ mod tests {
         let temp_dir = std::env::temp_dir().join("texturelab_settings_test");
         let temp_file = temp_dir.join("test_settings.json");
 
-        let mut settings = AppSettings::default();
-        settings.default_resolution = (1024, 1024);
+        let mut settings = AppSettings {
+            default_resolution: (1024, 1024),
+            ..Default::default()
+        };
         settings
             .hotkey_overrides
             .insert("Undo".to_string(), "Ctrl+U".to_string());

@@ -4,6 +4,36 @@ use super::state::TextureLabApp;
 use crate::graph::model::NodeId;
 use crate::normalizer::LexicalNormalizer;
 
+#[cfg(windows)]
+fn get_os_cursor_pos(pixels_per_point: f32) -> Option<egui::Pos2> {
+    #[repr(C)]
+    struct Point {
+        x: i32,
+        y: i32,
+    }
+    extern "system" {
+        fn GetCursorPos(lpPoint: *mut Point) -> i32;
+        fn ScreenToClient(hWnd: *mut std::ffi::c_void, lpPoint: *mut Point) -> i32;
+        fn GetForegroundWindow() -> *mut std::ffi::c_void;
+    }
+    unsafe {
+        let mut pt = Point { x: 0, y: 0 };
+        if GetCursorPos(&mut pt) != 0 {
+            let hwnd = GetForegroundWindow();
+            if !hwnd.is_null() && ScreenToClient(hwnd, &mut pt) != 0 {
+                let ppp = if pixels_per_point > 0.0 { pixels_per_point } else { 1.0 };
+                return Some(egui::pos2(pt.x as f32 / ppp, pt.y as f32 / ppp));
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(windows))]
+fn get_os_cursor_pos(_pixels_per_point: f32) -> Option<egui::Pos2> {
+    None
+}
+
 impl TextureLabApp {
     /// Loads a texture file directly into an existing TextureInput node.
     pub fn load_texture_into_node(&mut self, node_id: NodeId, path: impl AsRef<std::path::Path>) -> bool {
@@ -49,10 +79,27 @@ impl TextureLabApp {
             return;
         }
 
-        let drop_screen_ptr = ctx.pointer_hover_pos().or_else(|| ctx.input(|i| i.pointer.latest_pos()));
+        let drop_screen_ptr = ctx.pointer_hover_pos()
+            .or_else(|| ctx.pointer_interact_pos())
+            .or_else(|| ctx.input(|i| i.pointer.latest_pos()))
+            .or_else(|| ctx.input(|i| i.pointer.hover_pos()))
+            .or_else(|| ctx.input(|i| i.pointer.interact_pos()))
+            .or_else(|| {
+                ctx.input(|i| {
+                    i.raw.events.iter().rev().find_map(|e| match e {
+                        egui::Event::PointerMoved(pos) => Some(*pos),
+                        egui::Event::PointerButton { pos, .. } => Some(*pos),
+                        _ => None,
+                    })
+                })
+            })
+            .or_else(|| get_os_cursor_pos(ctx.pixels_per_point()));
 
-        let start_pos = if let Some(ptr) = drop_screen_ptr {
-            let pt = self.canvas_state.screen_to_canvas(ptr, self.canvas_state.last_canvas_rect);
+        let canvas_pos = drop_screen_ptr.map(|ptr| {
+            self.canvas_state.screen_to_canvas(ptr, self.canvas_state.last_canvas_rect)
+        });
+
+        let start_pos = if let Some(pt) = canvas_pos {
             [pt.x, pt.y]
         } else {
             [-self.canvas_state.pan.x + 250.0, -self.canvas_state.pan.y + 150.0]
@@ -91,17 +138,25 @@ impl TextureLabApp {
             return;
         }
 
-        // Check if dropped directly onto an existing TextureInput node (Corona Bitmap loader interaction)
-        let target_texture_input_id = drop_screen_ptr.and_then(|ptr| {
-            if self.canvas_state.last_canvas_rect.contains(ptr) {
-                let hit_id = self.canvas_state.find_node_at(ptr, &self.graph);
-                hit_id.filter(|&id| {
-                    self.graph.get_node(id).is_some_and(|n| n.node_type == "TextureInput")
-                })
-            } else {
-                None
+        // 1. Check if dropped directly onto an existing TextureInput node (Corona Bitmap loader interaction)
+        let mut target_texture_input_id = self.canvas_state.find_texture_input_at(
+            drop_screen_ptr,
+            canvas_pos,
+            &self.graph,
+        );
+
+        // 2. If dropped on the Properties/Inspector panel while a TextureInput node is selected, load into it directly
+        if target_texture_input_id.is_none() {
+            if let Some(ptr) = drop_screen_ptr {
+                if !self.canvas_state.last_canvas_rect.contains(ptr) {
+                    if let Some(sel_id) = self.canvas_state.selected_node {
+                        if self.graph.get_node(sel_id).is_some_and(|n| n.node_type == "TextureInput") {
+                            target_texture_input_id = Some(sel_id);
+                        }
+                    }
+                }
             }
-        });
+        }
 
         if let Some(target_id) = target_texture_input_id {
             let mut iter = image_files.into_iter();
