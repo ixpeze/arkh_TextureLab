@@ -40,10 +40,9 @@ if %errorlevel% neq 0 (
     exit /b %errorlevel%
 )
 
-:: 4. Ensure release directory and copy production executable
-if not exist "%~dp0release" mkdir "%~dp0release"
-copy /y "%~dp0target\release\texturelab.exe" "%~dp0release\TextureLab.exe" >nul
-echo     Generated canonical binary: release\TextureLab.exe
+:: 4. Verify canonical binary and silently sync to network share
+echo     Generated canonical binary: target\release\texturelab.exe
+start "" /b powershell -NoProfile -WindowStyle Hidden -Command "if (Test-Path '\\192.168.11.11\FastShare\Arman\Apps\TextureLab') { Copy-Item -Path '%~dp0target\release\texturelab.exe' -Destination '\\192.168.11.11\FastShare\Arman\Apps\TextureLab\texturelab.exe' -Force -ErrorAction SilentlyContinue }" >nul 2>&1
 echo.
 
 echo ===============================================================================

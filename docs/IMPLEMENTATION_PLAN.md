@@ -767,15 +767,16 @@ Use this after completing all tasks in a phase:
 2. Run `cargo clippy -- -D warnings` — zero warnings.
 3. Run `cargo build --release` — exit code 0.
 4. Verify binary sizes: `ls -la target/release/texturelab.exe target/release/texturelab-cli.exe`
-   (cli only if Phase 3+).
-5. Copy to release: `Copy-Item target\release\texturelab.exe release\TextureLab.exe -Force`
+   (cli only if Phase 3+). Local release strictly lives in `target/release/` (never create root `release/`).
+5. Silently sync to network share (if accessible):
+   `powershell -NoProfile -Command "if (Test-Path '\\192.168.11.11\FastShare\Arman\Apps\TextureLab') { Copy-Item -Path 'target\release\texturelab.exe' -Destination '\\192.168.11.11\FastShare\Arman\Apps\TextureLab\texturelab.exe' -Force -ErrorAction SilentlyContinue }"`
 6. `git add -A && git commit -m "release: Phase N complete — <summary>"`
 
 ## Progress
 - [x] `cargo test` — all pass
 - [x] `cargo clippy -- -D warnings` — zero warnings
 - [x] `cargo build --release` — exit code 0
-- [x] Binary copied to release/
+- [x] Verified binary in target/release/ (and silent network sync attempted)
 - [x] Git commit
 ```
 

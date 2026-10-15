@@ -6,6 +6,8 @@ Whenever a major development phase, architectural milestone, or large UX redesig
 2. `cargo clippy -- -D warnings` must report zero warnings.
 3. A complete desktop executable / production bundle build MUST be executed (`cargo build --release` producing standalone portable binary).
 4. The build exit code must be verified (0) with no broken imports or missing assets.
+5. **Strict Single Local Release Directory Rule**: `target\release\` is the SOLE release folder on this PC (`target\release\texturelab.exe`). NEVER create, commit, or maintain a duplicate `release/` directory in the repository root or elsewhere.
+6. **Network Share Sync**: Attempt to copy `target\release\texturelab.exe` to `\\192.168.11.11\FastShare\Arman\Apps\TextureLab\texturelab.exe`. Silent error handling must be enabled so that if the network location is offline, unavailable, or times out, the build succeeds cleanly without failing or interrupting.
 
 ## 2. Interaction Standards
 - Follow Unreal Engine Material Editor navigation standards (Right-click pan, Right-click tap spawn menu, Alt+Click wire cut, Hold-Key+Left-Click node quick-spawn).
