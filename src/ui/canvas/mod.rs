@@ -80,6 +80,7 @@ pub struct CanvasState {
     pub last_canvas_rect: Rect,
     pub clipboard: Option<(Vec<Node>, Vec<Edge>)>,
     pub dismiss_splash: bool,
+    pub rendered_node_rects: Vec<(NodeId, Rect)>,
 }
 
 impl Default for CanvasState {
@@ -100,6 +101,7 @@ impl Default for CanvasState {
             last_canvas_rect: Rect::from_min_size(Pos2::ZERO, Vec2::new(1920.0, 1080.0)),
             clipboard: None,
             dismiss_splash: false,
+            rendered_node_rects: Vec::new(),
         }
     }
 }
@@ -107,6 +109,43 @@ impl Default for CanvasState {
 impl CanvasState {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Returns the NodeId of the topmost node whose rendered card screen rect contains `screen_pos`.
+    pub fn find_node_at_screen_pos(&self, screen_pos: Pos2) -> Option<NodeId> {
+        for &(id, rect) in self.rendered_node_rects.iter().rev() {
+            if rect.contains(screen_pos) {
+                return Some(id);
+            }
+        }
+        None
+    }
+
+    /// Returns the NodeId of any node whose bounding box in canvas coordinates contains `canvas_pos`.
+    pub fn find_node_at_canvas_pos(&self, canvas_pos: Pos2, graph: &Graph) -> Option<NodeId> {
+        for node in graph.nodes.values() {
+            if node.node_type == "Comment" {
+                continue;
+            }
+            let (w, h) = crate::graph::layout::calculate_node_size(node);
+            let rect = Rect::from_min_size(
+                Pos2::new(node.position[0], node.position[1]),
+                Vec2::new(w, h),
+            );
+            if rect.contains(canvas_pos) {
+                return Some(node.id);
+            }
+        }
+        None
+    }
+
+    /// Finds a node under `screen_pos`, querying rendered screen rects first with canvas coordinate fallback.
+    pub fn find_node_at(&self, screen_pos: Pos2, graph: &Graph) -> Option<NodeId> {
+        if let Some(id) = self.find_node_at_screen_pos(screen_pos) {
+            return Some(id);
+        }
+        let canvas_pt = self.screen_to_canvas(screen_pos, self.last_canvas_rect);
+        self.find_node_at_canvas_pos(canvas_pt, graph)
     }
 
     /// Clones specified nodes and internal connections into the canvas clipboard.
@@ -180,8 +219,8 @@ impl CanvasState {
         // Animation phase for wire rendering and connection flow pulses
         let anim_phase = (ui.input(|i| i.time) * 1.5) as f32;
 
-        // Request continuous repaint only during active drag or interactive gestures to eliminate idle GPU/CPU burn
-        if self.wire_drag.is_some() || self.dragging_node.is_some() || self.box_select_start.is_some() {
+        // Request continuous repaint only during active drag, file hover, or interactive gestures to eliminate idle GPU/CPU burn
+        if self.wire_drag.is_some() || self.dragging_node.is_some() || self.box_select_start.is_some() || !ui.ctx().input(|i| i.raw.hovered_files.is_empty()) {
             ui.ctx().request_repaint();
         }
 
@@ -369,10 +408,20 @@ impl CanvasState {
                 is_selected,
                 is_viewport_locked,
                 hovered_pin_id: hovered_pin.as_ref(),
+                is_drop_target: false,
             };
             let (node_rect, _) = render_node_card(&painter, node, &params);
             comment_rects.push((node.id, node_rect));
         }
+
+        // Active file drag-and-drop detection for interactive node hover (Corona Bitmap loader drop highlight)
+        let hovered_files = ui.ctx().input(|i| i.raw.hovered_files.clone());
+        let drop_hover_screen_pos = ui.ctx().pointer_hover_pos().or_else(|| ui.ctx().input(|i| i.pointer.latest_pos()));
+        let drop_hovered_node = if !hovered_files.is_empty() {
+            drop_hover_screen_pos.and_then(|ptr| self.find_node_at_screen_pos(ptr))
+        } else {
+            None
+        };
 
         // Pass 2: Render regular and reroute nodes on top
         let mut foreground_rects = Vec::new();
@@ -383,6 +432,7 @@ impl CanvasState {
             let is_selected = self.selected_node == Some(node.id) || self.selected_nodes.contains(&node.id);
             let is_viewport_locked = self.locked_viewport_node == Some(node.id);
             let screen_pos = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
+            let is_drop_target = drop_hovered_node == Some(node.id) && node.node_type == "TextureInput";
 
             let params = NodeCardRenderParams {
                 screen_pos,
@@ -391,6 +441,7 @@ impl CanvasState {
                 is_selected,
                 is_viewport_locked,
                 hovered_pin_id: hovered_pin.as_ref(),
+                is_drop_target,
             };
             let (node_rect, pin_coords) = render_node_card(&painter, node, &params);
 
@@ -400,6 +451,9 @@ impl CanvasState {
             }
             foreground_rects.push((node.id, node_rect, screen_pos, node.node_type == "Reroute"));
         }
+
+        // Cache rendered node screen rects for accurate hit-testing and drop targeting
+        self.rendered_node_rects = foreground_rects.iter().map(|(id, r, ..)| (*id, *r)).collect();
 
         // Hit testing and dragging interaction:
         // Check foreground nodes first (front-to-back priority)
@@ -1211,5 +1265,26 @@ mod tests {
         assert_ne!(act_template, act_focus);
         assert_ne!(act_split, act_focus);
         assert_ne!(act_multi_sel, act_focus);
+    }
+
+    #[test]
+    fn test_canvas_find_node_at_screen_and_world_pos() {
+        let mut canvas = CanvasState::new();
+        let mut graph = Graph::new();
+        let n1_id = NodeId(1);
+        let n1 = Node::new(n1_id, "TextureInput", "Albedo", [100.0, 100.0]);
+        graph.add_node(n1);
+
+        // Test canvas coordinate query
+        let hit = canvas.find_node_at_canvas_pos(Pos2::new(150.0, 150.0), &graph);
+        assert_eq!(hit, Some(n1_id));
+
+        let miss = canvas.find_node_at_canvas_pos(Pos2::new(500.0, 500.0), &graph);
+        assert_eq!(miss, None);
+
+        // Test screen coordinate cache query
+        canvas.rendered_node_rects.push((n1_id, Rect::from_min_size(Pos2::new(200.0, 200.0), Vec2::new(260.0, 180.0))));
+        assert_eq!(canvas.find_node_at_screen_pos(Pos2::new(250.0, 250.0)), Some(n1_id));
+        assert_eq!(canvas.find_node_at_screen_pos(Pos2::new(50.0, 50.0)), None);
     }
 }

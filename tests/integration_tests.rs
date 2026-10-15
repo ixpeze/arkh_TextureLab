@@ -1290,6 +1290,81 @@ fn test_drag_and_drop_explorer_file_ingestion() {
 }
 
 #[test]
+fn test_drag_and_drop_on_top_of_texture_input_node() {
+    let mut app = TextureLabApp::default();
+    let desc = texturelab::nodes::NODE_CATALOG.iter().find(|d| d.type_name == "TextureInput").unwrap();
+    let node_id = NodeId(app.graph.next_node_id);
+    let empty_node = desc.create_node(node_id, [200.0, 200.0]);
+    app.graph.add_node(empty_node);
+
+    let initial_count = app.graph.nodes.len();
+
+    // Directly load texture into existing node (Corona Bitmap loader style)
+    let success = app.load_texture_into_node(node_id, "T_Cobblestone_Wall_Roughness.png");
+    assert!(success);
+
+    // Verify node parameters updated in place
+    let updated = app.graph.get_node(node_id).unwrap();
+    assert_eq!(updated.label, "T_Cobblestone_Wall_Roughness.png");
+    assert_eq!(updated.get_string("file_path", ""), "T_Cobblestone_Wall_Roughness.png");
+    assert_eq!(updated.get_string("path", ""), "T_Cobblestone_Wall_Roughness.png");
+    assert_eq!(updated.get_string("colorspace", ""), "Linear");
+
+    // Verify no new nodes spawned
+    assert_eq!(app.graph.nodes.len(), initial_count);
+    assert_eq!(app.canvas_state.selected_node, Some(node_id));
+
+    // Non-TextureInput rejection
+    let math_desc = texturelab::nodes::NODE_CATALOG.iter().find(|d| d.type_name == "Math").unwrap();
+    let math_id = NodeId(app.graph.next_node_id);
+    let math_node = math_desc.create_node(math_id, [500.0, 200.0]);
+    app.graph.add_node(math_node);
+
+    let math_success = app.load_texture_into_node(math_id, "T_Wood_BaseColor.png");
+    assert!(!math_success);
+}
+
+#[test]
+fn test_handle_dropped_files_direct_hit_on_texture_input() {
+    let mut app = TextureLabApp::default();
+    let desc = texturelab::nodes::NODE_CATALOG.iter().find(|d| d.type_name == "TextureInput").unwrap();
+    let target_id = NodeId(app.graph.next_node_id);
+    let target_node = desc.create_node(target_id, [100.0, 100.0]);
+    app.graph.add_node(target_node);
+    let initial_count = app.graph.nodes.len();
+
+    // Cache rendered rect for hit testing at screen pos [150.0, 150.0]
+    app.canvas_state.last_canvas_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::Vec2::new(1920.0, 1080.0));
+    app.canvas_state.rendered_node_rects.push((
+        target_id,
+        egui::Rect::from_min_size(egui::Pos2::new(100.0, 100.0), egui::Vec2::new(260.0, 180.0)),
+    ));
+
+    let ctx = egui::Context::default();
+    let mut raw = egui::RawInput {
+        dropped_files: vec![egui::DroppedFile {
+            name: "T_Anthracite_Normal_GL.png".to_string(),
+            path: Some(std::path::PathBuf::from("T_Anthracite_Normal_GL.png")),
+            last_modified: None,
+            bytes: None,
+            mime: "image/png".to_string(),
+        }],
+        ..Default::default()
+    };
+    raw.events.push(egui::Event::PointerMoved(egui::pos2(150.0, 150.0)));
+    let _ = ctx.run(raw, |_| {});
+
+    app.handle_dropped_files(&ctx);
+
+    // Target node should be loaded directly without spawning new nodes
+    assert_eq!(app.graph.nodes.len(), initial_count);
+    let loaded = app.graph.get_node(target_id).unwrap();
+    assert_eq!(loaded.label, "T_Anthracite_Normal_GL.png");
+    assert_eq!(loaded.get_string("file_path", ""), "T_Anthracite_Normal_GL.png");
+    assert_eq!(loaded.get_string("colorspace", ""), "Linear");
+}
+
+#[test]
 fn test_node_library_drag_and_drop_payload() {
     let ctx = egui::Context::default();
     egui::DragAndDrop::set_payload(&ctx, "NormalFlipGreen".to_string());

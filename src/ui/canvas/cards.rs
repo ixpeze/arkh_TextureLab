@@ -252,6 +252,7 @@ pub struct NodeCardRenderParams<'a> {
     pub is_selected: bool,
     pub is_viewport_locked: bool,
     pub hovered_pin_id: Option<&'a PinId>,
+    pub is_drop_target: bool,
 }
 
 /// Renders a semi-transparent Comment Box (Unreal Engine style annotation container).
@@ -426,6 +427,7 @@ pub fn render_node_card(
         is_selected,
         is_viewport_locked,
         hovered_pin_id,
+        is_drop_target,
     } = *params;
     let cat = infer_category(&node.node_type);
     let cat_col = category_color(cat);
@@ -440,9 +442,14 @@ pub fn render_node_card(
             let header_height = 36.0 * zoom;
             let (filename_height, texture_galley, texture_filename) = if is_texture_input {
                 let filename = get_texture_input_filename(node);
+                let display_text = if filename == "No texture loaded" {
+                    "No texture loaded (drag & drop image here)".to_string()
+                } else {
+                    filename.clone()
+                };
                 let max_text_width = (width - 24.0 * zoom).max(80.0 * zoom);
                 let font_id = egui::FontId::proportional((11.5 * zoom).max(9.0));
-                let galley = painter.layout(filename.clone(), font_id, TEXT_SECONDARY, max_text_width);
+                let galley = painter.layout(display_text, font_id, TEXT_SECONDARY, max_text_width);
                 let h = (galley.size().y + 12.0 * zoom).max(30.0 * zoom);
                 (h, Some(galley), filename)
             } else {
@@ -460,14 +467,28 @@ pub fn render_node_card(
             let shadow_rect = Rect::from_min_size(screen_pos + Vec2::new(0.0, 4.0 * zoom), Vec2::new(width, total_height));
             painter.rect_filled(shadow_rect, corner_r + 2.0 * zoom, Color32::from_black_alpha(80));
 
-            // 2. Selection Glow
-            if is_selected {
+            // 2. Selection Glow & Drop Glow
+            if is_drop_target {
+                let drop_glow_rect = rect.expand(3.0 * zoom);
+                painter.rect_stroke(
+                    drop_glow_rect,
+                    corner_r + 2.0 * zoom,
+                    Stroke::new(2.5 * zoom, Color32::from_rgb(0, 220, 255)),
+                    StrokeKind::Outside,
+                );
+            } else if is_selected {
                 let glow_rect = rect.expand(2.5 * zoom);
                 painter.rect_stroke(glow_rect, corner_r + 1.5 * zoom, Stroke::new(1.5 * zoom, ACCENT_GLOW), StrokeKind::Outside);
             }
 
             // 3. Precision High-Contrast Charcoal Card Base
-            let bg_col = if is_selected { BG_CARD_SELECTED } else { BG_CARD };
+            let bg_col = if is_drop_target {
+                Color32::from_rgb(20, 34, 44)
+            } else if is_selected {
+                BG_CARD_SELECTED
+            } else {
+                BG_CARD
+            };
             painter.rect_filled(rect, corner_r, bg_col);
 
             // 4. Raised Card Header Surface with subtle category tint
@@ -515,7 +536,9 @@ pub fn render_node_card(
             }
 
             // 6. Perimeter Border Stroke
-            let border_stroke = if is_selected {
+            let border_stroke = if is_drop_target {
+                Stroke::new(2.0 * zoom.max(1.5), Color32::from_rgb(0, 220, 255))
+            } else if is_selected {
                 Stroke::new(1.5 * zoom.max(1.2), ACCENT_AMBER)
             } else {
                 Stroke::new(1.0_f32, BORDER_DARK)
@@ -529,14 +552,32 @@ pub fn render_node_card(
                     Pos2::new(screen_pos.x, screen_pos.y + header_height),
                     Vec2::new(width, filename_height),
                 );
-                painter.rect_filled(filename_rect, egui::CornerRadius::ZERO, Color32::from_rgb(26, 26, 34));
 
-                if let Some(galley) = texture_galley {
-                    let text_pos = Pos2::new(
-                        screen_pos.x + 12.0 * zoom,
-                        filename_rect.min.y + ((filename_height - galley.size().y) * 0.5).max(6.0 * zoom),
+                if is_drop_target {
+                    painter.rect_filled(filename_rect, egui::CornerRadius::ZERO, Color32::from_rgb(14, 48, 64));
+                    let font_id = egui::FontId::proportional((11.5 * zoom).max(9.5));
+                    painter.text(
+                        filename_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "📥 Drop Texture Here",
+                        font_id,
+                        Color32::from_rgb(80, 235, 255),
                     );
-                    painter.galley(text_pos, galley, TEXT_SECONDARY);
+                } else {
+                    painter.rect_filled(filename_rect, egui::CornerRadius::ZERO, Color32::from_rgb(26, 26, 34));
+
+                    if let Some(galley) = texture_galley {
+                        let text_pos = Pos2::new(
+                            screen_pos.x + 12.0 * zoom,
+                            filename_rect.min.y + ((filename_height - galley.size().y) * 0.5).max(6.0 * zoom),
+                        );
+                        let text_col = if texture_filename == "No texture loaded" {
+                            TEXT_MUTED
+                        } else {
+                            TEXT_SECONDARY
+                        };
+                        painter.galley(text_pos, galley, text_col);
+                    }
                 }
 
                 let channel_tags = detect_texture_channel_tags(&texture_filename);
@@ -774,14 +815,17 @@ pub fn render_node_card(
             painter.rect_filled(bar_rect, r_top, cat_col);
 
             // Perimeter Border
+            let border_stroke = if is_drop_target {
+                Stroke::new(2.2_f32, Color32::from_rgb(0, 220, 255))
+            } else if is_selected {
+                Stroke::new(1.8_f32, ACCENT_AMBER)
+            } else {
+                Stroke::new(1.0_f32, BORDER_DARK)
+            };
             painter.rect_stroke(
                 rect,
                 corner_r,
-                if is_selected {
-                    Stroke::new(1.8_f32, ACCENT_AMBER)
-                } else {
-                    Stroke::new(1.0_f32, BORDER_DARK)
-                },
+                border_stroke,
                 StrokeKind::Inside,
             );
 
@@ -840,7 +884,9 @@ pub fn render_node_card(
             let rect = Rect::from_min_size(screen_pos, Vec2::new(width, height));
 
             painter.rect_filled(rect, 3.0 * zoom, cat_col);
-            if is_selected {
+            if is_drop_target {
+                painter.rect_stroke(rect, 3.0 * zoom, Stroke::new(2.2_f32, Color32::from_rgb(0, 220, 255)), StrokeKind::Inside);
+            } else if is_selected {
                 painter.rect_stroke(rect, 3.0 * zoom, Stroke::new(1.8_f32, ACCENT_AMBER), StrokeKind::Inside);
             }
 
