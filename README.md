@@ -13,8 +13,47 @@ ARKH TextureLab is a native desktop workstation for technical artists and game d
 * **21 Node Types Across 9 Categories**: I/O, Constants, Channel Ops, Colour Adjust, Normal Ops, Blend Ops, Math (13 operations), Transform, and Utility (Comment Boxes & Reroute).
 * **PBR Lexical Normaliser**: 60+ industry naming conventions (Megascans, Poly Haven, Substance, Quixel) with auto-role classification and one-click pack wizard.
 * **Industry Export Presets**: Unreal Engine ORM, Unity HDRP MaskMap, Blender Principled, CryEngine, and custom token pipelines.
-* **Codecs**: Lossless 8-bit and 16-bit PNG, TGA 2.0 with custom footer, WebP, JPEG, BMP.
-* **Canvas Navigation**: Right-click pan, right-click tap spawn palette, Alt+Click wire/pin disconnect, Hold-Key+Click quick spawn, F to frame selection. Drag from Node Library or Windows Explorer with auto PBR role tagging.
+* **Dual Binary Engine**: GUI workstation (`texturelab.exe`) and headless automation runner (`texturelab-cli.exe`).
+* **Codecs**: Lossless 8-bit and 16-bit PNG, TGA 2.0 with custom footer, WebP, JPEG, BMP, OpenEXR.
+* **Canvas Navigation**: Unreal Engine Material Editor standard navigation: right-click pan, right-click tap spawn palette, Alt+Click wire cut, two-way wire drag, wire-drop auto-wire, and hold-key quick spawn.
+
+---
+
+## Architecture Overview
+
+```mermaid
+graph LR
+    subgraph UI ["Immediate-Mode UI"]
+        Canvas["Node Graph Canvas"]
+        Library["Node Library"]
+        Inspector["Inspector Panel"]
+        Viewport["2D Viewport & HUD"]
+        ExportDrawer["Export Textures (Ctrl+E)"]
+    end
+
+    subgraph DAG ["Reactive Graph Engine"]
+        Compiler["Kahn's Topo Sort\n(Cycle Rejection)"]
+        Async["Async Worker Thread\n(Debounced Generations)"]
+        Rayon["Rayon ThreadPool\n(SIMD Multi-core Compute)"]
+        Cache["Memoized Buffer Cache"]
+    end
+
+    subgraph Output ["Export & Formats"]
+        Validator["Set Completeness & POT Validator"]
+        Tokens["Token Template Engine\n({asset}_{slot}_{resolution})"]
+        Codecs["Pure Rust Codecs\n(PNG 8/16, TGA 2.0, WebP, EXR)"]
+    end
+
+    Canvas --> Async
+    Async --> Compiler
+    Compiler --> Rayon
+    Rayon --> Cache
+    Cache --> Viewport
+    Cache --> ExportDrawer
+    ExportDrawer --> Validator
+    Validator --> Tokens
+    Tokens --> Codecs
+```
 
 ---
 
@@ -26,10 +65,11 @@ ARKH TextureLab is a native desktop workstation for technical artists and game d
 
 ### Cargo Commands
 ```powershell
-cargo run              # Debug mode
-cargo run --release    # Optimised release mode
-cargo test             # 173 unit + integration tests
-cargo build --release  # Portable executable → target/release/texturelab.exe
+cargo run              # Debug workstation
+cargo run --release    # Optimised release workstation
+cargo test             # 241 unit + integration tests (All green)
+cargo clippy -- -D warnings # Strict zero-warning quality gate
+cargo build --release  # Portable executables → target/release/texturelab.exe & texturelab-cli.exe
 ```
 
 ---
@@ -40,12 +80,13 @@ Hotkeys are defined in [`src/hotkeys/mod.rs`](src/hotkeys/mod.rs).
 
 | Shortcut | Action |
 |---|---|
-| `Tab` / Right-click tap | Open fuzzy search spawn palette |
-| `F` | Frame camera on selection |
+| `Tab` / Right-click tap | Open fuzzy search spawn palette at cursor |
+| `F` | Frame camera on selection (or frame all nodes) |
 | `Alt + Click` wire or pin | Sever connection |
+| Wire double-click | Insert inline Reroute pin |
 | `1 + Click` | Quick-spawn Constant Scalar |
 | `3 + Click` | Quick-spawn Constant Color |
-| `M + Click` | Quick-spawn Multiply |
+| `M + Click` | Quick-spawn Math |
 | `B + Click` | Quick-spawn Layer Blend |
 | `S + Click` | Quick-spawn Channel Splitter |
 | `C` / `P + Click` | Quick-spawn Channel Combiner |
@@ -54,26 +95,28 @@ Hotkeys are defined in [`src/hotkeys/mod.rs`](src/hotkeys/mod.rs).
 | `I + Click` | Quick-spawn Invert |
 | `/` / Double-click empty canvas | Spawn Comment box at cursor |
 | `/ + Click` | Quick-spawn Comment box |
-| `Delete` / `Backspace` | Delete selected nodes |
+| `Delete` | Delete selected nodes (Guarded against text focus) |
 | `Ctrl + Z` | Undo (100-step buffer) |
 | `Ctrl + Y` | Redo |
 | `Ctrl + C` | Copy selected nodes to clipboard |
 | `Ctrl + V` | Paste clipboard nodes at cursor |
 | `Ctrl + D` | Duplicate selected nodes (+30, +30) |
 | `Ctrl + A` | Select all nodes in graph |
-| `Ctrl + F` | Auto-layout graph nodes |
+| `Ctrl + F` | Auto-layout graph nodes into non-overlapping columns |
 | `Ctrl + S` | Save project (`.tlab`) |
-| `Ctrl + E` | Export preflight drawer |
+| `Ctrl + E` | Open Export Textures drawer |
 
 ---
 
-## Documentation
+## Comprehensive Documentation Suite
 
-* [System Architecture](docs/ARCHITECTURE.md) — Subsystem breakdown, DAG compiler, data flow.
-* [Developer Setup](docs/DEV_SETUP.md) — Build instructions, test commands, directory map.
-* [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) — Phased feature plan and agent prompts.
-* [Design Guide](docs/design/) — Visual specs for nodes, sidebar, and viewport.
-* [Archived Specs](docs/archive/) — Completed design specs from v1.0 development.
+* 📘 **[Master Technical Reference Manual](docs/TextureLab_Master_Reference.md)** — Exhaustive Obsidian-flavored technical guide covering system architecture, mathematical formulas, all 21 nodes, and step-by-step production tutorials.
+* ⚡ **[Operator Quick Reference Cheat Sheet](docs/TextureLab_Quick_Reference.md)** — High-density 1-2 page operator keynotes, hotkey matrix, packing recipes, and CLI flags.
+* 🌐 **[Interactive Standalone HTML Manual](docs/TextureLab_Master_Reference.html)** — Self-contained responsive HTML manual with interactive search, category filters, and live Mermaid diagrams (offline-ready).
+* 🏛️ **[System Architecture](docs/ARCHITECTURE.md)** — Subsystem breakdown, DAG compiler, and zero-copy data flow.
+* 🛠️ **[Developer Setup](docs/DEV_SETUP.md)** — Build instructions, test commands, and directory map.
+* 🎨 **[Design Guide](docs/design/)** — Visual specs for nodes, sidebar, and viewport.
+* 🎯 **[Brand Identity & Guidelines](Final_Logos/TextureLAB/BRAND_GUIDELINES.md)** — Visual identity rules and vector marks.
 
 ---
 
