@@ -81,51 +81,53 @@ impl eframe::App for TextureLabApp {
         if let Some(action) = hotkey {
             match action {
                 HotkeyAction::OpenSearchPalette => {
-                    self.search_palette.open_at([-self.canvas_state.pan.x + 400.0, -self.canvas_state.pan.y + 250.0]);
+                    let mouse_pos = ctx.input(|i| i.pointer.latest_pos()).and_then(|ptr| {
+                        if self.canvas_state.last_canvas_rect.contains(ptr) {
+                            let p = self.canvas_state.screen_to_canvas(ptr, self.canvas_state.last_canvas_rect);
+                            Some((ptr, [p.x, p.y]))
+                        } else {
+                            None
+                        }
+                    });
+
+                    if let Some((screen_p, canvas_p)) = mouse_pos {
+                        self.search_palette.open_at_screen(Some(screen_p), canvas_p, None);
+                    } else {
+                        self.search_palette.open_at([-self.canvas_state.pan.x + 400.0, -self.canvas_state.pan.y + 250.0]);
+                    }
                 }
                 HotkeyAction::FrameAll => {
                     // Auto-framing feature removed
                 }
                 HotkeyAction::SpawnConstantScalar => {
-                    self.spawn_node_by_type("ConstantScalar");
+                    self.spawn_node_smart("ConstantScalar", ctx);
                 }
                 HotkeyAction::SpawnConstantColor => {
-                    self.spawn_node_by_type("ConstantColor");
+                    self.spawn_node_smart("ConstantColor", ctx);
                 }
                 HotkeyAction::SpawnMath => {
-                    self.spawn_node_by_type("Math");
+                    self.spawn_node_smart("Math", ctx);
                 }
                 HotkeyAction::SpawnBlend => {
-                    self.spawn_node_by_type("LayerBlend");
+                    self.spawn_node_smart("LayerBlend", ctx);
                 }
                 HotkeyAction::SpawnSplitter => {
-                    self.spawn_node_by_type("ChannelSplit");
+                    self.spawn_node_smart("ChannelSplit", ctx);
                 }
                 HotkeyAction::SpawnNormalFlipGreen => {
-                    self.spawn_node_by_type("NormalFlipGreen");
+                    self.spawn_node_smart("NormalFlipGreen", ctx);
                 }
                 HotkeyAction::SpawnLevels => {
-                    self.spawn_node_by_type("Levels");
+                    self.spawn_node_smart("Levels", ctx);
                 }
                 HotkeyAction::SpawnInvert => {
-                    self.spawn_node_by_type("Invert");
+                    self.spawn_node_smart("Invert", ctx);
                 }
                 HotkeyAction::SpawnCombiner => {
-                    self.spawn_node_by_type("ChannelCombine");
+                    self.spawn_node_smart("ChannelCombine", ctx);
                 }
                 HotkeyAction::SpawnComment => {
-                    let mouse_canvas = ctx.input(|i| i.pointer.latest_pos()).and_then(|ptr| {
-                        if self.canvas_state.last_canvas_rect.contains(ptr) {
-                            Some(self.canvas_state.screen_to_canvas(ptr, self.canvas_state.last_canvas_rect))
-                        } else {
-                            None
-                        }
-                    });
-                    if let Some(pos) = mouse_canvas {
-                        self.spawn_node_by_type_at("Comment", [pos.x, pos.y]);
-                    } else {
-                        self.spawn_node_by_type("Comment");
-                    }
+                    self.spawn_node_smart("Comment", ctx);
                 }
                 HotkeyAction::Undo => {
                     let desc = self.history.undo_description().map(|s| s.to_string());
@@ -146,17 +148,24 @@ impl eframe::App for TextureLabApp {
                     }
                 }
                 HotkeyAction::SelectAll => {
-                    if let Some(&first) = self.graph.nodes.keys().next() {
-                        self.canvas_state.selected_node = Some(first);
-                    }
+                    self.canvas_state.selected_nodes = self.graph.nodes.keys().copied().collect();
+                    self.canvas_state.selected_node = self.graph.nodes.keys().next().copied();
                 }
                 HotkeyAction::DeleteSelected => {
-                    if let Some(sel) = self.canvas_state.selected_node.take() {
-                        self.history.record(&self.graph, "Delete node");
-                        self.graph.remove_node(sel);
+                    let ids: Vec<NodeId> = if !self.canvas_state.selected_nodes.is_empty() {
+                        self.canvas_state.selected_nodes.drain().collect()
+                    } else {
+                        self.canvas_state.selected_node.take().into_iter().collect()
+                    };
+                    if !ids.is_empty() {
+                        self.history.record(&self.graph, format!("Delete {} node(s)", ids.len()));
+                        for sel in ids {
+                            self.graph.remove_node(sel);
+                        }
+                        self.canvas_state.selected_node = None;
                         self.evaluator.invalidate_all();
                         self.reevaluate();
-                        self.status_message = format!("Deleted node {}", sel);
+                        self.status_message = "Deleted selected node(s)".to_string();
                     }
                 }
                 HotkeyAction::SaveProject => {
@@ -450,6 +459,38 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                     match action {
                         CanvasAction::SelectNode(node_id) => {
                             self.canvas_state.selected_node = node_id;
+                            self.canvas_state.selected_nodes.clear();
+                            if let Some(id) = node_id {
+                                self.canvas_state.selected_nodes.insert(id);
+                            }
+                        }
+                        CanvasAction::SelectNodes(node_ids) => {
+                            self.canvas_state.selected_node = node_ids.first().copied();
+                            self.canvas_state.selected_nodes = node_ids.into_iter().collect();
+                        }
+                        CanvasAction::SplitWireWithReroute { edge, pos } => {
+                            self.history.record(self.graph, "Add Reroute to wire");
+                            let _ = self.graph.disconnect(&edge.from, &edge.to);
+                            let reroute_id = NodeId(self.graph.next_node_id);
+                            let reroute_node = crate::nodes::REROUTE_DESCRIPTOR.create_node(reroute_id, pos);
+                            self.graph.add_node(reroute_node);
+
+                            let _ = self.graph.connect(edge.from.clone(), PinId::input(reroute_id, "input"));
+                            let _ = self.graph.connect(PinId::output(reroute_id, "output"), edge.to.clone());
+
+                            self.canvas_state.selected_node = Some(reroute_id);
+                            self.canvas_state.selected_nodes.clear();
+                            self.canvas_state.selected_nodes.insert(reroute_id);
+
+                            self.evaluator.mark_dirty(self.graph, reroute_id);
+                            self.evaluator.mark_dirty(self.graph, edge.to.node_id);
+                            self.async_evaluator.request_evaluation(
+                                self.graph,
+                                vec![reroute_id, edge.to.node_id],
+                                false,
+                                self.evaluator.default_resolution(),
+                            );
+                            *self.status_message = "Added Reroute node on wire".to_string();
                         }
                         CanvasAction::ConnectPins { from, to } => {
                             if crate::graph::compiler::GraphCompiler::would_create_cycle(self.graph, from.node_id, to.node_id) {
@@ -492,11 +533,20 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                             if self.canvas_state.selected_node == Some(node_id) {
                                 self.canvas_state.selected_node = None;
                             }
+                            self.canvas_state.selected_nodes.remove(&node_id);
                         }
                         CanvasAction::DeleteSelected => {
-                            if let Some(sel) = self.canvas_state.selected_node.take() {
-                                self.history.record(self.graph, "Delete node");
-                                self.graph.remove_node(sel);
+                            let ids: Vec<NodeId> = if !self.canvas_state.selected_nodes.is_empty() {
+                                self.canvas_state.selected_nodes.drain().collect()
+                            } else {
+                                self.canvas_state.selected_node.take().into_iter().collect()
+                            };
+                            if !ids.is_empty() {
+                                self.history.record(self.graph, format!("Delete {} node(s)", ids.len()));
+                                for sel in ids {
+                                    self.graph.remove_node(sel);
+                                }
+                                self.canvas_state.selected_node = None;
                                 self.evaluator.invalidate_all();
                                 self.async_evaluator.request_evaluation(
                                     self.graph,
@@ -504,6 +554,7 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                     true,
                                     self.evaluator.default_resolution(),
                                 );
+                                *self.status_message = "Deleted selected node(s)".to_string();
                             }
                         }
                         CanvasAction::NodeMoved { node_id, old_pos, new_pos } => {
@@ -592,6 +643,10 @@ impl<'a> egui_dock::TabViewer for AppTabViewer<'a> {
                                 if let Ok(project) = t.load_project() {
                                     *self.graph = project.graph;
                                     self.canvas_state.selected_node = self.graph.nodes.keys().next().copied();
+                                    self.canvas_state.selected_nodes.clear();
+                                    if let Some(first) = self.canvas_state.selected_node {
+                                        self.canvas_state.selected_nodes.insert(first);
+                                    }
                                     self.canvas_state.dismiss_splash = false;
                                     self.evaluator.invalidate_all();
                                     let start = std::time::Instant::now();

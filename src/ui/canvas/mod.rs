@@ -23,7 +23,7 @@ use egui::{
 use crate::graph::model::{Edge, Graph, Node, NodeId, NodeParam, PinId};
 use crate::ui::theme::{
     pin_wire_color, ACCENT_AMBER, BG_CANVAS, BG_CARD, BG_CARD_SELECTED, BG_INSET,
-    BORDER_DARK, CAT_BLEND, CAT_IO, CAT_NORMAL, CAT_TRANSFORM, CAT_UTILITY,
+    BORDER_DARK, CAT_BLEND, CAT_TRANSFORM, CAT_UTILITY,
     GRID_AXIS, GRID_DOT, GRID_DOT_MAJOR, TEXT_MUTED, TEXT_PRIMARY, TEXT_SECONDARY,
 };
 use self::cards::render_node_card;
@@ -39,9 +39,11 @@ pub struct WireDragState {
 #[derive(Clone, Debug, PartialEq)]
 pub enum CanvasAction {
     SelectNode(Option<NodeId>),
+    SelectNodes(Vec<NodeId>),
     ConnectPins { from: PinId, to: PinId },
     DisconnectEdge(Edge),
     DisconnectPin(PinId),
+    SplitWireWithReroute { edge: Edge, pos: [f32; 2] },
     DeleteNode(NodeId),
     DeleteSelected,
     NodeMoved {
@@ -67,6 +69,7 @@ pub struct CanvasState {
     pub target_pan: Vec2,
     pub zoom: f32,
     pub selected_node: Option<NodeId>,
+    pub selected_nodes: std::collections::HashSet<NodeId>,
     pub locked_viewport_node: Option<NodeId>,
     pub wire_drag: Option<WireDragState>,
     dragging_node: Option<NodeId>,
@@ -86,6 +89,7 @@ impl Default for CanvasState {
             target_pan: Vec2::new(100.0, 100.0),
             zoom: 1.0,
             selected_node: None,
+            selected_nodes: std::collections::HashSet::new(),
             locked_viewport_node: None,
             wire_drag: None,
             dragging_node: None,
@@ -117,7 +121,10 @@ impl CanvasState {
 
     /// Clones currently selected node(s) into the canvas clipboard.
     pub fn copy_selected(&mut self, graph: &Graph) -> bool {
-        let ids: Vec<NodeId> = self.selected_node.into_iter().collect();
+        let mut ids: Vec<NodeId> = self.selected_nodes.iter().copied().collect();
+        if ids.is_empty() {
+            ids = self.selected_node.into_iter().collect();
+        }
         self.copy_nodes(graph, &ids)
     }
 
@@ -125,9 +132,8 @@ impl CanvasState {
     pub fn paste_clipboard(&mut self, graph: &mut Graph, offset: [f32; 2]) -> Vec<NodeId> {
         if let Some((nodes, edges)) = &self.clipboard {
             let new_ids = graph.paste_subgraph(nodes.clone(), edges.clone(), offset);
-            if let Some(&first) = new_ids.first() {
-                self.selected_node = Some(first);
-            }
+            self.selected_node = new_ids.first().copied();
+            self.selected_nodes = new_ids.iter().copied().collect();
             new_ids
         } else {
             Vec::new()
@@ -185,8 +191,8 @@ impl CanvasState {
         }
 
         let is_splash_visible = graph.nodes.is_empty() && !self.dismiss_splash;
-        let card_w = 480.0_f32.min(rect.width() - 40.0);
-        let card_h = 370.0_f32.min(rect.height() - 40.0);
+        let card_w = 520.0_f32.min(rect.width() - 32.0);
+        let card_h = 285.0_f32.min(rect.height() - 32.0);
         let card_rect = Rect::from_center_size(rect.center(), Vec2::new(card_w, card_h));
         let is_over_splash = is_splash_visible && response.hover_pos().is_some_and(|p| card_rect.contains(p));
 
@@ -352,7 +358,7 @@ impl CanvasState {
             if node.node_type != "Comment" {
                 continue;
             }
-            let is_selected = self.selected_node == Some(node.id);
+            let is_selected = self.selected_node == Some(node.id) || self.selected_nodes.contains(&node.id);
             let is_viewport_locked = self.locked_viewport_node == Some(node.id);
             let screen_pos = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
 
@@ -374,7 +380,7 @@ impl CanvasState {
             if node.node_type == "Comment" {
                 continue;
             }
-            let is_selected = self.selected_node == Some(node.id);
+            let is_selected = self.selected_node == Some(node.id) || self.selected_nodes.contains(&node.id);
             let is_viewport_locked = self.locked_viewport_node == Some(node.id);
             let screen_pos = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
 
@@ -472,7 +478,14 @@ impl CanvasState {
         if let Some(dragged_id) = self.dragging_node {
             if response.dragged_by(egui::PointerButton::Primary) && !ui.input(|i| i.key_down(Key::Space)) {
                 let delta = response.drag_delta() / self.zoom;
-                if let Some(node) = graph.get_node_mut(dragged_id) {
+                if self.selected_nodes.contains(&dragged_id) {
+                    for &id in &self.selected_nodes {
+                        if let Some(node) = graph.get_node_mut(id) {
+                            node.position[0] += delta.x;
+                            node.position[1] += delta.y;
+                        }
+                    }
+                } else if let Some(node) = graph.get_node_mut(dragged_id) {
                     node.position[0] += delta.x;
                     node.position[1] += delta.y;
                 }
@@ -526,31 +539,63 @@ impl CanvasState {
 
         if let (Some(start), Some(curr)) = (self.box_select_start, self.box_select_current) {
             let select_rect = Rect::from_two_pos(start, curr);
-            painter.rect_filled(
-                select_rect,
-                2.0,
-                Color32::from_rgba_premultiplied(255, 176, 46, 20),
-            );
-            painter.rect_stroke(
-                select_rect,
-                2.0,
-                Stroke::new(1.0_f32, ACCENT_AMBER),
-                StrokeKind::Inside,
-            );
+            let is_left_to_right = curr.x >= start.x;
 
-            // On mouse release, select nodes that fall inside the box
+            let (fill_col, stroke_col) = if is_left_to_right {
+                // Window selection (Left-to-Right): Blue solid border, select all inside
+                (
+                    Color32::from_rgba_premultiplied(40, 110, 220, 28),
+                    Color32::from_rgb(70, 150, 255),
+                )
+            } else {
+                // Crossing selection (Right-to-Left): Green distinct border, select all touched
+                (
+                    Color32::from_rgba_premultiplied(35, 180, 80, 28),
+                    Color32::from_rgb(60, 220, 120),
+                )
+            };
+
+            painter.rect_filled(select_rect, 2.0, fill_col);
+            painter.rect_stroke(select_rect, 2.0, Stroke::new(1.2_f32, stroke_col), StrokeKind::Inside);
+
+            // On mouse release, select nodes according to CAD directional rule
             if response.drag_stopped() {
-                let mut newly_selected = None;
-                for (id, node) in &graph.nodes {
-                    let screen_pt = self.canvas_to_screen(Pos2::new(node.position[0], node.position[1]), rect);
-                    if select_rect.contains(screen_pt) {
-                        newly_selected = Some(*id);
-                        break;
+                let mut matched_nodes = Vec::new();
+
+                for &(id, node_rect, ..) in &foreground_rects {
+                    let is_match = if is_left_to_right {
+                        // Left-to-Right: all inside (node_rect completely enclosed by select_rect)
+                        select_rect.contains(node_rect.min) && select_rect.contains(node_rect.max)
+                    } else {
+                        // Right-to-Left: all touched (select_rect intersects node_rect)
+                        select_rect.intersects(node_rect)
+                    };
+                    if is_match {
+                        matched_nodes.push(id);
                     }
                 }
-                if let Some(id) = newly_selected {
-                    self.selected_node = Some(id);
-                    actions.push(CanvasAction::SelectNode(Some(id)));
+
+                for &(id, node_rect) in &comment_rects {
+                    let is_match = if is_left_to_right {
+                        // Left-to-Right: all inside
+                        select_rect.contains(node_rect.min) && select_rect.contains(node_rect.max)
+                    } else {
+                        // Right-to-Left: all touched
+                        select_rect.intersects(node_rect)
+                    };
+                    if is_match {
+                        matched_nodes.push(id);
+                    }
+                }
+
+                if !matched_nodes.is_empty() {
+                    self.selected_node = matched_nodes.first().copied();
+                    self.selected_nodes = matched_nodes.iter().copied().collect();
+                    actions.push(CanvasAction::SelectNodes(matched_nodes));
+                } else {
+                    self.selected_node = None;
+                    self.selected_nodes.clear();
+                    actions.push(CanvasAction::SelectNode(None));
                 }
                 self.box_select_start = None;
                 self.box_select_current = None;
@@ -594,6 +639,8 @@ impl CanvasState {
         if response.clicked() && !is_alt_down && !is_space_drag && !is_over_splash {
             if let Some(id) = clicked_node {
                 self.selected_node = Some(id);
+                self.selected_nodes.clear();
+                self.selected_nodes.insert(id);
                 actions.push(CanvasAction::SelectNode(Some(id)));
             } else if hovered_pin.is_none() && hovered_wire.is_none() {
                 // Unreal Engine Quick-Spawn Hotkeys (Hold Key + Left Click)
@@ -628,19 +675,31 @@ impl CanvasState {
                 } else {
                     // Clicked on empty canvas background
                     self.selected_node = None;
+                    self.selected_nodes.clear();
                     actions.push(CanvasAction::SelectNode(None));
                 }
             }
         }
 
-        // Double-click on empty canvas spawns Comment at cursor (Part C)
-        if response.double_clicked() && hovered_pin.is_none() && clicked_node.is_none() && hovered_wire.is_none() && !is_over_splash {
-            if let Some(mouse_screen) = response.interact_pointer_pos() {
-                let canvas_pos = self.screen_to_canvas(mouse_screen, rect);
-                actions.push(CanvasAction::SpawnNodeAt {
-                    type_name: "Comment".to_string(),
-                    pos: [canvas_pos.x, canvas_pos.y],
-                });
+        // Double-click on any wire inserts a Reroute node splitting the wire (Part B)
+        if response.double_clicked() && hovered_pin.is_none() && clicked_node.is_none() && !is_over_splash {
+            if let Some(wire) = hovered_wire.clone() {
+                if let Some(mouse_screen) = response.interact_pointer_pos() {
+                    let canvas_pos = self.screen_to_canvas(mouse_screen, rect);
+                    actions.push(CanvasAction::SplitWireWithReroute {
+                        edge: wire,
+                        pos: [canvas_pos.x, canvas_pos.y],
+                    });
+                }
+            } else {
+                // Double-click on empty canvas spawns Comment at cursor
+                if let Some(mouse_screen) = response.interact_pointer_pos() {
+                    let canvas_pos = self.screen_to_canvas(mouse_screen, rect);
+                    actions.push(CanvasAction::SpawnNodeAt {
+                        type_name: "Comment".to_string(),
+                        pos: [canvas_pos.x, canvas_pos.y],
+                    });
+                }
             }
         }
 
@@ -655,6 +714,8 @@ impl CanvasState {
                 };
                 let is_edge_active = self.selected_node == Some(edge.from.node_id)
                     || self.selected_node == Some(edge.to.node_id)
+                    || self.selected_nodes.contains(&edge.from.node_id)
+                    || self.selected_nodes.contains(&edge.to.node_id)
                     || is_cut_target;
 
                 draw_cubic_bezier_wire_animated(
@@ -804,12 +865,14 @@ impl CanvasState {
             }
         }
 
-        // Delete key removes selected node (suppressed when typing or text field focused)
+        // Delete key removes selected node(s) (suppressed when typing or text field focused)
         if ui.input(|i| i.key_pressed(Key::Delete))
             && !ui.ctx().wants_keyboard_input()
             && !ui.memory(|m| m.focused().is_some())
         {
-            if let Some(sel) = self.selected_node {
+            if !self.selected_nodes.is_empty() {
+                actions.push(CanvasAction::DeleteSelected);
+            } else if let Some(sel) = self.selected_node {
                 actions.push(CanvasAction::DeleteNode(sel));
             }
         }
@@ -904,15 +967,16 @@ impl CanvasState {
             TEXT_PRIMARY,
         );
 
-        // Header Subtitle
+        // Header Subtitle with automatic text wrapping
         let subtitle_pos = title_pos + Vec2::new(0.0, 22.0);
-        painter.text(
-            subtitle_pos,
-            egui::Align2::LEFT_TOP,
-            "Choose a pre-built workflow graph to begin, or start blank.",
+        let sub_max_w = (card_rect.width() - 40.0 - 76.0).max(120.0);
+        let sub_galley = painter.layout(
+            "Choose a pre-built workflow graph to begin, or start blank.".to_string(),
             egui::FontId::proportional(11.5),
             TEXT_SECONDARY,
+            sub_max_w,
         );
+        painter.galley(subtitle_pos, sub_galley, TEXT_SECONDARY);
 
         // Dismiss button in header
         let dismiss_rect = Rect::from_min_size(
@@ -943,13 +1007,15 @@ impl CanvasState {
             self.dismiss_splash = true;
         }
 
-        // Templates List
+        // Templates List (Blank Canvas, Pack Texture, Unpack Texture)
         let start_y = card_rect.min.y + 60.0;
         let templates = crate::templates::builtin_templates();
         for (i, template) in templates.iter().enumerate() {
+            let item_h = 56.0_f32;
+            let item_gap = 8.0_f32;
             let item_rect = Rect::from_min_size(
-                Pos2::new(card_rect.min.x + 16.0, start_y + i as f32 * 54.0),
-                Vec2::new(card_rect.width() - 32.0, 48.0),
+                Pos2::new(card_rect.min.x + 16.0, start_y + i as f32 * (item_h + item_gap)),
+                Vec2::new(card_rect.width() - 32.0, item_h),
             );
             let item_hovered = response.hover_pos().is_some_and(|p| item_rect.contains(p));
 
@@ -969,17 +1035,15 @@ impl CanvasState {
 
             // Badge Pill
             let (badge_text, badge_color) = match template.name {
-                "Empty Graph" => ("BLANK", CAT_UTILITY),
-                "UE5 ORM Pack" => ("UE5", CAT_BLEND),
-                "Unity MaskMap" => ("UNITY", CAT_NORMAL),
-                "Blender Principled BSDF" => ("BLENDER", CAT_TRANSFORM),
-                "Normal Map Convert" => ("NORMAL", CAT_IO),
+                "Blank Canvas" => ("BLANK", CAT_UTILITY),
+                "Pack Texture" => ("PACK", CAT_BLEND),
+                "Unpack Texture" => ("UNPACK", CAT_TRANSFORM),
                 _ => ("GRAPH", CAT_UTILITY),
             };
 
             let badge_rect = Rect::from_min_size(
-                Pos2::new(item_rect.min.x + 10.0, item_rect.min.y + 14.0),
-                Vec2::new(54.0, 20.0),
+                Pos2::new(item_rect.min.x + 10.0, item_rect.min.y + 17.0),
+                Vec2::new(56.0, 22.0),
             );
             painter.rect_filled(
                 badge_rect,
@@ -997,19 +1061,24 @@ impl CanvasState {
 
             // Template Name
             painter.text(
-                Pos2::new(item_rect.min.x + 72.0, item_rect.min.y + 8.0),
+                Pos2::new(item_rect.min.x + 74.0, item_rect.min.y + 8.0),
                 egui::Align2::LEFT_TOP,
                 template.name,
                 egui::FontId::proportional(12.5),
                 TEXT_PRIMARY,
             );
 
-            // Template Description
-            painter.text(
-                Pos2::new(item_rect.min.x + 72.0, item_rect.min.y + 26.0),
-                egui::Align2::LEFT_TOP,
-                template.description,
+            // Template Description with strict automatic word-wrapping
+            let desc_wrap_w = (item_rect.width() - 74.0 - if item_hovered { 65.0 } else { 16.0 }).max(120.0);
+            let desc_galley = painter.layout(
+                template.description.to_string(),
                 egui::FontId::proportional(10.5),
+                if item_hovered { TEXT_SECONDARY } else { TEXT_MUTED },
+                desc_wrap_w,
+            );
+            painter.galley(
+                Pos2::new(item_rect.min.x + 74.0, item_rect.min.y + 25.0),
+                desc_galley,
                 if item_hovered { TEXT_SECONDARY } else { TEXT_MUTED },
             );
 
@@ -1026,7 +1095,7 @@ impl CanvasState {
 
             if item_hovered && response.clicked() {
                 actions.push(CanvasAction::LoadTemplate(template.name.to_string()));
-                if template.name == "Empty Graph" {
+                if template.name == "Blank Canvas" {
                     self.dismiss_splash = true;
                 }
             }
@@ -1126,11 +1195,21 @@ mod tests {
         };
         let act_focus = CanvasAction::FrameFocus;
         let act_layout = CanvasAction::AutoLayout;
-        let act_template = CanvasAction::LoadTemplate("UE5 ORM Pack".to_string());
+        let act_template = CanvasAction::LoadTemplate("Pack Texture".to_string());
+        let act_split = CanvasAction::SplitWireWithReroute {
+            edge: Edge {
+                from: PinId::output(NodeId(1), "output"),
+                to: PinId::input(NodeId(2), "input"),
+            },
+            pos: [150.0, 150.0],
+        };
+        let act_multi_sel = CanvasAction::SelectNodes(vec![NodeId(1), NodeId(2)]);
 
         assert_ne!(act_sever, act_focus);
         assert_ne!(act_spawn, act_focus);
         assert_ne!(act_layout, act_focus);
         assert_ne!(act_template, act_focus);
+        assert_ne!(act_split, act_focus);
+        assert_ne!(act_multi_sel, act_focus);
     }
 }

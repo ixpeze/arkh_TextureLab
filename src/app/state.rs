@@ -141,6 +141,28 @@ impl TextureLabApp {
         self.spawn_node(desc, position)
     }
 
+    /// Spawns a node at the mouse cursor in canvas coordinates, or defaults to viewport center if cursor is outside canvas.
+    pub fn spawn_node_smart(&mut self, type_name: &str, ctx: &egui::Context) -> Option<NodeId> {
+        let mouse_pos = ctx.input(|i| i.pointer.latest_pos()).and_then(|ptr| {
+            if self.canvas_state.last_canvas_rect.contains(ptr) {
+                let p = self.canvas_state.screen_to_canvas(ptr, self.canvas_state.last_canvas_rect);
+                if type_name == "Comment" || type_name == "Reroute" {
+                    Some([p.x, p.y])
+                } else {
+                    Some([p.x - 85.0, p.y - 20.0])
+                }
+            } else {
+                None
+            }
+        });
+
+        if let Some(pos) = mouse_pos {
+            self.spawn_node_by_type_at(type_name, pos)
+        } else {
+            self.spawn_node_by_type(type_name)
+        }
+    }
+
     /// Automatically connects a newly spawned node to a source pin (from wire drop).
     pub fn auto_connect_wire(&mut self, source_pin: PinId, target_node_id: NodeId) {
         let Some(target_node) = self.graph.get_node(target_node_id) else {

@@ -1993,12 +1993,12 @@ fn test_builtin_templates_gallery_and_undo() {
     assert_eq!(app.graph.nodes.len(), 0, "Default app starts with blank canvas");
     assert!(!app.canvas_state.dismiss_splash, "Splash card remains available on initial blank canvas");
 
-    // 1. Verify 5 built-in templates exist in gallery catalog
+    // 1. Verify 3 built-in templates exist in gallery catalog
     let templates = builtin_templates();
-    assert_eq!(templates.len(), 5);
+    assert_eq!(templates.len(), 3);
 
-    // 2. Load "Empty Graph" template
-    let empty_loaded = app.load_template_by_name("Empty Graph");
+    // 2. Load "Blank Canvas" template
+    let empty_loaded = app.load_template_by_name("Blank Canvas");
     assert!(empty_loaded);
     assert_eq!(app.graph.nodes.len(), 0);
     assert_eq!(app.graph.edges.len(), 0);
@@ -2009,39 +2009,27 @@ fn test_builtin_templates_gallery_and_undo() {
     app.graph = prev_graph;
     assert_eq!(app.graph.nodes.len(), 0);
 
-    // 4. Load UE5 ORM Pack
-    let ue5_loaded = app.load_template_by_name("UE5 ORM Pack");
-    assert!(ue5_loaded);
+    // 4. Load Pack Texture
+    let pack_loaded = app.load_template_by_name("Pack Texture");
+    assert!(pack_loaded);
     assert_eq!(app.graph.nodes.len(), 5);
     assert_eq!(app.graph.edges.len(), 4);
     assert!(app.graph.nodes.values().any(|n| n.node_type == "ChannelCombine"));
     assert!(app.graph.nodes.values().any(|n| n.node_type == "SaveImage"));
 
-    // 5. Load Unity MaskMap
-    let unity_loaded = app.load_template_by_name("Unity MaskMap");
-    assert!(unity_loaded);
+    // 5. Load Unpack Texture
+    let unpack_loaded = app.load_template_by_name("Unpack Texture");
+    assert!(unpack_loaded);
     assert_eq!(app.graph.nodes.len(), 6);
     assert_eq!(app.graph.edges.len(), 5);
+    assert!(app.graph.nodes.values().any(|n| n.node_type == "ChannelSplit"));
 
-    // 6. Load Blender Principled BSDF
-    let blender_loaded = app.load_template_by_name("Blender Principled BSDF");
-    assert!(blender_loaded);
-    assert_eq!(app.graph.nodes.len(), 10);
-    assert_eq!(app.graph.edges.len(), 5);
+    // 6. Sequential undo back to Pack Texture
+    let undone_pack = app.history.undo(&app.graph).expect("Must undo Unpack Texture");
+    app.graph = undone_pack;
+    assert_eq!(app.graph.nodes.len(), 5);
 
-    // 7. Load Normal Map Convert
-    let normal_loaded = app.load_template_by_name("Normal Map Convert");
-    assert!(normal_loaded);
-    assert_eq!(app.graph.nodes.len(), 3);
-    assert_eq!(app.graph.edges.len(), 2);
-    assert!(app.graph.nodes.values().any(|n| n.node_type == "NormalFlipGreen"));
-
-    // 8. Sequential undo back to Blender Principled BSDF
-    let undone_blender = app.history.undo(&app.graph).expect("Must undo Normal Map Convert");
-    app.graph = undone_blender;
-    assert_eq!(app.graph.nodes.len(), 10);
-
-    // 9. Non-existent template name returns false
+    // 7. Non-existent template name returns false
     assert!(!app.load_template_by_name("Unknown Template"));
 }
 
@@ -2220,8 +2208,8 @@ fn test_texture_set_validator_ue5_orm_all_green() {
 
     let template = builtin_templates()
         .into_iter()
-        .find(|t| t.name == "UE5 ORM Pack")
-        .expect("UE5 ORM Pack template not found");
+        .find(|t| t.name == "Pack Texture")
+        .expect("Pack Texture template not found");
 
     let graph = template.load_graph().expect("Failed to load graph");
     let mut evaluator = GraphEvaluator::new((2048, 2048));
@@ -2358,7 +2346,7 @@ fn test_cli_headless_pipeline_full_run() {
     let args = vec![
         "texturelab-cli".to_string(),
         "--graph".to_string(),
-        "assets/templates/ue5_orm_pack.tlab".to_string(),
+        "assets/templates/pack_texture.tlab".to_string(),
         "--input".to_string(),
         "samples/1k/".to_string(),
         "--output".to_string(),
@@ -2395,7 +2383,7 @@ fn test_cli_headless_invalid_arguments_exit_code() {
     let code_bad_res = cli::run(vec![
         "texturelab-cli",
         "--graph",
-        "assets/templates/ue5_orm_pack.tlab",
+        "assets/templates/pack_texture.tlab",
         "--input",
         "samples/1k/",
         "--resolution",
@@ -2407,7 +2395,7 @@ fn test_cli_headless_invalid_arguments_exit_code() {
     let code_bad_dir = cli::run(vec![
         "texturelab-cli",
         "--graph",
-        "assets/templates/ue5_orm_pack.tlab",
+        "assets/templates/pack_texture.tlab",
         "--input",
         "non_existent_folder_abc_123",
     ]);

@@ -2,7 +2,7 @@
   "format_version": 1,
   "app_version": "1.0.0",
   "metadata": {
-    "name": "UE5 ORM Pack",
+    "name": "Unpack Texture",
     "author": "TextureLab",
     "created_at": "2026-01-01T00:00:00Z",
     "modified_at": "2026-01-01T00:00:00Z",
@@ -16,10 +16,10 @@
       "1": {
         "id": 1,
         "node_type": "TextureInput",
-        "label": "Ambient Occlusion (AO)",
+        "label": "Packed Texture",
         "position": [
           100.0,
-          100.0
+          260.0
         ],
         "inputs": [],
         "outputs": [
@@ -58,24 +58,20 @@
       },
       "2": {
         "id": 2,
-        "node_type": "TextureInput",
-        "label": "Roughness",
+        "node_type": "ChannelSplit",
+        "label": "Unpack Channels",
         "position": [
-          100.0,
+          420.0,
           260.0
         ],
-        "inputs": [],
+        "inputs": [
+          {
+            "node_id": 2,
+            "name": "input",
+            "is_input": true
+          }
+        ],
         "outputs": [
-          {
-            "node_id": 2,
-            "name": "output",
-            "is_input": false
-          },
-          {
-            "node_id": 2,
-            "name": "RGBA",
-            "is_input": false
-          },
           {
             "node_id": 2,
             "name": "R",
@@ -101,74 +97,44 @@
       },
       "3": {
         "id": 3,
-        "node_type": "TextureInput",
-        "label": "Metallic",
+        "node_type": "SaveImage",
+        "label": "Save Channel R",
         "position": [
-          100.0,
-          420.0
+          740.0,
+          80.0
         ],
-        "inputs": [],
+        "inputs": [
+          {
+            "node_id": 3,
+            "name": "input",
+            "is_input": true
+          }
+        ],
         "outputs": [
           {
             "node_id": 3,
             "name": "output",
             "is_input": false
-          },
-          {
-            "node_id": 3,
-            "name": "RGBA",
-            "is_input": false
-          },
-          {
-            "node_id": 3,
-            "name": "R",
-            "is_input": false
-          },
-          {
-            "node_id": 3,
-            "name": "G",
-            "is_input": false
-          },
-          {
-            "node_id": 3,
-            "name": "B",
-            "is_input": false
-          },
-          {
-            "node_id": 3,
-            "name": "A",
-            "is_input": false
           }
         ],
-        "params": {}
+        "params": {
+          "slot_name": {
+            "String": "Channel_R"
+          }
+        }
       },
       "4": {
         "id": 4,
-        "node_type": "ChannelCombine",
-        "label": "UE5 ORM Pack",
+        "node_type": "SaveImage",
+        "label": "Save Channel G",
         "position": [
-          420.0,
-          260.0
+          740.0,
+          200.0
         ],
         "inputs": [
           {
             "node_id": 4,
-            "name": "R",
-            "is_input": true
-          },
-          {
-            "node_id": 4,
-            "name": "G",
-            "is_input": true
-          },
-          {
-            "node_id": 4,
-            "name": "B",
-            "is_input": true
-          },
-          {
-            "node_id": 4,
-            "name": "A",
+            "name": "input",
             "is_input": true
           }
         ],
@@ -177,22 +143,21 @@
             "node_id": 4,
             "name": "output",
             "is_input": false
-          },
-          {
-            "node_id": 4,
-            "name": "RGBA",
-            "is_input": false
           }
         ],
-        "params": {}
+        "params": {
+          "slot_name": {
+            "String": "Channel_G"
+          }
+        }
       },
       "5": {
         "id": 5,
         "node_type": "SaveImage",
-        "label": "Save ORM Texture",
+        "label": "Save Channel B",
         "position": [
-          720.0,
-          260.0
+          740.0,
+          320.0
         ],
         "inputs": [
           {
@@ -210,7 +175,35 @@
         ],
         "params": {
           "slot_name": {
-            "String": "ORM"
+            "String": "Channel_B"
+          }
+        }
+      },
+      "6": {
+        "id": 6,
+        "node_type": "SaveImage",
+        "label": "Save Channel A",
+        "position": [
+          740.0,
+          440.0
+        ],
+        "inputs": [
+          {
+            "node_id": 6,
+            "name": "input",
+            "is_input": true
+          }
+        ],
+        "outputs": [
+          {
+            "node_id": 6,
+            "name": "output",
+            "is_input": false
+          }
+        ],
+        "params": {
+          "slot_name": {
+            "String": "Channel_A"
           }
         }
       }
@@ -223,39 +216,39 @@
           "is_input": false
         },
         "to": {
-          "node_id": 4,
-          "name": "R",
+          "node_id": 2,
+          "name": "input",
           "is_input": true
         }
       },
       {
         "from": {
           "node_id": 2,
-          "name": "output",
+          "name": "R",
           "is_input": false
         },
         "to": {
-          "node_id": 4,
-          "name": "G",
-          "is_input": true
-        }
-      },
-      {
-        "from": {
           "node_id": 3,
-          "name": "output",
-          "is_input": false
-        },
-        "to": {
-          "node_id": 4,
-          "name": "B",
+          "name": "input",
           "is_input": true
         }
       },
       {
         "from": {
+          "node_id": 2,
+          "name": "G",
+          "is_input": false
+        },
+        "to": {
           "node_id": 4,
-          "name": "output",
+          "name": "input",
+          "is_input": true
+        }
+      },
+      {
+        "from": {
+          "node_id": 2,
+          "name": "B",
           "is_input": false
         },
         "to": {
@@ -263,8 +256,20 @@
           "name": "input",
           "is_input": true
         }
+      },
+      {
+        "from": {
+          "node_id": 2,
+          "name": "A",
+          "is_input": false
+        },
+        "to": {
+          "node_id": 6,
+          "name": "input",
+          "is_input": true
+        }
       }
     ],
-    "next_node_id": 6
+    "next_node_id": 7
   }
 }

@@ -2,7 +2,7 @@
   "format_version": 1,
   "app_version": "1.0.0",
   "metadata": {
-    "name": "Unity MaskMap",
+    "name": "Pack Texture",
     "author": "TextureLab",
     "created_at": "2026-01-01T00:00:00Z",
     "modified_at": "2026-01-01T00:00:00Z",
@@ -16,10 +16,10 @@
       "1": {
         "id": 1,
         "node_type": "TextureInput",
-        "label": "Metallic",
+        "label": "Ambient Occlusion (AO)",
         "position": [
           100.0,
-          80.0
+          100.0
         ],
         "inputs": [],
         "outputs": [
@@ -59,10 +59,10 @@
       "2": {
         "id": 2,
         "node_type": "TextureInput",
-        "label": "Ambient Occlusion (AO)",
+        "label": "Roughness",
         "position": [
           100.0,
-          240.0
+          260.0
         ],
         "inputs": [],
         "outputs": [
@@ -102,10 +102,10 @@
       "3": {
         "id": 3,
         "node_type": "TextureInput",
-        "label": "Detail Mask",
+        "label": "Metallic",
         "position": [
           100.0,
-          400.0
+          420.0
         ],
         "inputs": [],
         "outputs": [
@@ -144,13 +144,34 @@
       },
       "4": {
         "id": 4,
-        "node_type": "TextureInput",
-        "label": "Smoothness",
+        "node_type": "ChannelCombine",
+        "label": "Pack ORM",
         "position": [
-          100.0,
-          560.0
+          420.0,
+          260.0
         ],
-        "inputs": [],
+        "inputs": [
+          {
+            "node_id": 4,
+            "name": "R",
+            "is_input": true
+          },
+          {
+            "node_id": 4,
+            "name": "G",
+            "is_input": true
+          },
+          {
+            "node_id": 4,
+            "name": "B",
+            "is_input": true
+          },
+          {
+            "node_id": 4,
+            "name": "A",
+            "is_input": true
+          }
+        ],
         "outputs": [
           {
             "node_id": 4,
@@ -160,26 +181,6 @@
           {
             "node_id": 4,
             "name": "RGBA",
-            "is_input": false
-          },
-          {
-            "node_id": 4,
-            "name": "R",
-            "is_input": false
-          },
-          {
-            "node_id": 4,
-            "name": "G",
-            "is_input": false
-          },
-          {
-            "node_id": 4,
-            "name": "B",
-            "is_input": false
-          },
-          {
-            "node_id": 4,
-            "name": "A",
             "is_input": false
           }
         ],
@@ -187,73 +188,29 @@
       },
       "5": {
         "id": 5,
-        "node_type": "ChannelCombine",
-        "label": "Unity MaskMap Pack",
-        "position": [
-          420.0,
-          320.0
-        ],
-        "inputs": [
-          {
-            "node_id": 5,
-            "name": "R",
-            "is_input": true
-          },
-          {
-            "node_id": 5,
-            "name": "G",
-            "is_input": true
-          },
-          {
-            "node_id": 5,
-            "name": "B",
-            "is_input": true
-          },
-          {
-            "node_id": 5,
-            "name": "A",
-            "is_input": true
-          }
-        ],
-        "outputs": [
-          {
-            "node_id": 5,
-            "name": "output",
-            "is_input": false
-          },
-          {
-            "node_id": 5,
-            "name": "RGBA",
-            "is_input": false
-          }
-        ],
-        "params": {}
-      },
-      "6": {
-        "id": 6,
         "node_type": "SaveImage",
-        "label": "Save MaskMap Texture",
+        "label": "Save ORM Texture",
         "position": [
           720.0,
-          320.0
+          260.0
         ],
         "inputs": [
           {
-            "node_id": 6,
+            "node_id": 5,
             "name": "input",
             "is_input": true
           }
         ],
         "outputs": [
           {
-            "node_id": 6,
+            "node_id": 5,
             "name": "output",
             "is_input": false
           }
         ],
         "params": {
           "slot_name": {
-            "String": "MaskMap"
+            "String": "ORM"
           }
         }
       }
@@ -266,7 +223,7 @@
           "is_input": false
         },
         "to": {
-          "node_id": 5,
+          "node_id": 4,
           "name": "R",
           "is_input": true
         }
@@ -278,7 +235,7 @@
           "is_input": false
         },
         "to": {
-          "node_id": 5,
+          "node_id": 4,
           "name": "G",
           "is_input": true
         }
@@ -290,7 +247,7 @@
           "is_input": false
         },
         "to": {
-          "node_id": 5,
+          "node_id": 4,
           "name": "B",
           "is_input": true
         }
@@ -303,23 +260,11 @@
         },
         "to": {
           "node_id": 5,
-          "name": "A",
-          "is_input": true
-        }
-      },
-      {
-        "from": {
-          "node_id": 5,
-          "name": "output",
-          "is_input": false
-        },
-        "to": {
-          "node_id": 6,
           "name": "input",
           "is_input": true
         }
       }
     ],
-    "next_node_id": 7
+    "next_node_id": 6
   }
 }

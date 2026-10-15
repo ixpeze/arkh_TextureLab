@@ -401,18 +401,24 @@ pub static NODE_CATALOG: &[NodeDescriptor] = &[
         default_inputs: &[],
         default_outputs: &[],
     },
-    NodeDescriptor {
-        type_name: "Reroute",
-        display_name: "Reroute",
-        category: NodeCategory::Utility,
-        hotkey: None,
-        default_inputs: &["input"],
-        default_outputs: &["output"],
-    },
 ];
+
+/// Standalone descriptor for Reroute node (created via wire double-click, hidden from Utility catalog).
+pub static REROUTE_DESCRIPTOR: NodeDescriptor = NodeDescriptor {
+    type_name: "Reroute",
+    display_name: "Reroute",
+    category: NodeCategory::Utility,
+    hotkey: None,
+    default_inputs: &["input"],
+    default_outputs: &["output"],
+};
 
 /// Finds a node descriptor by type name with full alias support.
 pub fn find_descriptor(type_name: &str) -> Option<&'static NodeDescriptor> {
+    if type_name.eq_ignore_ascii_case("Reroute") {
+        return Some(&REROUTE_DESCRIPTOR);
+    }
+
     if let Some(desc) = NODE_CATALOG
         .iter()
         .find(|d| d.type_name.eq_ignore_ascii_case(type_name))
@@ -448,7 +454,7 @@ pub fn find_descriptor(type_name: &str) -> Option<&'static NodeDescriptor> {
             NODE_CATALOG.iter().find(|d| d.type_name == "SaveImage")
         }
         "COMMENT" | "COMMENTBOX" | "NOTE" => NODE_CATALOG.iter().find(|d| d.type_name == "Comment"),
-        "REROUTE" | "DOT" | "PASSTHROUGH" => NODE_CATALOG.iter().find(|d| d.type_name == "Reroute"),
+        "REROUTE" | "DOT" | "PASSTHROUGH" => Some(&REROUTE_DESCRIPTOR),
         _ => None,
     }
 }
@@ -501,7 +507,11 @@ pub mod tests {
 
     #[test]
     pub fn test_reroute_node_catalog() {
-        let desc = find_descriptor("Reroute").expect("Reroute node should exist in catalog");
+        assert!(
+            NODE_CATALOG.iter().all(|d| d.type_name != "Reroute"),
+            "Reroute should not be present in NODE_CATALOG"
+        );
+        let desc = find_descriptor("Reroute").expect("Reroute node should exist via descriptor lookup");
         assert_eq!(desc.category, NodeCategory::Utility);
         assert_eq!(desc.default_inputs, &["input"]);
         assert_eq!(desc.default_outputs, &["output"]);

@@ -791,10 +791,10 @@ mod tests {
     fn test_complete_ue5_orm_set_all_green() {
         let template = builtin_templates()
             .into_iter()
-            .find(|t| t.name == "UE5 ORM Pack")
-            .expect("UE5 ORM Pack template not found");
+            .find(|t| t.name == "Pack Texture")
+            .expect("Pack Texture template not found");
 
-        let graph = template.load_graph().expect("Failed to load UE5 ORM graph");
+        let graph = template.load_graph().expect("Failed to load Pack Texture graph");
         let mut evaluator = GraphEvaluator::new((2048, 2048));
         evaluator.evaluate(&graph).expect("Evaluation failed");
 

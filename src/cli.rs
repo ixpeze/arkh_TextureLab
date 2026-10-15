@@ -571,8 +571,8 @@ OPTIONS:
     -v, --version             Print version information
 
 EXAMPLES:
-    texturelab-cli --graph assets/templates/ue5_orm_pack.tlab --input samples/1k/ --output target/cli-test/
-    texturelab-cli -g ue5_orm_pack.tlab -i textures/brick/ -o exports/ -p UE5_ORM -r 2048x2048 -f PNG
+    texturelab-cli --graph assets/templates/pack_texture.tlab --input samples/1k/ --output target/cli-test/
+    texturelab-cli -g pack_texture.tlab -i textures/brick/ -o exports/ -p UE5_ORM -r 2048x2048 -f PNG
 "#,
         crate::version()
     );
@@ -611,7 +611,7 @@ mod tests {
         let args = vec![
             "texturelab-cli",
             "--graph",
-            "assets/templates/ue5_orm_pack.tlab",
+            "assets/templates/pack_texture.tlab",
             "--input",
             "samples/1k/",
             "--output",
@@ -628,7 +628,7 @@ mod tests {
         let parsed = CliArgs::parse(args).expect("Should parse valid CLI arguments");
         assert_eq!(
             parsed.graph,
-            Some(PathBuf::from("assets/templates/ue5_orm_pack.tlab"))
+            Some(PathBuf::from("assets/templates/pack_texture.tlab"))
         );
         assert_eq!(parsed.input, Some(PathBuf::from("samples/1k/")));
         assert_eq!(parsed.output, Some(PathBuf::from("target/test-out/")));
@@ -643,7 +643,7 @@ mod tests {
     fn test_cli_args_equals_syntax() {
         let args = vec![
             "texturelab-cli",
-            "--graph=assets/templates/ue5_orm_pack.tlab",
+            "--graph=assets/templates/pack_texture.tlab",
             "--input=samples/1k/",
             "--output=target/test-out/",
             "--preset=unity",
@@ -655,7 +655,7 @@ mod tests {
         let parsed = CliArgs::parse(args).expect("Should parse equals syntax");
         assert_eq!(
             parsed.graph,
-            Some(PathBuf::from("assets/templates/ue5_orm_pack.tlab"))
+            Some(PathBuf::from("assets/templates/pack_texture.tlab"))
         );
         assert_eq!(parsed.input, Some(PathBuf::from("samples/1k/")));
         assert_eq!(parsed.output, Some(PathBuf::from("target/test-out/")));
@@ -690,7 +690,7 @@ mod tests {
 
     #[test]
     fn test_load_graph_template_fallback() {
-        let project = load_graph_file(Path::new("ue5_orm_pack.tlab"))
+        let project = load_graph_file(Path::new("pack_texture.tlab"))
             .expect("Should load built-in template by name");
         assert!(!project.graph.nodes.is_empty());
     }
@@ -699,7 +699,7 @@ mod tests {
     fn test_cli_pipeline_smoke_run() {
         let out_dir = std::env::temp_dir().join(format!("tlab_cli_smoke_{}", std::process::id()));
         let args = CliArgs {
-            graph: Some(PathBuf::from("assets/templates/ue5_orm_pack.tlab")),
+            graph: Some(PathBuf::from("assets/templates/pack_texture.tlab")),
             input: Some(PathBuf::from("samples/1k")),
             output: Some(out_dir.clone()),
             preset: Some("UE5_ORM".to_string()),

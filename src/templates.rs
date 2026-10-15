@@ -25,33 +25,23 @@ impl TemplateEntry {
     }
 }
 
-/// Returns the catalog of 5 built-in starter templates.
+/// Returns the catalog of 3 built-in starter templates.
 pub fn builtin_templates() -> Vec<TemplateEntry> {
     vec![
         TemplateEntry {
-            name: "Empty Graph",
+            name: "Blank Canvas",
             description: "Clean blank canvas for creating custom node networks from scratch.",
-            graph_json: include_str!("../assets/templates/empty.tlab"),
+            graph_json: include_str!("../assets/templates/blank_canvas.tlab"),
         },
         TemplateEntry {
-            name: "UE5 ORM Pack",
-            description: "Packs AO (R), Roughness (G), and Metallic (B) maps into a single Unreal Engine 5 ORM texture.",
-            graph_json: include_str!("../assets/templates/ue5_orm_pack.tlab"),
+            name: "Pack Texture",
+            description: "Packs separate Ambient Occlusion (R), Roughness (G), and Metallic (B) maps into a combined ORM texture.",
+            graph_json: include_str!("../assets/templates/pack_texture.tlab"),
         },
         TemplateEntry {
-            name: "Unity MaskMap",
-            description: "Packs Metallic (R), AO (G), Detail Mask (B), and Smoothness (A) for Unity HDRP/URP.",
-            graph_json: include_str!("../assets/templates/unity_maskmap.tlab"),
-        },
-        TemplateEntry {
-            name: "Blender Principled BSDF",
-            description: "Standard multi-map setup routing Base Color, Roughness, Metallic, Normal, and AO to individual exports.",
-            graph_json: include_str!("../assets/templates/blender_principled.tlab"),
-        },
-        TemplateEntry {
-            name: "Normal Map Convert",
-            description: "Inverts normal map green channel between DirectX (Y-) and OpenGL (Y+) standards.",
-            graph_json: include_str!("../assets/templates/normal_convert.tlab"),
+            name: "Unpack Texture",
+            description: "Unpacks a packed RGBA texture into separate Red, Green, Blue, and Alpha channels.",
+            graph_json: include_str!("../assets/templates/unpack_texture.tlab"),
         },
     ]
 }
@@ -63,7 +53,7 @@ mod tests {
     #[test]
     fn test_builtin_templates_count() {
         let templates = builtin_templates();
-        assert_eq!(templates.len(), 5);
+        assert_eq!(templates.len(), 3);
     }
 
     #[test]
@@ -104,37 +94,30 @@ mod tests {
     fn test_specific_template_topologies() {
         let templates = builtin_templates();
 
-        // 1. Empty Graph
-        let empty = templates.iter().find(|t| t.name == "Empty Graph").unwrap();
-        let empty_graph = empty.load_graph().unwrap();
-        assert!(empty_graph.nodes.is_empty());
-        assert!(empty_graph.edges.is_empty());
+        // 1. Blank Canvas
+        let blank = templates.iter().find(|t| t.name == "Blank Canvas").unwrap();
+        let blank_graph = blank.load_graph().unwrap();
+        assert!(blank_graph.nodes.is_empty());
+        assert!(blank_graph.edges.is_empty());
 
-        // 2. UE5 ORM Pack
-        let ue5 = templates.iter().find(|t| t.name == "UE5 ORM Pack").unwrap();
-        let ue5_graph = ue5.load_graph().unwrap();
-        assert_eq!(ue5_graph.nodes.len(), 5);
-        assert_eq!(ue5_graph.edges.len(), 4);
-        assert!(ue5_graph.nodes.values().any(|n| n.node_type == "ChannelCombine"));
-        assert!(ue5_graph.nodes.values().any(|n| n.node_type == "SaveImage"));
+        // 2. Pack Texture
+        let pack = templates.iter().find(|t| t.name == "Pack Texture").unwrap();
+        let pack_graph = pack.load_graph().unwrap();
+        assert_eq!(pack_graph.nodes.len(), 5);
+        assert_eq!(pack_graph.edges.len(), 4);
+        assert!(pack_graph.nodes.values().any(|n| n.node_type == "ChannelCombine"));
+        assert!(pack_graph.nodes.values().any(|n| n.node_type == "SaveImage"));
 
-        // 3. Unity MaskMap
-        let unity = templates.iter().find(|t| t.name == "Unity MaskMap").unwrap();
-        let unity_graph = unity.load_graph().unwrap();
-        assert_eq!(unity_graph.nodes.len(), 6);
-        assert_eq!(unity_graph.edges.len(), 5);
-
-        // 4. Blender Principled BSDF
-        let blender = templates.iter().find(|t| t.name == "Blender Principled BSDF").unwrap();
-        let blender_graph = blender.load_graph().unwrap();
-        assert_eq!(blender_graph.nodes.len(), 10);
-        assert_eq!(blender_graph.edges.len(), 5);
-
-        // 5. Normal Map Convert
-        let normal = templates.iter().find(|t| t.name == "Normal Map Convert").unwrap();
-        let normal_graph = normal.load_graph().unwrap();
-        assert_eq!(normal_graph.nodes.len(), 3);
-        assert_eq!(normal_graph.edges.len(), 2);
-        assert!(normal_graph.nodes.values().any(|n| n.node_type == "NormalFlipGreen"));
+        // 3. Unpack Texture
+        let unpack = templates.iter().find(|t| t.name == "Unpack Texture").unwrap();
+        let unpack_graph = unpack.load_graph().unwrap();
+        assert_eq!(unpack_graph.nodes.len(), 6);
+        assert_eq!(unpack_graph.edges.len(), 5);
+        assert!(unpack_graph.nodes.values().any(|n| n.node_type == "ChannelSplit"));
+        assert_eq!(
+            unpack_graph.nodes.values().filter(|n| n.node_type == "SaveImage").count(),
+            4
+        );
     }
 }
+

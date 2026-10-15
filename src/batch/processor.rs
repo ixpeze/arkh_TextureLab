@@ -845,11 +845,11 @@ mod tests {
             }
         }
 
-        // Load UE5 ORM Pack template
+        // Load Pack Texture template
         let template = crate::templates::builtin_templates()
             .into_iter()
-            .find(|t| t.name == "UE5 ORM Pack")
-            .expect("UE5 ORM Pack template must exist")
+            .find(|t| t.name == "Pack Texture")
+            .expect("Pack Texture template must exist")
             .load_project()
             .expect("Template must load cleanly");
 
